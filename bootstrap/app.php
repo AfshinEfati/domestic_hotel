@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withProviders([
+        App\Providers\AdminServiceProvider::class,
+        App\Providers\AppServiceProvider::class,
         App\Providers\HotelServiceProvider::class,
     ])
     ->withExceptions(function (Exceptions $exceptions): void {

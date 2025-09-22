@@ -1,9 +1,7 @@
 <?php
 
 return [
-    App\Providers\AccommodationTypeServiceProvider::class,
-
-    App\Providers\AccommodationServiceProvider::class,
-
+    App\Providers\AdminServiceProvider::class,
     App\Providers\AppServiceProvider::class,
+    App\Providers\HotelServiceProvider::class,
 ];
