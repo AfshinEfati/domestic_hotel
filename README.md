@@ -38,3 +38,13 @@ php artisan hotel:sync-facilities grs
 php artisan horizon
 ```
 
+## API Documentation
+
+L5 Swagger is configured to generate and serve the OpenAPI description for the admin API.
+
+1. Generate the specification locally with `composer swagger` or `php artisan l5-swagger:generate --ansi`.
+2. The JSON document is published to `storage/app/public/api-docs/api-docs.json` (plus a YAML copy when enabled).
+3. Serve the UI by running the application and browsing to `/api/documentation`.
+
+> **Note:** The `composer test` script regenerates the specification before executing the test suite to ensure the documentation stays in sync with the latest annotations.
+
