@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Repositories\Contracts\BaseRepositoryInterface;
 use App\Services\Contracts\BaseServiceInterface;
 use BadMethodCallException;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 
 abstract class BaseService implements BaseServiceInterface
 {
@@ -20,19 +22,24 @@ abstract class BaseService implements BaseServiceInterface
 
     public function index(): mixed
     {
-        return $this->callRepository('getAll');
+        $result = $this->callRepository('getAll');
+
+        return $this->loadRelations($result);
     }
 
     public function show(int|string $id): mixed
     {
-        return $this->callRepository('find', [$id]);
+        $result = $this->callRepository('find', [$id]);
+
+        return $this->loadRelations($result);
     }
 
     public function store(mixed $payload): mixed
     {
         $payload = $this->normalisePayload($payload);
+        $result = $this->callRepository('store', [$payload]);
 
-        return $this->callRepository('store', [$payload]);
+        return $this->loadRelations($result);
     }
 
     public function update(int|string $id, mixed $payload): bool
@@ -54,6 +61,34 @@ abstract class BaseService implements BaseServiceInterface
         }
 
         throw new BadMethodCallException(sprintf('Method %s::%s does not exist.', static::class, $method));
+    }
+
+    public function loadRelations(mixed $resource): mixed
+    {
+        $relations = $this->relations();
+
+        if (empty($relations) || $resource === null) {
+            return $resource;
+        }
+
+        if ($resource instanceof Model) {
+            $resource->loadMissing($relations);
+
+            return $resource;
+        }
+
+        if ($resource instanceof EloquentCollection) {
+            $resource->load($relations);
+
+            return $resource;
+        }
+
+        return $resource;
+    }
+
+    protected function relations(): array
+    {
+        return [];
     }
 
     protected function callRepository(string $method, array $arguments = []): mixed

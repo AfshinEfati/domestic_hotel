@@ -60,4 +60,9 @@ class FacilityService extends BaseService implements FacilityServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return ['group'];
+    }
 }

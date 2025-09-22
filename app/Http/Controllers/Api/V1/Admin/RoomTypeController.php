@@ -32,6 +32,8 @@ class RoomTypeController
 
     public function show(RoomType $roomType): JsonResponse
     {
+        $roomType = $this->service->loadRelations($roomType);
+
         return StatusHelper::successResponse(new RoomTypeResource($roomType), 'success');
     }
 
@@ -44,6 +46,7 @@ class RoomTypeController
         }
 
         $roomType->refresh();
+        $roomType = $this->service->loadRelations($roomType);
 
         return StatusHelper::successResponse(new RoomTypeResource($roomType), 'updated');
     }

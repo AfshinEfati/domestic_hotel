@@ -60,4 +60,9 @@ class RatePlanService extends BaseService implements RatePlanServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return ['accommodation'];
+    }
 }

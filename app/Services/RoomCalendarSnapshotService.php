@@ -60,4 +60,21 @@ class RoomCalendarSnapshotService extends BaseService implements RoomCalendarSna
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'roomCalendar.accommodation.city',
+            'roomCalendar.accommodation.type',
+            'roomCalendar.accommodation.facilities',
+            'roomCalendar.roomType.accommodation.city',
+            'roomCalendar.roomType.accommodation.type',
+            'roomCalendar.roomType.accommodation.facilities',
+            'roomCalendar.ratePlan.accommodation.city',
+            'roomCalendar.ratePlan.accommodation.type',
+            'roomCalendar.ratePlan.accommodation.facilities',
+            'roomCalendar.provider.cityMaps.city',
+            'provider.cityMaps.city',
+        ];
+    }
 }

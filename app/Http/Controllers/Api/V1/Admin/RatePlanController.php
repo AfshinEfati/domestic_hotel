@@ -32,6 +32,8 @@ class RatePlanController
 
     public function show(RatePlan $ratePlan): JsonResponse
     {
+        $ratePlan = $this->service->loadRelations($ratePlan);
+
         return StatusHelper::successResponse(new RatePlanResource($ratePlan), 'success');
     }
 
@@ -44,6 +46,7 @@ class RatePlanController
         }
 
         $ratePlan->refresh();
+        $ratePlan = $this->service->loadRelations($ratePlan);
 
         return StatusHelper::successResponse(new RatePlanResource($ratePlan), 'updated');
     }

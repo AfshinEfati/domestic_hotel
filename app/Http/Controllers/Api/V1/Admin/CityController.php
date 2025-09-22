@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\DTOs\CityDTO;
-use App\Helpers\StatusHelper;
-use App\Http\Requests\StoreCityRequest;
-use App\Http\Requests\UpdateCityRequest;
-use App\Http\Resources\CityResource;
 use App\Models\City;
 use App\Services\CityService;
+use App\Helpers\StatusHelper;
+use App\Http\Resources\CityResource;
+use App\DTOs\CityDTO;
+use App\Http\Requests\StoreCityRequest;
+use App\Http\Requests\UpdateCityRequest;
 use Illuminate\Http\JsonResponse;
 
 class CityController
@@ -32,6 +32,8 @@ class CityController
 
     public function show(City $city): JsonResponse
     {
+        $city = $this->service->loadRelations($city);
+
         return StatusHelper::successResponse(new CityResource($city), 'success');
     }
 
@@ -44,6 +46,7 @@ class CityController
         }
 
         $city->refresh();
+        $city = $this->service->loadRelations($city);
 
         return StatusHelper::successResponse(new CityResource($city), 'updated');
     }

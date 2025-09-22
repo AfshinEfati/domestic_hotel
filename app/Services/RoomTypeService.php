@@ -60,4 +60,13 @@ class RoomTypeService extends BaseService implements RoomTypeServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'accommodation.city',
+            'accommodation.type',
+            'accommodation.facilities',
+        ];
+    }
 }

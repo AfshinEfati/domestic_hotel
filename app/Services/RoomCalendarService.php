@@ -60,4 +60,20 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'accommodation.city',
+            'accommodation.type',
+            'accommodation.facilities',
+            'roomType.accommodation.city',
+            'roomType.accommodation.type',
+            'roomType.accommodation.facilities',
+            'ratePlan.accommodation.city',
+            'ratePlan.accommodation.type',
+            'ratePlan.accommodation.facilities',
+            'provider.cityMaps.city',
+        ];
+    }
 }
