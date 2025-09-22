@@ -1,0 +1,290 @@
+[
+    {
+        "Id": 1,
+        "Name": "Other"
+    },
+    {
+        "Id": 4,
+        "Name": "Camping"
+    },
+    {
+        "Id": 9,
+        "Name": "Rural"
+    },
+    {
+        "Id": 201,
+        "Name": "Apartments"
+    },
+    {
+        "Id": 202,
+        "Name": "Guest Accommodation"
+    },
+    {
+        "Id": 203,
+        "Name": "Hostels"
+    },
+    {
+        "Id": 204,
+        "Name": "Hotels"
+    },
+    {
+        "Id": 205,
+        "Name": "Motels"
+    },
+    {
+        "Id": 206,
+        "Name": "Resorts"
+    },
+    {
+        "Id": 207,
+        "Name": "Residences"
+    },
+    {
+        "Id": 208,
+        "Name": "Bed And Breakfasts"
+    },
+    {
+        "Id": 209,
+        "Name": "Ryokans"
+    },
+    {
+        "Id": 210,
+        "Name": "Farm Stays"
+    },
+    {
+        "Id": 212,
+        "Name": "HolidayParks"
+    },
+    {
+        "Id": 213,
+        "Name": "Villas"
+    },
+    {
+        "Id": 214,
+        "Name": "Campsites"
+    },
+    {
+        "Id": 215,
+        "Name": "Boats"
+    },
+    {
+        "Id": 216,
+        "Name": "Guest Houses"
+    },
+    {
+        "Id": 217,
+        "Name": "Uncertain"
+    },
+    {
+        "Id": 218,
+        "Name": "Inns"
+    },
+    {
+        "Id": 219,
+        "Name": "Aparthotels"
+    },
+    {
+        "Id": 220,
+        "Name": "Holiday_homes"
+    },
+    {
+        "Id": 221,
+        "Name": "Lodges"
+    },
+    {
+        "Id": 222,
+        "Name": "Homestays"
+    },
+    {
+        "Id": 223,
+        "Name": "Country Houses"
+    },
+    {
+        "Id": 224,
+        "Name": "Luxury Tents"
+    },
+    {
+        "Id": 225,
+        "Name": "Capsule Hotels"
+    },
+    {
+        "Id": 226,
+        "Name": "Love Hotels"
+    },
+    {
+        "Id": 227,
+        "Name": "Riads"
+    },
+    {
+        "Id": 228,
+        "Name": "Chalets"
+    },
+    {
+        "Id": 229,
+        "Name": "Condos"
+    },
+    {
+        "Id": 230,
+        "Name": "Cottages"
+    },
+    {
+        "Id": 231,
+        "Name": "Economy Hotels"
+    },
+    {
+        "Id": 232,
+        "Name": "Gites"
+    },
+    {
+        "Id": 233,
+        "Name": "Health Resorts"
+    },
+    {
+        "Id": 234,
+        "Name": "Cruises"
+    },
+    {
+        "Id": 235,
+        "Name": "Ecotourism Resorts"
+    },
+    {
+        "Id": 236,
+        "Name": "Beach Residential Complex"
+    },
+    {
+        "Id": 237,
+        "Name": "Hotel Apartment"
+    },
+    {
+        "Id": 238,
+        "Name": "All-inclusive property"
+    },
+    {
+        "Id": 239,
+        "Name": "Cabin"
+    },
+    {
+        "Id": 240,
+        "Name": "Hostel/Backpacker accommodation"
+    },
+    {
+        "Id": 241,
+        "Name": "Ranch"
+    },
+    {
+        "Id": 242,
+        "Name": "Private vacation home"
+    },
+    {
+        "Id": 243,
+        "Name": "Houseboat"
+    },
+    {
+        "Id": 244,
+        "Name": "Tree house property"
+    },
+    {
+        "Id": 245,
+        "Name": "Condominium resort"
+    },
+    {
+        "Id": 246,
+        "Name": "Pension"
+    },
+    {
+        "Id": 247,
+        "Name": "Pousada (Portugal)"
+    },
+    {
+        "Id": 248,
+        "Name": "Pousada (Brazil)"
+    },
+    {
+        "Id": 249,
+        "Name": "TownHouse"
+    },
+    {
+        "Id": 250,
+        "Name": "Castle"
+    },
+    {
+        "Id": 251,
+        "Name": "Safari/Tentalow"
+    },
+    {
+        "Id": 252,
+        "Name": "Palace"
+    },
+    {
+        "Id": 253,
+        "Name": "Agritourism property"
+    },
+    {
+        "Id": 254,
+        "Name": "Boutique"
+    },
+    {
+        "Id": 255,
+        "Name": "Sanatorium"
+    },
+    {
+        "Id": 256,
+        "Name": "Mini-hotel"
+    },
+    {
+        "Id": 257,
+        "Name": "Botel"
+    },
+    {
+        "Id": 258,
+        "Name": " Vacation condo or apartment"
+    },
+    {
+        "Id": 259,
+        "Name": "Riad"
+    },
+    {
+        "Id": 260,
+        "Name": "Pousada"
+    },
+    {
+        "Id": 261,
+        "Name": "Vacation resort"
+    },
+    {
+        "Id": 262,
+        "Name": "Vacation Townhouse"
+    },
+    {
+        "Id": 263,
+        "Name": "Vacation home or villa"
+    },
+    {
+        "Id": 264,
+        "Name": "Historical hotel Luxurious"
+    },
+    {
+        "Id": 265,
+        "Name": "Rural house"
+    },
+    {
+        "Id": 266,
+        "Name": "Rural hotel"
+    },
+    {
+        "Id": 267,
+        "Name": "Pending Category"
+    },
+    {
+        "Id": 268,
+        "Name": "Lodging House"
+    },
+    {
+        "Id": 269,
+        "Name": "Residential Complex"
+    },
+    {
+        "Id": 270,
+        "Name": "MehmanPazir"
+    }
+]
