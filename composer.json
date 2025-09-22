@@ -7,6 +7,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "darkaonline/l5-swagger": "^9.0",
         "efati/laravel-module-generator": "^6.2.4",
         "laravel/framework": "^12.0",
         "laravel/horizon": "^5.33",
@@ -54,8 +55,10 @@
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
         ],
+        "swagger": "@php artisan l5-swagger:generate --ansi",
         "test": [
             "@php artisan config:clear --ansi",
+            "@php artisan l5-swagger:generate --ansi",
             "@php artisan test"
         ]
     },
