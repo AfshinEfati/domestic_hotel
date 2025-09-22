@@ -30,7 +30,14 @@ class Provider extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
-    public function cityMaps(): Provider|HasMany
+    /**
+     * Get the city mappings for the provider.
+     *
+     * The relationship uses `provider_id` as the foreign key.
+     *
+     * @return HasMany<ProviderCityMap>
+     */
+    public function cityMaps(): HasMany
     {
         return $this->hasMany(ProviderCityMap::class);
     }
