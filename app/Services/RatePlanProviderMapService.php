@@ -60,4 +60,12 @@ class RatePlanProviderMapService extends BaseService implements RatePlanProvider
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'ratePlan.accommodation',
+            'provider.cityMaps.city',
+        ];
+    }
 }

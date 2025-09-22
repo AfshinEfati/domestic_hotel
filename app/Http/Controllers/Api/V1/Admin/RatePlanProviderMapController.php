@@ -32,6 +32,8 @@ class RatePlanProviderMapController
 
     public function show(RatePlanProviderMap $ratePlanProviderMap): JsonResponse
     {
+        $ratePlanProviderMap = $this->service->loadRelations($ratePlanProviderMap);
+
         return StatusHelper::successResponse(new RatePlanProviderMapResource($ratePlanProviderMap), 'success');
     }
 
@@ -44,6 +46,7 @@ class RatePlanProviderMapController
         }
 
         $ratePlanProviderMap->refresh();
+        $ratePlanProviderMap = $this->service->loadRelations($ratePlanProviderMap);
 
         return StatusHelper::successResponse(new RatePlanProviderMapResource($ratePlanProviderMap), 'updated');
     }

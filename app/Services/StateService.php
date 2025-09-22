@@ -60,4 +60,9 @@ class StateService extends BaseService implements StateServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return ['country'];
+    }
 }

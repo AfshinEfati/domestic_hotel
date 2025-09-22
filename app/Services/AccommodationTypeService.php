@@ -61,4 +61,13 @@ class AccommodationTypeService extends BaseService implements AccommodationTypeS
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'accommodations.city',
+            'accommodations.type',
+            'accommodations.facilities',
+        ];
+    }
 }

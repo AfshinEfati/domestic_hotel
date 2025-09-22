@@ -32,6 +32,8 @@ class RoomTypeProviderMapController
 
     public function show(RoomTypeProviderMap $roomTypeProviderMap): JsonResponse
     {
+        $roomTypeProviderMap = $this->service->loadRelations($roomTypeProviderMap);
+
         return StatusHelper::successResponse(new RoomTypeProviderMapResource($roomTypeProviderMap), 'success');
     }
 
@@ -44,6 +46,7 @@ class RoomTypeProviderMapController
         }
 
         $roomTypeProviderMap->refresh();
+        $roomTypeProviderMap = $this->service->loadRelations($roomTypeProviderMap);
 
         return StatusHelper::successResponse(new RoomTypeProviderMapResource($roomTypeProviderMap), 'updated');
     }

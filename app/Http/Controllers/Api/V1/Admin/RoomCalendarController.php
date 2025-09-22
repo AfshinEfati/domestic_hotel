@@ -32,6 +32,8 @@ class RoomCalendarController
 
     public function show(RoomCalendar $roomCalendar): JsonResponse
     {
+        $roomCalendar = $this->service->loadRelations($roomCalendar);
+
         return StatusHelper::successResponse(new RoomCalendarResource($roomCalendar), 'success');
     }
 
@@ -44,6 +46,7 @@ class RoomCalendarController
         }
 
         $roomCalendar->refresh();
+        $roomCalendar = $this->service->loadRelations($roomCalendar);
 
         return StatusHelper::successResponse(new RoomCalendarResource($roomCalendar), 'updated');
     }

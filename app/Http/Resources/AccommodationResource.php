@@ -2,8 +2,8 @@
 
 namespace App\Http\Resources;
 
-use Illuminate\Http\Resources\Json\JsonResource;
 use App\Helpers\StatusHelper;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 class AccommodationResource extends JsonResource
 {
@@ -23,15 +23,11 @@ class AccommodationResource extends JsonResource
             'is_active' => StatusHelper::getStatus((bool) $this->is_active),
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'city' => class_exists('App\Http\Resources\CityResource')
-                ? new \App\Http\Resources\CityResource($this->whenLoaded('city'))
-                : $this->whenLoaded('city'),
-            'type' => class_exists('App\Http\Resources\AccommodationTypeResource')
-                ? new \App\Http\Resources\AccommodationTypeResource($this->whenLoaded('type'))
-                : $this->whenLoaded('type'),
-            'facilities' => class_exists('App\Http\Resources\FacilityResource')
-                ? new \App\Http\Resources\FacilityResource($this->whenLoaded('facilities'))
-                : $this->whenLoaded('facilities'),
+            'city' => CityResource::make($this->whenLoaded('city')),
+            'type' => AccommodationTypeResource::make(
+                $this->whenLoaded('type', fn ($type) => $type->withoutRelations())
+            ),
+            'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
         ];
     }
 }

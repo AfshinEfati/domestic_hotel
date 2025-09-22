@@ -32,6 +32,8 @@ class AccommodationProviderMapController
 
     public function show(AccommodationProviderMap $accommodationProviderMap): JsonResponse
     {
+        $accommodationProviderMap = $this->service->loadRelations($accommodationProviderMap);
+
         return StatusHelper::successResponse(new AccommodationProviderMapResource($accommodationProviderMap), 'success');
     }
 
@@ -44,6 +46,7 @@ class AccommodationProviderMapController
         }
 
         $accommodationProviderMap->refresh();
+        $accommodationProviderMap = $this->service->loadRelations($accommodationProviderMap);
 
         return StatusHelper::successResponse(new AccommodationProviderMapResource($accommodationProviderMap), 'updated');
     }

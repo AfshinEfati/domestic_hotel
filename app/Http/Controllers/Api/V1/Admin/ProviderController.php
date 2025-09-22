@@ -32,6 +32,8 @@ class ProviderController
 
     public function show(Provider $provider): JsonResponse
     {
+        $provider = $this->service->loadRelations($provider);
+
         return StatusHelper::successResponse(new ProviderResource($provider), 'success');
     }
 
@@ -44,6 +46,7 @@ class ProviderController
         }
 
         $provider->refresh();
+        $provider = $this->service->loadRelations($provider);
 
         return StatusHelper::successResponse(new ProviderResource($provider), 'updated');
     }

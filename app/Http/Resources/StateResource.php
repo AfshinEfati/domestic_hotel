@@ -16,9 +16,7 @@ class StateResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'country' => class_exists('App\\Http\\Resources\\CountryResource')
-                ? new \App\Http\Resources\CountryResource($this->whenLoaded('country'))
-                : $this->whenLoaded('country'),
+            'country' => CountryResource::make($this->whenLoaded('country')),
         ];
     }
 }

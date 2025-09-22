@@ -16,9 +16,9 @@ class FacilityResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'group' => class_exists('App\\Http\\Resources\\FacilityGroupResource')
-                ? new \App\Http\Resources\FacilityGroupResource($this->whenLoaded('group'))
-                : $this->whenLoaded('group'),
+            'group' => FacilityGroupResource::make(
+                $this->whenLoaded('group', fn ($group) => $group->withoutRelations())
+            ),
         ];
     }
 }

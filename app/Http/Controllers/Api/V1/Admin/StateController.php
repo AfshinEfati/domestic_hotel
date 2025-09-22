@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\DTOs\StateDTO;
-use App\Helpers\StatusHelper;
-use App\Http\Requests\StoreStateRequest;
-use App\Http\Requests\UpdateStateRequest;
-use App\Http\Resources\StateResource;
 use App\Models\State;
 use App\Services\StateService;
+use App\Helpers\StatusHelper;
+use App\Http\Resources\StateResource;
+use App\DTOs\StateDTO;
+use App\Http\Requests\StoreStateRequest;
+use App\Http\Requests\UpdateStateRequest;
 use Illuminate\Http\JsonResponse;
 
 class StateController
@@ -32,6 +32,8 @@ class StateController
 
     public function show(State $state): JsonResponse
     {
+        $state = $this->service->loadRelations($state);
+
         return StatusHelper::successResponse(new StateResource($state), 'success');
     }
 
@@ -44,6 +46,7 @@ class StateController
         }
 
         $state->refresh();
+        $state = $this->service->loadRelations($state);
 
         return StatusHelper::successResponse(new StateResource($state), 'updated');
     }
