@@ -20,9 +20,7 @@ class ProviderResource extends JsonResource
             'expire_at' => StatusHelper::formatDates($this->expire_at),
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'city_maps' => class_exists('App\\Http\\Resources\\ProviderCityMapResource')
-                ? ProviderCityMapResource::collection($this->whenLoaded('cityMaps'))
-                : $this->whenLoaded('cityMaps'),
+            'city_maps' => ProviderCityMapResource::collection($this->whenLoaded('cityMaps')),
         ];
     }
 }

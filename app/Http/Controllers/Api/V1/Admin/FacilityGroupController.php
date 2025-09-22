@@ -32,6 +32,8 @@ class FacilityGroupController
 
     public function show(FacilityGroup $facilityGroup): JsonResponse
     {
+        $facilityGroup = $this->service->loadRelations($facilityGroup);
+
         return StatusHelper::successResponse(new FacilityGroupResource($facilityGroup), 'success');
     }
 
@@ -44,6 +46,7 @@ class FacilityGroupController
         }
 
         $facilityGroup->refresh();
+        $facilityGroup = $this->service->loadRelations($facilityGroup);
 
         return StatusHelper::successResponse(new FacilityGroupResource($facilityGroup), 'updated');
     }

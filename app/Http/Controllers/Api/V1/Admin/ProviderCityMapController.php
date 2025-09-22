@@ -32,6 +32,8 @@ class ProviderCityMapController
 
     public function show(ProviderCityMap $providerCityMap): JsonResponse
     {
+        $providerCityMap = $this->service->loadRelations($providerCityMap);
+
         return StatusHelper::successResponse(new ProviderCityMapResource($providerCityMap), 'success');
     }
 
@@ -44,6 +46,7 @@ class ProviderCityMapController
         }
 
         $providerCityMap->refresh();
+        $providerCityMap = $this->service->loadRelations($providerCityMap);
 
         return StatusHelper::successResponse(new ProviderCityMapResource($providerCityMap), 'updated');
     }

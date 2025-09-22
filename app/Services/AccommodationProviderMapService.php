@@ -60,4 +60,14 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'accommodation.city',
+            'accommodation.type',
+            'accommodation.facilities',
+            'provider',
+        ];
+    }
 }

@@ -18,12 +18,10 @@ class RatePlanProviderMapResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'rate_plan' => class_exists('App\\Http\\Resources\\RatePlanResource')
-                ? new \App\Http\Resources\RatePlanResource($this->whenLoaded('ratePlan'))
-                : $this->whenLoaded('ratePlan'),
-            'provider' => class_exists('App\\Http\\Resources\\ProviderResource')
-                ? new \App\Http\Resources\ProviderResource($this->whenLoaded('provider'))
-                : $this->whenLoaded('provider'),
+            'rate_plan' => RatePlanResource::make($this->whenLoaded('ratePlan')),
+            'provider' => ProviderResource::make(
+                $this->whenLoaded('provider', fn ($provider) => $provider->withoutRelations())
+            ),
         ];
     }
 }

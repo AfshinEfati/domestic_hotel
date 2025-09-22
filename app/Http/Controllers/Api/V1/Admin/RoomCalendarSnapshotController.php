@@ -32,6 +32,8 @@ class RoomCalendarSnapshotController
 
     public function show(RoomCalendarSnapshot $roomCalendarSnapshot): JsonResponse
     {
+        $roomCalendarSnapshot = $this->service->loadRelations($roomCalendarSnapshot);
+
         return StatusHelper::successResponse(new RoomCalendarSnapshotResource($roomCalendarSnapshot), 'success');
     }
 
@@ -44,6 +46,7 @@ class RoomCalendarSnapshotController
         }
 
         $roomCalendarSnapshot->refresh();
+        $roomCalendarSnapshot = $this->service->loadRelations($roomCalendarSnapshot);
 
         return StatusHelper::successResponse(new RoomCalendarSnapshotResource($roomCalendarSnapshot), 'updated');
     }

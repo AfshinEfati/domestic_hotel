@@ -15,9 +15,7 @@ class FacilityGroupResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'facilities' => class_exists('App\\Http\\Resources\\FacilityResource')
-                ? FacilityResource::collection($this->whenLoaded('facilities'))
-                : $this->whenLoaded('facilities'),
+            'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
         ];
     }
 }

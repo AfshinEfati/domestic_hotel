@@ -60,4 +60,9 @@ class ProviderService extends BaseService implements ProviderServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return ['cityMaps.city'];
+    }
 }

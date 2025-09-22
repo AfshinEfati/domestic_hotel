@@ -60,4 +60,9 @@ class CityService extends BaseService implements CityServiceInterface
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return ['country', 'state'];
+    }
 }

@@ -22,12 +22,8 @@ class CityResource extends JsonResource
             'is_active' => $this->is_active === null ? null : StatusHelper::getStatus((bool) $this->is_active),
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'country' => class_exists('App\\Http\\Resources\\CountryResource')
-                ? new CountryResource($this->whenLoaded('country'))
-                : $this->whenLoaded('country'),
-            'state' => class_exists('App\\Http\\Resources\\StateResource')
-                ? new StateResource($this->whenLoaded('state'))
-                : $this->whenLoaded('state'),
+            'country' => CountryResource::make($this->whenLoaded('country')),
+            'state' => StateResource::make($this->whenLoaded('state')),
         ];
     }
 }

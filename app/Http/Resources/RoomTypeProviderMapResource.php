@@ -18,12 +18,10 @@ class RoomTypeProviderMapResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'room_type' => class_exists('App\\Http\\Resources\\RoomTypeResource')
-                ? new \App\Http\Resources\RoomTypeResource($this->whenLoaded('roomType'))
-                : $this->whenLoaded('roomType'),
-            'provider' => class_exists('App\\Http\\Resources\\ProviderResource')
-                ? new \App\Http\Resources\ProviderResource($this->whenLoaded('provider'))
-                : $this->whenLoaded('provider'),
+            'room_type' => RoomTypeResource::make($this->whenLoaded('roomType')),
+            'provider' => ProviderResource::make(
+                $this->whenLoaded('provider', fn ($provider) => $provider->withoutRelations())
+            ),
         ];
     }
 }

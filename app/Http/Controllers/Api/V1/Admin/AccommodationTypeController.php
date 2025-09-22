@@ -17,6 +17,7 @@ class AccommodationTypeController
     public function index()
     {
         $data = $this->service->index();
+
         return StatusHelper::successResponse(AccommodationTypeResource::collection($data), 'success');
     }
 
@@ -24,12 +25,13 @@ class AccommodationTypeController
     {
         $dto = AccommodationTypeDTO::fromRequest($request);
         $model = $this->service->store($dto);
+
         return StatusHelper::successResponse(new AccommodationTypeResource($model), 'created', 201);
     }
 
     public function show(AccommodationType $accommodationType): mixed
     {
-        // no relations to load
+        $accommodationType = $this->service->loadRelations($accommodationType);
 
         return StatusHelper::successResponse(new AccommodationTypeResource($accommodationType), 'success');
     }
@@ -41,8 +43,9 @@ class AccommodationTypeController
         if (!$updated) {
             return StatusHelper::errorResponse('update failed', 422);
         }
+
         $accommodationType->refresh();
-        // no relations to load
+        $accommodationType = $this->service->loadRelations($accommodationType);
 
         return StatusHelper::successResponse(new AccommodationTypeResource($accommodationType), 'updated');
     }
@@ -50,6 +53,7 @@ class AccommodationTypeController
     public function destroy(AccommodationType $accommodationType)
     {
         $deleted = $this->service->destroy($accommodationType->id);
+
         return $deleted
             ? StatusHelper::successResponse(null, 'deleted', 204)
             : StatusHelper::errorResponse('delete failed', 422);

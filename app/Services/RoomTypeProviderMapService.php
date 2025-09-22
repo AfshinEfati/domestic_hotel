@@ -60,4 +60,14 @@ class RoomTypeProviderMapService extends BaseService implements RoomTypeProvider
     {
         return parent::destroy($id);
     }
+
+    protected function relations(): array
+    {
+        return [
+            'roomType.accommodation.city',
+            'roomType.accommodation.type',
+            'roomType.accommodation.facilities',
+            'provider.cityMaps.city',
+        ];
+    }
 }

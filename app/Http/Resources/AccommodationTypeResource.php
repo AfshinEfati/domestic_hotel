@@ -2,8 +2,8 @@
 
 namespace App\Http\Resources;
 
-use Illuminate\Http\Resources\Json\JsonResource;
 use App\Helpers\StatusHelper;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 class AccommodationTypeResource extends JsonResource
 {
@@ -15,9 +15,7 @@ class AccommodationTypeResource extends JsonResource
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
-            'accommodations' => class_exists('App\Http\Resources\AccommodationResource')
-                ? new AccommodationResource($this->whenLoaded('accommodations'))
-                : $this->whenLoaded('accommodations'),
+            'accommodations' => AccommodationResource::collection($this->whenLoaded('accommodations')),
         ];
     }
 }
