@@ -23,10 +23,10 @@ class CityResource extends JsonResource
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
             'country' => class_exists('App\\Http\\Resources\\CountryResource')
-                ? new \App\Http\Resources\CountryResource($this->whenLoaded('country'))
+                ? new CountryResource($this->whenLoaded('country'))
                 : $this->whenLoaded('country'),
             'state' => class_exists('App\\Http\\Resources\\StateResource')
-                ? new \App\Http\Resources\StateResource($this->whenLoaded('state'))
+                ? new StateResource($this->whenLoaded('state'))
                 : $this->whenLoaded('state'),
         ];
     }

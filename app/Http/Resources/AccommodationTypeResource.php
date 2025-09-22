@@ -16,7 +16,7 @@ class AccommodationTypeResource extends JsonResource
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
             'accommodations' => class_exists('App\Http\Resources\AccommodationResource')
-                ? new \App\Http\Resources\AccommodationResource($this->whenLoaded('accommodations'))
+                ? new AccommodationResource($this->whenLoaded('accommodations'))
                 : $this->whenLoaded('accommodations'),
         ];
     }
