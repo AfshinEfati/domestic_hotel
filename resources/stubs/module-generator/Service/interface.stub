@@ -1,0 +1,19 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ uses }}
+
+interface {{ interface }} extends BaseServiceInterface
+{
+    /**
+     * @return iterable<{{ model }}>
+     */
+    public function index(): iterable;
+
+    public function show(int|string $id): ?{{ model }};
+
+{{ store_method }}
+{{ update_method }}
+    public function destroy(int|string $id): bool;
+}

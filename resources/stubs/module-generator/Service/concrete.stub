@@ -1,0 +1,35 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ uses }}
+
+class {{ class }} extends BaseService implements {{ interface }}
+{
+    public function __construct({{ repository_type_hint }} $repository)
+    {
+        parent::__construct($repository);
+    }
+
+    /**
+     * @return iterable<{{ model }}>
+     */
+    public function index(): iterable
+    {
+        /** @var iterable<{{ model }}> */
+        return parent::index();
+    }
+
+    public function show(int|string $id): ?{{ model }}
+    {
+        /** @var {{ model }}|null */
+        return parent::show($id);
+    }
+
+{{ store_method }}
+{{ update_method }}
+    public function destroy(int|string $id): bool
+    {
+        return parent::destroy($id);
+    }
+}

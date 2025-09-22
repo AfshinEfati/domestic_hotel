@@ -1,0 +1,21 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ uses }}
+
+interface {{ interface }} extends BaseRepositoryInterface
+{
+    /**
+     * @return iterable<{{ model }}>
+     */
+    public function getAll(): iterable;
+
+    public function find(int|string $id): ?{{ model }};
+
+    public function store(array $data): {{ model }};
+
+    public function update(int|string $id, array $data): bool;
+
+    public function delete(int|string $id): bool;
+}

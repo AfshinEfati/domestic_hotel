@@ -1,0 +1,34 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ uses }}
+
+class {{ class }} extends BaseRepository implements {{ interface }}
+{
+    public function __construct({{ model }} $model)
+    {
+        parent::__construct($model);
+    }
+
+    /**
+     * @return iterable<{{ model }}>
+     */
+    public function getAll(): iterable
+    {
+        /** @var iterable<{{ model }}> */
+        return parent::getAll();
+    }
+
+    public function find(int|string $id): ?{{ model }}
+    {
+        /** @var {{ model }}|null */
+        return parent::find($id);
+    }
+
+    public function store(array $data): {{ model }}
+    {
+        /** @var {{ model }} */
+        return parent::store($data);
+    }
+}
