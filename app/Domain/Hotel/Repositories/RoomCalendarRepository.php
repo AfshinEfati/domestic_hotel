@@ -12,6 +12,9 @@ class RoomCalendarRepository
         int $accId,
         int $roomTypeId,
         int $ratePlanId,
+        string $providerPropertyId,
+        ?string $providerRoomTypeId,
+        ?string $providerRatePlanId,
         Collection $rows
     ): void {
         $now = now();
@@ -30,6 +33,9 @@ class RoomCalendarRepository
             'closed' => (bool)($r['closed'] ?? false),
             'inventory' => $r['inventory'] ?? null,
             'provider_id' => $providerId,
+            'provider_property_id' => $providerPropertyId,
+            'provider_room_type_id' => $providerRoomTypeId,
+            'provider_rate_plan_id' => $providerRatePlanId,
             'created_at' => $now,
             'updated_at' => $now,
         ])->all();
