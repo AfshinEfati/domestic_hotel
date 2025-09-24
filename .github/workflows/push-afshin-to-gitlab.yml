@@ -57,4 +57,4 @@ jobs:
           export GIT_TERMINAL_PROMPT=0
           git remote add gitlab "$REMOTE_URL" 2>/dev/null || git remote set-url gitlab "$REMOTE_URL"
           # بدون force برای ایمنی؛ اگر لازم شد بعدا می‌تونی --force-with-lease اضافه کنی
-          git push --set-upstream gitlab HEAD:${GITLAB_TARGET_BRANCH}
+          git push --set-upstream gitlab HEAD:${GITLAB_TARGET_BRANCH} --force
