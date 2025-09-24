@@ -1,4 +1,4 @@
-name: Mirror afshin branch to GitLab (HTTPS with encoded password)
+name: Mirror afshin branch to GitLab (HTTP)
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       GITLAB_REPO_PATH: root/domestic_hotel_gds.git
       GITLAB_TARGET_BRANCH: afshin
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,9 +32,9 @@ jobs:
           MESSAGE="📦 Auto commit on branch '$BRANCH':\n"
           CHANGES=$(git status --short)
           while read -r line; do
-              status=$(echo "$line" | awk '{print $1}')
-              file=$(echo "$line" | awk '{print $2}')
-              MESSAGE+="- $status $file\n"
+            status=$(echo "$line" | awk '{print $1}')
+            file=$(echo "$line" | awk '{print $2}')
+            MESSAGE+="- $status $file\n"
           done <<< "$CHANGES"
           echo -e "$MESSAGE" > commit_message.txt
 
@@ -45,22 +45,16 @@ jobs:
             git commit -F commit_message.txt || echo "No changes to commit"
           fi
 
-      - name: Push to GitLab (with URL-encoded credentials)
+      - name: Push to GitLab (HTTP, URL-encoded creds)
         env:
           GITLAB_USERNAME: ${{ secrets.GITLAB_USERNAME }}
           GITLAB_PASSWORD: ${{ secrets.GITLAB_PASSWORD }}
         run: |
           set -euo pipefail
-
-          # URL-encode username and password to handle special chars safely
           ENC_USER=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$GITLAB_USERNAME")
           ENC_PASS=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$GITLAB_PASSWORD")
-
-          REMOTE_URL="https://${ENC_USER}:${ENC_PASS}@${GITLAB_HOST}/${GITLAB_REPO_PATH}"
-
-          # prevent interactive prompts
+          REMOTE_URL="http://${ENC_USER}:${ENC_PASS}@${GITLAB_HOST}/${GITLAB_REPO_PATH}"
           export GIT_TERMINAL_PROMPT=0
-
-          # add/update remote using embedded credentials and push
           git remote add gitlab "$REMOTE_URL" 2>/dev/null || git remote set-url gitlab "$REMOTE_URL"
-          git push --set-upstream gitlab HEAD:${GITLAB_TARGET_BRANCH} --force
+          # بدون force برای ایمنی؛ اگر لازم شد بعدا می‌تونی --force-with-lease اضافه کنی
+          git push --set-upstream gitlab HEAD:${GITLAB_TARGET_BRANCH}
