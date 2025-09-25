@@ -7,7 +7,10 @@ use Illuminate\Contracts\Queue\Job;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Queue\CallQueuedHandler;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use ReflectionClass;
+use Throwable;
 
 use function base_path;
 use function class_exists;
@@ -58,20 +61,84 @@ class ResilientCallQueuedHandler extends CallQueuedHandler
         }
 
         $className = $this->extractIncompleteClassName($command);
-        if ($className && ! class_exists($className)) {
-            $this->requireAppClassIfPresent($className);
-        }
 
-        $payload = $job->payload();
-        $data = $payload['data'] ?? null;
-
-        if (! is_array($data)) {
+        if (! $className) {
             return $command;
         }
 
-        $rehydrated = $this->getCommand($data);
+        if (! class_exists($className)) {
+            $this->requireAppClassIfPresent($className);
+        }
 
-        return $rehydrated instanceof \__PHP_Incomplete_Class ? $command : $rehydrated;
+        $rehydrated = $this->rehydrateFromPayload($job);
+        if ($rehydrated && ! $rehydrated instanceof \__PHP_Incomplete_Class) {
+            return $this->setJobInstanceIfNecessary($job, $rehydrated);
+        }
+
+        $rehydrated = $this->rehydrateFromProperties($command, $className);
+        if ($rehydrated) {
+            return $this->setJobInstanceIfNecessary($job, $rehydrated);
+        }
+
+        return $command;
+    }
+
+    /**
+     * Attempt to rehydrate the command from the job payload.
+     */
+    private function rehydrateFromPayload(Job $job): mixed
+    {
+        try {
+            $payload = $job->payload();
+        } catch (Throwable) {
+            return null;
+        }
+
+        $data = Arr::get($payload, 'data');
+
+        if (! is_array($data) || ! array_key_exists('command', $data)) {
+            return null;
+        }
+
+        try {
+            return $this->getCommand($data);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Attempt to rebuild the command using the properties of the incomplete instance.
+     */
+    private function rehydrateFromProperties(\__PHP_Incomplete_Class $command, string $className): mixed
+    {
+        if (! class_exists($className)) {
+            return null;
+        }
+
+        $properties = get_object_vars($command);
+        unset($properties['__PHP_Incomplete_Class_Name']);
+
+        try {
+            $reflection = new ReflectionClass($className);
+            $instance = $reflection->newInstanceWithoutConstructor();
+
+            foreach ($properties as $name => $value) {
+                if ($reflection->hasProperty($name)) {
+                    $property = $reflection->getProperty($name);
+                    $property->setAccessible(true);
+                    $property->setValue($instance, $value);
+
+                    continue;
+                }
+
+                $instance->{$name} = $value;
+            }
+
+            return $instance;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
