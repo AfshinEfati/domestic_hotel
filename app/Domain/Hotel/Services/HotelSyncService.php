@@ -318,6 +318,7 @@ class HotelSyncService
 
             $this->logProviderHttpError('Failed to fetch provider room types', $context, $exception);
 
+
             return collect();
         }
     }
@@ -343,6 +344,7 @@ class HotelSyncService
             ];
 
             $this->logProviderHttpError('Failed to fetch provider rate plans', $context, $exception);
+
 
             return collect();
         }
