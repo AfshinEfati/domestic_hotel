@@ -3,24 +3,31 @@
 namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
-use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
+use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
 use App\Models\Provider;
+use App\Models\RatePlan;
 use App\Models\RatePlanProviderMap;
+use App\Models\RoomType;
 use App\Models\RoomTypeProviderMap;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class HotelSyncService
 {
+    private const ALLOWED_MEAL_TYPES = ['breakfast', 'half_board', 'full_board'];
+    private const ALLOWED_FOOD_BOARD_TYPES = ['limit_options', 'full_options'];
+
     public function __construct(
         private readonly CityRepository $cityRepo,
         private readonly AccommodationRepository $accRepo,
         private readonly RoomCalendarRepository $calendarRepo,
-    ) {}
+    ) {
+    }
 
     public function syncCities(Provider $provider, ProviderAdapterInterface $adapter): void
     {
@@ -84,8 +91,15 @@ class HotelSyncService
             ->value('accommodation_id');
 
         if (!$accId) {
+            Log::warning('Accommodation mapping missing for provider property', [
+                'provider_id' => $provider->id,
+                'provider_property_id' => $providerPropertyId,
+            ]);
             return;
         }
+
+        $roomTypeDefinitions = null;
+        $ratePlanDefinitions = null;
 
         $roomTypeMaps = $this->loadRoomTypeMaps($provider->id, $availability);
         $ratePlanMaps = $this->loadRatePlanMaps($provider->id, $availability);
@@ -96,7 +110,10 @@ class HotelSyncService
                 $accId,
                 $providerPropertyId,
                 $roomTypeMaps,
-                $ratePlanMaps
+                $ratePlanMaps,
+                &$roomTypeDefinitions,
+                &$ratePlanDefinitions,
+                $adapter
             ) {
                 $first = $rows->first();
                 if (!is_array($first)) {
@@ -115,10 +132,37 @@ class HotelSyncService
                 }
 
                 $roomTypeMap = $roomTypeMaps->get($providerRoomTypeId);
+                if (!$roomTypeMap) {
+                    $roomTypeMap = $this->ensureRoomTypeMap(
+                        $provider,
+                        $adapter,
+                        $providerPropertyId,
+                        (int)$accId,
+                        $providerRoomTypeId,
+                        $roomTypeDefinitions
+                    );
+                    if ($roomTypeMap) {
+                        $roomTypeMaps->put($providerRoomTypeId, $roomTypeMap);
+                    }
+                }
+
                 $ratePlanMap = $ratePlanMaps->get($providerRatePlanId);
+                if (!$ratePlanMap) {
+                    $ratePlanMap = $this->ensureRatePlanMap(
+                        $provider,
+                        $adapter,
+                        $providerPropertyId,
+                        (int)$accId,
+                        $providerRatePlanId,
+                        $ratePlanDefinitions
+                    );
+                    if ($ratePlanMap) {
+                        $ratePlanMaps->put($providerRatePlanId, $ratePlanMap);
+                    }
+                }
 
                 if (!$roomTypeMap || !$ratePlanMap) {
-                    Log::warning('Skipping availability rows without provider mappings', [
+                    Log::error('Failed to resolve provider mappings for availability rows', [
                         'provider_id' => $provider->id,
                         'property_id' => $providerPropertyId,
                         'provider_room_type_id' => $providerRoomTypeId,
@@ -143,6 +187,197 @@ class HotelSyncService
                     $normalized
                 );
             });
+    }
+
+    private function ensureRoomTypeMap(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        string $providerPropertyId,
+        int $accommodationId,
+        string $providerRoomTypeId,
+        ?Collection &$definitions
+    ): ?RoomTypeProviderMap {
+        $map = RoomTypeProviderMap::query()
+            ->where('provider_id', $provider->id)
+            ->where('provider_room_type_id', $providerRoomTypeId)
+            ->first();
+
+        if ($map) {
+            return $map;
+        }
+
+        $definitions ??= $this->fetchRoomTypeDefinitions($provider, $adapter, $providerPropertyId);
+        $definition = $definitions->get($providerRoomTypeId) ?? [];
+
+        return DB::transaction(function () use (
+            $provider,
+            $providerRoomTypeId,
+            $accommodationId,
+            $definition
+        ) {
+            $existing = RoomTypeProviderMap::query()
+                ->where('provider_id', $provider->id)
+                ->where('provider_room_type_id', $providerRoomTypeId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            $roomType = $this->upsertRoomType($accommodationId, $definition, $providerRoomTypeId);
+
+            return RoomTypeProviderMap::query()->updateOrCreate(
+                [
+                    'provider_id' => $provider->id,
+                    'provider_room_type_id' => $providerRoomTypeId,
+                ],
+                [
+                    'room_type_id' => $roomType->id,
+                    'fa_name' => $this->normalizeName($definition['fa_name'] ?? $roomType->fa_name, 'Room Type', $providerRoomTypeId),
+                    'en_name' => $this->nullableString($definition['en_name'] ?? $roomType->en_name),
+                ]
+            );
+        });
+    }
+
+    private function ensureRatePlanMap(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        string $providerPropertyId,
+        int $accommodationId,
+        string $providerRatePlanId,
+        ?Collection &$definitions
+    ): ?RatePlanProviderMap {
+        $map = RatePlanProviderMap::query()
+            ->where('provider_id', $provider->id)
+            ->where('provider_rate_plan_id', $providerRatePlanId)
+            ->first();
+
+        if ($map) {
+            return $map;
+        }
+
+        $definitions ??= $this->fetchRatePlanDefinitions($provider, $adapter, $providerPropertyId);
+        $definition = $definitions->get($providerRatePlanId) ?? [];
+
+        return DB::transaction(function () use (
+            $provider,
+            $providerRatePlanId,
+            $accommodationId,
+            $definition
+        ) {
+            $existing = RatePlanProviderMap::query()
+                ->where('provider_id', $provider->id)
+                ->where('provider_rate_plan_id', $providerRatePlanId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            $ratePlan = $this->upsertRatePlan($accommodationId, $definition, $providerRatePlanId);
+
+            return RatePlanProviderMap::query()->updateOrCreate(
+                [
+                    'provider_id' => $provider->id,
+                    'provider_rate_plan_id' => $providerRatePlanId,
+                ],
+                [
+                    'rate_plan_id' => $ratePlan->id,
+                    'fa_name' => $this->normalizeName($definition['fa_name'] ?? $ratePlan->fa_name, 'Rate Plan', $providerRatePlanId),
+                    'en_name' => $this->nullableString($definition['en_name'] ?? $ratePlan->en_name),
+                ]
+            );
+        });
+    }
+
+    private function fetchRoomTypeDefinitions(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        string $providerPropertyId
+    ): Collection {
+        try {
+            return $adapter->fetchRoomTypes($providerPropertyId)
+                ->filter(fn($item) => is_array($item))
+                ->map(fn(array $item) => $item)
+                ->filter(fn(array $item) => isset($item['room_type_id']))
+                ->keyBy(fn(array $item) => (string)$item['room_type_id']);
+        } catch (\Throwable $exception) {
+            Log::error('Failed to fetch provider room types', [
+                'provider_id' => $provider->id,
+                'provider_property_id' => $providerPropertyId,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return collect();
+        }
+    }
+
+    private function fetchRatePlanDefinitions(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        string $providerPropertyId
+    ): Collection {
+        try {
+            return $adapter->fetchRatePlans($providerPropertyId)
+                ->filter(fn($item) => is_array($item))
+                ->map(fn(array $item) => $item)
+                ->filter(fn(array $item) => isset($item['rate_plan_id']))
+                ->keyBy(fn(array $item) => (string)$item['rate_plan_id']);
+        } catch (\Throwable $exception) {
+            Log::error('Failed to fetch provider rate plans', [
+                'provider_id' => $provider->id,
+                'provider_property_id' => $providerPropertyId,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return collect();
+        }
+    }
+
+    private function upsertRoomType(int $accommodationId, array $definition, string $providerRoomTypeId): RoomType
+    {
+        $faName = $this->normalizeName($definition['fa_name'] ?? null, 'Room Type', $providerRoomTypeId);
+
+        $roomType = RoomType::query()->firstOrNew([
+            'accommodation_id' => $accommodationId,
+            'fa_name' => $faName,
+        ]);
+
+        $roomType->en_name = $this->nullableString($definition['en_name'] ?? $roomType->en_name);
+        $roomType->capacity = $this->toNullableInt($definition['capacity'] ?? $roomType->capacity);
+        $roomType->extra_capacity = $this->toNullableInt($definition['extra_capacity'] ?? $roomType->extra_capacity);
+        $roomType->single_bed_count = $this->toNullableInt($definition['single_bed_count'] ?? $roomType->single_bed_count);
+        $roomType->double_bed_count = $this->toNullableInt($definition['double_bed_count'] ?? $roomType->double_bed_count);
+        $roomType->sofa_bed_count = $this->toNullableInt($definition['sofa_bed_count'] ?? $roomType->sofa_bed_count);
+        $roomType->out_of_service = (bool)($definition['out_of_service'] ?? $roomType->out_of_service ?? false);
+        $roomType->save();
+
+        return $roomType;
+    }
+
+    private function upsertRatePlan(int $accommodationId, array $definition, string $providerRatePlanId): RatePlan
+    {
+        $faName = $this->normalizeName($definition['fa_name'] ?? null, 'Rate Plan', $providerRatePlanId);
+
+        $ratePlan = RatePlan::query()->firstOrNew([
+            'accommodation_id' => $accommodationId,
+            'fa_name' => $faName,
+        ]);
+
+        $ratePlan->en_name = $this->nullableString($definition['en_name'] ?? $ratePlan->en_name);
+        $ratePlan->meal_type = $this->sanitizeMealType($definition['meal_type'] ?? $ratePlan->meal_type);
+        $ratePlan->food_board_type = $this->sanitizeFoodBoardType($definition['food_board_type'] ?? $ratePlan->food_board_type);
+        $ratePlan->cancelable = (bool)($definition['cancelable'] ?? $ratePlan->cancelable ?? true);
+        $ratePlan->sleeps = $this->toNullableInt($definition['sleeps'] ?? $ratePlan->sleeps);
+        $ratePlan->min_stay = $this->toNullableInt($definition['min_stay'] ?? $ratePlan->min_stay);
+        $ratePlan->max_stay = $this->toNullableInt($definition['max_stay'] ?? $ratePlan->max_stay);
+        $ratePlan->facilities = $this->sanitizeFacilities($definition['facilities'] ?? $ratePlan->facilities);
+        $ratePlan->save();
+
+        return $ratePlan;
     }
 
     private function loadRoomTypeMaps(int $providerId, Collection $availability): Collection
@@ -213,6 +448,64 @@ class HotelSyncService
             })
             ->filter()
             ->values();
+    }
+
+    private function normalizeName(?string $name, string $prefix, string $identifier): string
+    {
+        $normalized = trim((string)($name ?? ''));
+        if ($normalized === '') {
+            $normalized = sprintf('%s %s', $prefix, $identifier);
+        }
+
+        return Str::limit($normalized, 200, '');
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string)$value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        return Str::limit($trimmed, 200, '');
+    }
+
+    private function sanitizeMealType(mixed $value): ?string
+    {
+        $value = is_string($value) ? strtolower(trim($value)) : null;
+        if ($value === null) {
+            return null;
+        }
+
+        return in_array($value, self::ALLOWED_MEAL_TYPES, true) ? $value : null;
+    }
+
+    private function sanitizeFoodBoardType(mixed $value): ?string
+    {
+        $value = is_string($value) ? strtolower(trim($value)) : null;
+        if ($value === null) {
+            return null;
+        }
+
+        return in_array($value, self::ALLOWED_FOOD_BOARD_TYPES, true) ? $value : null;
+    }
+
+    private function sanitizeFacilities(mixed $value): ?array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+
+        return null;
     }
 
     private function toNullableInt(mixed $value): ?int
