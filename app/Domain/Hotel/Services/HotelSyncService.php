@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Psr\Http\Message\RequestInterface;
 
+
 class HotelSyncService
 {
     private const ALLOWED_MEAL_TYPES = ['breakfast', 'half_board', 'full_board'];
@@ -30,6 +31,7 @@ class HotelSyncService
         private readonly AccommodationRepository $accRepo,
         private readonly RoomCalendarRepository $calendarRepo,
         private readonly SystemLogger $logger,
+
     ) {
     }
 
@@ -96,6 +98,7 @@ class HotelSyncService
 
         if (!$accId) {
             $this->logger->warning(__METHOD__, 'Accommodation mapping missing for provider property', [
+
                 'provider_id' => $provider->id,
                 'provider_property_id' => $providerPropertyId,
             ]);
@@ -168,6 +171,7 @@ class HotelSyncService
 
                 if (!$roomTypeMap || !$ratePlanMap) {
                     $this->logger->error(__METHOD__, 'Failed to resolve provider mappings for availability rows', [
+
                         'provider_id' => $provider->id,
                         'provider_property_id' => $providerPropertyId,
                         'provider_room_type_id' => $providerRoomTypeId,
@@ -346,6 +350,7 @@ class HotelSyncService
 
             $this->logProviderHttpError(__METHOD__, 'Failed to fetch provider rate plans', $context, $exception);
 
+
             return collect();
         }
     }
@@ -416,6 +421,7 @@ class HotelSyncService
     private function logProviderHttpError(string $method, string $message, array $context, \Throwable $exception): void
     {
         $this->logger->error($method, $message, array_merge(
+
             $context,
             $this->buildHttpErrorContext($exception)
         ));
@@ -438,6 +444,7 @@ class HotelSyncService
     }
 
     private function formatRequestContext(?RequestInterface $request): ?array
+
     {
         if (!$request) {
             return null;
@@ -451,6 +458,7 @@ class HotelSyncService
 
         $body = (string)$request->getBody();
         if ($body !== '') {
+
             $context['body'] = $this->truncateString($body);
         }
 

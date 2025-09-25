@@ -12,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 
+
 class SyncGrsAvailabilityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -25,6 +26,7 @@ class SyncGrsAvailabilityJob implements ShouldQueue
     }
 
     public function handle(SystemLogger $logger): void
+
     {
         $provider = Provider::where('code', 'grs')->first();
         if (!$provider) {

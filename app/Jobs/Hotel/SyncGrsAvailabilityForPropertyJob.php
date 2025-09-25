@@ -5,6 +5,7 @@ namespace App\Jobs\Hotel;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Support\Logging\SystemLogger;
+
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -12,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+
 use Throwable;
 
 class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
@@ -33,6 +35,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
         $provider = Provider::find($this->providerId);
         if (!$provider) {
             $logger->warning(__METHOD__, 'SyncGrsAvailabilityForPropertyJob skipped because provider not found', [
+
                 'provider_id' => $this->providerId,
                 'provider_property_id' => $this->providerPropertyId,
             ]);
@@ -43,6 +46,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
         $propertyKey = trim($this->providerPropertyId);
         if ($propertyKey === '') {
             $logger->warning(__METHOD__, 'SyncGrsAvailabilityForPropertyJob skipped because provider property id is empty', [
+
                 'provider_id' => $this->providerId,
             ]);
 
@@ -67,6 +71,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
             max(1, $this->maxAttempts),
             max(0, $this->throttleMs),
             $logger
+
         );
     }
 
@@ -80,6 +85,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
         int $maxAttempts,
         int $throttleMs,
         SystemLogger $logger
+
     ): void {
         $attempt = 0;
         $lastRequestAt = null;
@@ -101,6 +107,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
                 return;
             } catch (Throwable $exception) {
                 $logger->warning(__METHOD__, 'Failed to sync GRS availability for property', [
+
                     'provider_id' => $provider->id,
                     'provider_property_id' => $propertyKey,
                     'attempt' => $attempt,
@@ -110,6 +117,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
 
                 if ($attempt >= $maxAttempts) {
                     $logger->error(__METHOD__, 'Abandoning GRS availability sync after max attempts', [
+
                         'provider_id' => $provider->id,
                         'provider_property_id' => $propertyKey,
                         'attempts' => $attempt,
