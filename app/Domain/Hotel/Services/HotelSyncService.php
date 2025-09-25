@@ -12,6 +12,9 @@ use App\Models\RatePlanProviderMap;
 use App\Models\RoomType;
 use App\Models\RoomTypeProviderMap;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -305,11 +308,16 @@ class HotelSyncService
                 ->filter(fn(array $item) => isset($item['room_type_id']))
                 ->keyBy(fn(array $item) => (string)$item['room_type_id']);
         } catch (\Throwable $exception) {
-            Log::error('Failed to fetch provider room types', [
+            $context = [
                 'provider_id' => $provider->id,
                 'provider_property_id' => $providerPropertyId,
                 'message' => $exception->getMessage(),
-            ]);
+                'exception_class' => get_class($exception),
+                'exception' => $exception,
+            ];
+
+            $this->logProviderHttpError('Failed to fetch provider room types', $context, $exception);
+
 
             return collect();
         }
@@ -327,11 +335,16 @@ class HotelSyncService
                 ->filter(fn(array $item) => isset($item['rate_plan_id']))
                 ->keyBy(fn(array $item) => (string)$item['rate_plan_id']);
         } catch (\Throwable $exception) {
-            Log::error('Failed to fetch provider rate plans', [
+            $context = [
                 'provider_id' => $provider->id,
                 'provider_property_id' => $providerPropertyId,
                 'message' => $exception->getMessage(),
-            ]);
+                'exception_class' => get_class($exception),
+                'exception' => $exception,
+            ];
+
+            $this->logProviderHttpError('Failed to fetch provider rate plans', $context, $exception);
+
 
             return collect();
         }
@@ -398,6 +411,111 @@ class HotelSyncService
             ->get()
             ->keyBy('provider_room_type_id');
     }
+
+
+    private function logProviderHttpError(string $message, array $context, \Throwable $exception): void
+    {
+        Log::error($message, array_merge(
+            $context,
+            $this->buildHttpErrorContext($exception)
+        ));
+    }
+
+    private function buildHttpErrorContext(\Throwable $exception): array
+    {
+        if (!$exception instanceof RequestException) {
+            return [];
+        }
+
+        return $this->filterContext([
+            'request' => $this->formatRequestContext($exception->request()),
+            'response' => $this->formatResponseContext($exception->response()),
+        ]);
+    }
+
+    private function formatRequestContext(?Request $request): ?array
+    {
+        if (!$request) {
+            return null;
+        }
+
+        $context = [
+            'method' => $request->method(),
+            'url' => $request->url(),
+            'headers' => $this->normalizeHeaders($request->headers()),
+        ];
+
+        $data = $request->data();
+        if (!empty($data)) {
+            $context['data'] = $data;
+        }
+
+        $body = $request->body();
+        if (is_string($body) && $body !== '') {
+            $context['body'] = $this->truncateString($body);
+        }
+
+        return $this->filterContext($context);
+    }
+
+    private function formatResponseContext(?Response $response): ?array
+    {
+        if (!$response) {
+            return null;
+        }
+
+        $context = [
+            'status' => $response->status(),
+            'headers' => $this->normalizeHeaders($response->headers()),
+        ];
+
+        $body = $response->body();
+        if ($body !== '') {
+            $context['body'] = $this->truncateString($body);
+        }
+
+        return $this->filterContext($context);
+    }
+
+    private function normalizeHeaders(?array $headers): ?array
+    {
+        if (!$headers) {
+            return null;
+        }
+
+        foreach ($headers as $key => $value) {
+            if (is_array($value) && count($value) === 1) {
+                $headers[$key] = $value[0];
+            }
+        }
+
+        return $headers;
+    }
+
+    private function filterContext(array $context): array
+    {
+        return array_filter($context, function ($value) {
+            if ($value === null) {
+                return false;
+            }
+
+            if (is_array($value)) {
+                return !empty($value);
+            }
+
+            if (is_string($value)) {
+                return $value !== '';
+            }
+
+            return true;
+        });
+    }
+
+    private function truncateString(string $value, int $limit = 2000): string
+    {
+        return Str::limit($value, $limit, '...');
+    }
+
 
     private function loadRatePlanMaps(int $providerId, Collection $availability): Collection
     {
