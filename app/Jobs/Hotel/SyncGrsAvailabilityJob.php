@@ -6,6 +6,7 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -153,11 +154,14 @@ class SyncGrsAvailabilityJob implements ShouldQueue
 
                 return;
             } catch (Throwable $exception) {
+                $retryDelayMs = $this->resolveRetryDelay($exception, $attempt, $throttleMs);
+
                 Log::warning('Failed to sync GRS availability for property', [
                     'provider_id' => $provider->id,
                     'provider_property_id' => $propertyKey,
                     'attempt' => $attempt,
                     'message' => $exception->getMessage(),
+                    'retry_delay_ms' => $retryDelayMs,
                 ]);
 
                 if ($attempt >= $maxAttempts) {
@@ -167,6 +171,13 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                         'attempts' => $attempt,
                         'exception' => $exception,
                     ]);
+
+                    return;
+                }
+
+                if ($retryDelayMs > 0) {
+                    usleep($retryDelayMs * 1000);
+                    $lastRequestAt = microtime(true);
                 }
             }
         }
@@ -201,5 +212,58 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         }
 
         return $default;
+    }
+
+    private function resolveRetryDelay(Throwable $exception, int $attempt, int $throttleMs): int
+    {
+        $defaultDelay = (int)min(
+            60000,
+            pow(2, max(0, $attempt - 1)) * max($throttleMs, 500)
+        );
+
+        if (!$exception instanceof RequestException) {
+            return $defaultDelay;
+        }
+
+        $response = $exception->response;
+        if (!$response || $response->status() !== 429) {
+            return $defaultDelay;
+        }
+
+        $retryAfter = $this->parseRetryAfterHeader($response->header('Retry-After'));
+        if ($retryAfter !== null) {
+            return max($retryAfter, $defaultDelay);
+        }
+
+        return (int)max($defaultDelay, 2000);
+    }
+
+    private function parseRetryAfterHeader(?string $header): ?int
+    {
+        if ($header === null) {
+            return null;
+        }
+
+        $header = trim($header);
+        if ($header === '') {
+            return null;
+        }
+
+        if (is_numeric($header)) {
+            return (int)max(0, ((float)$header) * 1000);
+        }
+
+        try {
+            $retryTime = CarbonImmutable::parse($header);
+        } catch (Throwable) {
+            return null;
+        }
+
+        $now = CarbonImmutable::now();
+        if ($retryTime->lessThanOrEqualTo($now)) {
+            return 0;
+        }
+
+        return (int)$now->diffInRealMilliseconds($retryTime);
     }
 }
