@@ -86,7 +86,8 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                 $maxAttempts,
                 $throttleMs,
                 &$queued,
-                &$skipped
+                &$skipped,
+                $logger
             ) {
                 foreach ($rows as $row) {
                     $propertyKey = trim((string)($row->provider_property_id ?? ''));
