@@ -2,8 +2,6 @@
 
 namespace App\Jobs\Hotel;
 
-use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
-use App\Domain\Hotel\Services\HotelSyncService;
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -13,7 +11,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class SyncGrsAvailabilityJob implements ShouldQueue
 {
@@ -24,22 +21,19 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         public ?int $chunkSize = null,
         public ?int $throttleMs = null,
         public ?int $maxAttempts = null,
-    ) {}
+    ) {
+    }
 
-    public function handle(HotelSyncService $service): void
+    public function handle(): void
     {
         $provider = Provider::where('code', 'grs')->first();
         if (!$provider) {
             Log::warning('SyncGrsAvailabilityJob skipped because provider not found', [
                 'code' => 'grs',
             ]);
+
             return;
         }
-
-        /** @var ProviderAdapterInterface $adapter */
-        $adapter = app()->makeWith(ProviderAdapterInterface::class, [
-            'provider' => $provider,
-        ]);
 
         $config = config('hotel.providers.grs.availability', []);
 
@@ -60,6 +54,7 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             Log::info('SyncGrsAvailabilityJob skipped because no mapped properties found', [
                 'provider_id' => $provider->id,
             ]);
+
             return;
         }
 
@@ -73,24 +68,23 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             'chunk_size' => $chunkSize,
             'throttle_ms' => $throttleMs,
             'max_attempts' => $maxAttempts,
+            'dispatch_mode' => 'per_property',
         ]);
 
-        $lastRequestAt = null;
-        $processed = 0;
+        $queued = 0;
+        $skipped = 0;
 
         $baseQuery
             ->select('id', 'provider_property_id')
             ->orderBy('id')
             ->chunkById($chunkSize, function ($rows) use (
-                $service,
                 $provider,
-                $adapter,
                 $from,
                 $to,
                 $maxAttempts,
                 $throttleMs,
-                &$lastRequestAt,
-                &$processed
+                &$queued,
+                &$skipped
             ) {
                 foreach ($rows as $row) {
                     $propertyKey = trim((string)($row->provider_property_id ?? ''));
@@ -99,95 +93,29 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                             'provider_id' => $provider->id,
                             'map_id' => $row->id,
                         ]);
+                        $skipped++;
+
                         continue;
                     }
 
-                    $this->syncPropertyWithRetry(
-                        $service,
-                        $provider,
-                        $adapter,
+                    SyncGrsAvailabilityForPropertyJob::dispatch(
+                        $provider->id,
                         $propertyKey,
-                        $from,
-                        $to,
+                        $from->toDateString(),
+                        $to->toDateString(),
                         $maxAttempts,
-                        $throttleMs,
-                        $lastRequestAt
+                        $throttleMs
                     );
 
-                    $processed++;
+                    $queued++;
                 }
             }, 'id');
 
         Log::info('SyncGrsAvailabilityJob finished', [
             'provider_id' => $provider->id,
-            'processed_properties' => $processed,
+            'queued_properties' => $queued,
+            'skipped_properties' => $skipped,
         ]);
-    }
-
-    private function syncPropertyWithRetry(
-        HotelSyncService $service,
-        Provider $provider,
-        ProviderAdapterInterface $adapter,
-        string $propertyKey,
-        CarbonImmutable $from,
-        CarbonImmutable $to,
-        int $maxAttempts,
-        int $throttleMs,
-        ?float &$lastRequestAt
-    ): void {
-        $attempt = 0;
-
-        while ($attempt < $maxAttempts) {
-            $attempt++;
-
-            $this->enforceThrottle($lastRequestAt, $throttleMs);
-
-            try {
-                $service->crawlAvailabilityForProperty(
-                    $provider,
-                    $adapter,
-                    $propertyKey,
-                    $from,
-                    $to
-                );
-
-                return;
-            } catch (Throwable $exception) {
-                Log::warning('Failed to sync GRS availability for property', [
-                    'provider_id' => $provider->id,
-                    'provider_property_id' => $propertyKey,
-                    'attempt' => $attempt,
-                    'message' => $exception->getMessage(),
-                ]);
-
-                if ($attempt >= $maxAttempts) {
-                    Log::error('Abandoning GRS availability sync after max attempts', [
-                        'provider_id' => $provider->id,
-                        'provider_property_id' => $propertyKey,
-                        'attempts' => $attempt,
-                        'exception' => $exception,
-                    ]);
-                }
-            }
-        }
-    }
-
-    private function enforceThrottle(?float &$lastRequestAt, int $throttleMs): void
-    {
-        if ($throttleMs <= 0) {
-            $lastRequestAt = microtime(true);
-            return;
-        }
-
-        if ($lastRequestAt !== null) {
-            $elapsedMs = (microtime(true) - $lastRequestAt) * 1000;
-            $remaining = (int)max(0, ($throttleMs - $elapsedMs) * 1000);
-            if ($remaining > 0) {
-                usleep($remaining);
-            }
-        }
-
-        $lastRequestAt = microtime(true);
     }
 
     private function resolvePositiveInt(?int $value, int $default, int $min): int
