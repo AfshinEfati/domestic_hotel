@@ -6,19 +6,20 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
+use App\Support\Logging\SystemLogger;
 use App\Models\Provider;
 use App\Models\RatePlan;
 use App\Models\RatePlanProviderMap;
 use App\Models\RoomType;
 use App\Models\RoomTypeProviderMap;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Psr\Http\Message\RequestInterface;
+
 
 class HotelSyncService
 {
@@ -29,6 +30,8 @@ class HotelSyncService
         private readonly CityRepository $cityRepo,
         private readonly AccommodationRepository $accRepo,
         private readonly RoomCalendarRepository $calendarRepo,
+        private readonly SystemLogger $logger,
+
     ) {
     }
 
@@ -76,13 +79,13 @@ class HotelSyncService
         CarbonImmutable $to
     ): void {
         $availability = $adapter->fetchAvailability($providerPropertyId, $from, $to);
-        logger()->info('availability fetched', [
+
+        $this->logger->info(__METHOD__, 'Availability fetched from provider', [
             'provider_id' => $provider->id,
-            'property_id' => $providerPropertyId,
+            'provider_property_id' => $providerPropertyId,
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
             'rows' => $availability->count(),
-            'availability' => $availability,
         ]);
         if ($availability->isEmpty()) {
             return;
@@ -94,7 +97,8 @@ class HotelSyncService
             ->value('accommodation_id');
 
         if (!$accId) {
-            Log::warning('Accommodation mapping missing for provider property', [
+            $this->logger->warning(__METHOD__, 'Accommodation mapping missing for provider property', [
+
                 'provider_id' => $provider->id,
                 'provider_property_id' => $providerPropertyId,
             ]);
@@ -127,9 +131,10 @@ class HotelSyncService
                 $providerRatePlanId = (string)($first['rate_plan_id'] ?? '');
 
                 if ($providerRoomTypeId === '' || $providerRatePlanId === '') {
-                    Log::warning('Availability row missing provider identifiers', [
+                    $this->logger->warning(__METHOD__, 'Availability row missing provider identifiers', [
                         'provider_id' => $provider->id,
-                        'property_id' => $providerPropertyId,
+                        'provider_property_id' => $providerPropertyId,
+                        'row_sample' => $first,
                     ]);
                     return;
                 }
@@ -165,9 +170,10 @@ class HotelSyncService
                 }
 
                 if (!$roomTypeMap || !$ratePlanMap) {
-                    Log::error('Failed to resolve provider mappings for availability rows', [
+                    $this->logger->error(__METHOD__, 'Failed to resolve provider mappings for availability rows', [
+
                         'provider_id' => $provider->id,
-                        'property_id' => $providerPropertyId,
+                        'provider_property_id' => $providerPropertyId,
                         'provider_room_type_id' => $providerRoomTypeId,
                         'provider_rate_plan_id' => $providerRatePlanId,
                     ]);
@@ -316,8 +322,7 @@ class HotelSyncService
                 'exception' => $exception,
             ];
 
-            $this->logProviderHttpError('Failed to fetch provider room types', $context, $exception);
-
+            $this->logProviderHttpError(__METHOD__, 'Failed to fetch provider room types', $context, $exception);
 
             return collect();
         }
@@ -343,7 +348,7 @@ class HotelSyncService
                 'exception' => $exception,
             ];
 
-            $this->logProviderHttpError('Failed to fetch provider rate plans', $context, $exception);
+            $this->logProviderHttpError(__METHOD__, 'Failed to fetch provider rate plans', $context, $exception);
 
 
             return collect();
@@ -413,9 +418,10 @@ class HotelSyncService
     }
 
 
-    private function logProviderHttpError(string $message, array $context, \Throwable $exception): void
+    private function logProviderHttpError(string $method, string $message, array $context, \Throwable $exception): void
     {
-        Log::error($message, array_merge(
+        $this->logger->error($method, $message, array_merge(
+
             $context,
             $this->buildHttpErrorContext($exception)
         ));
@@ -427,31 +433,32 @@ class HotelSyncService
             return [];
         }
 
+        $response = $exception->response();
+        $stats = $response?->transferStats();
+        $request = $stats?->getRequest();
+
         return $this->filterContext([
-            'request' => $this->formatRequestContext($exception->request()),
-            'response' => $this->formatResponseContext($exception->response()),
+            'request' => $this->formatRequestContext($request),
+            'response' => $this->formatResponseContext($response),
         ]);
     }
 
-    private function formatRequestContext(?Request $request): ?array
+    private function formatRequestContext(?RequestInterface $request): ?array
+
     {
         if (!$request) {
             return null;
         }
 
         $context = [
-            'method' => $request->method(),
-            'url' => $request->url(),
-            'headers' => $this->normalizeHeaders($request->headers()),
+            'method' => $request->getMethod(),
+            'url' => (string)$request->getUri(),
+            'headers' => $this->normalizeHeaders($request->getHeaders()),
         ];
 
-        $data = $request->data();
-        if (!empty($data)) {
-            $context['data'] = $data;
-        }
+        $body = (string)$request->getBody();
+        if ($body !== '') {
 
-        $body = $request->body();
-        if (is_string($body) && $body !== '') {
             $context['body'] = $this->truncateString($body);
         }
 
