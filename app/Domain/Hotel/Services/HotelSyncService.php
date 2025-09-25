@@ -66,7 +66,14 @@ class HotelSyncService
         CarbonImmutable $to
     ): void {
         $availability = $adapter->fetchAvailability($providerPropertyId, $from, $to);
-
+        logger()->info('availability fetched', [
+            'provider_id' => $provider->id,
+            'property_id' => $providerPropertyId,
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'rows' => $availability->count(),
+            'availability' => $availability,
+        ]);
         if ($availability->isEmpty()) {
             return;
         }
