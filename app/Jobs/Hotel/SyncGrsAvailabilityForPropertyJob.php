@@ -93,7 +93,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
         $minimumIntervalMs = $this->calculateMinimumIntervalMs($requestsPerMinute);
 
         while ($attempt < $maxAttempts) {
-            $attempt++;
+            $nextAttempt = $attempt + 1;
 
             if (
                 $requestsPerMinute > 0 &&
@@ -103,12 +103,14 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue
                     $minimumIntervalMs,
                     $provider,
                     $propertyKey,
-                    $attempt,
+                    $nextAttempt,
                     $logger
                 )
             ) {
                 return;
             }
+
+            $attempt = $nextAttempt;
 
             $this->enforceThrottle($lastRequestAt, $throttleMs);
 
