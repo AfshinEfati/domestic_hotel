@@ -12,7 +12,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 
-
 class SyncGrsAvailabilityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -22,11 +21,11 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         public ?int $chunkSize = null,
         public ?int $throttleMs = null,
         public ?int $maxAttempts = null,
+        public ?int $requestsPerMinute = null,
     ) {
     }
 
     public function handle(SystemLogger $logger): void
-
     {
         $provider = Provider::where('code', 'grs')->first();
         if (!$provider) {
@@ -43,6 +42,11 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         $chunkSize = $this->resolvePositiveInt($this->chunkSize, (int)($config['chunk_size'] ?? 20), 1);
         $throttleMs = max(0, (int)($this->throttleMs ?? $config['throttle_ms'] ?? 500));
         $maxAttempts = $this->resolvePositiveInt($this->maxAttempts, (int)($config['max_attempts'] ?? 3), 1);
+        $requestsPerMinute = $this->resolvePositiveInt(
+            $this->requestsPerMinute,
+            (int)($config['requests_per_minute'] ?? 20),
+            1
+        );
 
         $from = CarbonImmutable::today();
         $to = $from->addDays($days);
@@ -70,6 +74,7 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             'chunk_size' => $chunkSize,
             'throttle_ms' => $throttleMs,
             'max_attempts' => $maxAttempts,
+            'requests_per_minute' => $requestsPerMinute,
             'dispatch_mode' => 'per_property',
         ]);
 
@@ -85,6 +90,7 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                 $to,
                 $maxAttempts,
                 $throttleMs,
+                $requestsPerMinute,
                 &$queued,
                 &$skipped,
                 $logger
@@ -107,7 +113,8 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                         $from->toDateString(),
                         $to->toDateString(),
                         $maxAttempts,
-                        $throttleMs
+                        $throttleMs,
+                        $requestsPerMinute
                     );
 
                     $queued++;

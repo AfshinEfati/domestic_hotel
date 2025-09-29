@@ -18,7 +18,8 @@ class ResilientCallQueuedHandlerTest extends TestCase
             fromDate: '2025-09-25',
             toDate: '2025-11-24',
             maxAttempts: 3,
-            throttleMs: 500
+            throttleMs: 500,
+            requestsPerMinute: 20
         );
 
         $serialized = serialize(clone $jobInstance);
@@ -53,7 +54,8 @@ class ResilientCallQueuedHandlerTest extends TestCase
             fromDate: '2025-09-25',
             toDate: '2025-11-24',
             maxAttempts: 3,
-            throttleMs: 500
+            throttleMs: 500,
+            requestsPerMinute: 20
         );
 
         $serialized = serialize(clone $jobInstance);

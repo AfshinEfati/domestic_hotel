@@ -6,12 +6,12 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
-use App\Support\Logging\SystemLogger;
 use App\Models\Provider;
 use App\Models\RatePlan;
 use App\Models\RatePlanProviderMap;
 use App\Models\RoomType;
 use App\Models\RoomTypeProviderMap;
+use App\Support\Logging\SystemLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
@@ -19,7 +19,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Psr\Http\Message\RequestInterface;
-
 
 class HotelSyncService
 {
@@ -31,7 +30,6 @@ class HotelSyncService
         private readonly AccommodationRepository $accRepo,
         private readonly RoomCalendarRepository $calendarRepo,
         private readonly SystemLogger $logger,
-
     ) {
     }
 
@@ -45,7 +43,7 @@ class HotelSyncService
     public function syncPropertiesForCity(
         Provider $provider,
         ProviderAdapterInterface $adapter,
-        string $providerCityId
+        string $providerCityId,
     ): void {
         $page = 1;
         do {
@@ -67,8 +65,8 @@ class HotelSyncService
                 $city = \App\Models\City::find($cityId);
                 $this->accRepo->upsertFromProvider($city, $accData, $provider);
             }
-            $page++;
-        } while ($items->count() === 200);
+            ++$page;
+        } while (200 === $items->count());
     }
 
     public function crawlAvailabilityForProperty(
@@ -76,7 +74,7 @@ class HotelSyncService
         ProviderAdapterInterface $adapter,
         string $providerPropertyId,
         CarbonImmutable $from,
-        CarbonImmutable $to
+        CarbonImmutable $to,
     ): void {
         $availability = $adapter->fetchAvailability($providerPropertyId, $from, $to);
 
@@ -98,10 +96,10 @@ class HotelSyncService
 
         if (!$accId) {
             $this->logger->warning(__METHOD__, 'Accommodation mapping missing for provider property', [
-
                 'provider_id' => $provider->id,
                 'provider_property_id' => $providerPropertyId,
             ]);
+
             return;
         }
 
@@ -111,7 +109,7 @@ class HotelSyncService
         $roomTypeMaps = $this->loadRoomTypeMaps($provider->id, $availability);
         $ratePlanMaps = $this->loadRatePlanMaps($provider->id, $availability);
 
-        $availability->groupBy(fn(array $row) => ($row['room_type_id'] ?? '') . '#' . ($row['rate_plan_id'] ?? ''))
+        $availability->groupBy(fn (array $row) => ($row['room_type_id'] ?? '').'#'.($row['rate_plan_id'] ?? ''))
             ->each(function (Collection $rows) use (
                 $provider,
                 $accId,
@@ -127,15 +125,16 @@ class HotelSyncService
                     return;
                 }
 
-                $providerRoomTypeId = (string)($first['room_type_id'] ?? '');
-                $providerRatePlanId = (string)($first['rate_plan_id'] ?? '');
+                $providerRoomTypeId = (string) ($first['room_type_id'] ?? '');
+                $providerRatePlanId = (string) ($first['rate_plan_id'] ?? '');
 
-                if ($providerRoomTypeId === '' || $providerRatePlanId === '') {
+                if ('' === $providerRoomTypeId || '' === $providerRatePlanId) {
                     $this->logger->warning(__METHOD__, 'Availability row missing provider identifiers', [
                         'provider_id' => $provider->id,
                         'provider_property_id' => $providerPropertyId,
                         'row_sample' => $first,
                     ]);
+
                     return;
                 }
 
@@ -145,7 +144,7 @@ class HotelSyncService
                         $provider,
                         $adapter,
                         $providerPropertyId,
-                        (int)$accId,
+                        (int) $accId,
                         $providerRoomTypeId,
                         $roomTypeDefinitions
                     );
@@ -160,7 +159,7 @@ class HotelSyncService
                         $provider,
                         $adapter,
                         $providerPropertyId,
-                        (int)$accId,
+                        (int) $accId,
                         $providerRatePlanId,
                         $ratePlanDefinitions
                     );
@@ -171,12 +170,12 @@ class HotelSyncService
 
                 if (!$roomTypeMap || !$ratePlanMap) {
                     $this->logger->error(__METHOD__, 'Failed to resolve provider mappings for availability rows', [
-
                         'provider_id' => $provider->id,
                         'provider_property_id' => $providerPropertyId,
                         'provider_room_type_id' => $providerRoomTypeId,
                         'provider_rate_plan_id' => $providerRatePlanId,
                     ]);
+
                     return;
                 }
 
@@ -187,9 +186,9 @@ class HotelSyncService
 
                 $this->calendarRepo->bulkUpsert(
                     $provider->id,
-                    (int)$accId,
-                    (int)$roomTypeMap->room_type_id,
-                    (int)$ratePlanMap->rate_plan_id,
+                    (int) $accId,
+                    (int) $roomTypeMap->room_type_id,
+                    (int) $ratePlanMap->rate_plan_id,
                     $providerPropertyId,
                     $providerRoomTypeId,
                     $providerRatePlanId,
@@ -204,7 +203,7 @@ class HotelSyncService
         string $providerPropertyId,
         int $accommodationId,
         string $providerRoomTypeId,
-        ?Collection &$definitions
+        ?Collection &$definitions,
     ): ?RoomTypeProviderMap {
         $map = RoomTypeProviderMap::query()
             ->where('provider_id', $provider->id)
@@ -256,7 +255,7 @@ class HotelSyncService
         string $providerPropertyId,
         int $accommodationId,
         string $providerRatePlanId,
-        ?Collection &$definitions
+        ?Collection &$definitions,
     ): ?RatePlanProviderMap {
         $map = RatePlanProviderMap::query()
             ->where('provider_id', $provider->id)
@@ -305,14 +304,14 @@ class HotelSyncService
     private function fetchRoomTypeDefinitions(
         Provider $provider,
         ProviderAdapterInterface $adapter,
-        string $providerPropertyId
+        string $providerPropertyId,
     ): Collection {
         try {
             return $adapter->fetchRoomTypes($providerPropertyId)
-                ->filter(fn($item) => is_array($item))
-                ->map(fn(array $item) => $item)
-                ->filter(fn(array $item) => isset($item['room_type_id']))
-                ->keyBy(fn(array $item) => (string)$item['room_type_id']);
+                ->filter(fn ($item) => is_array($item))
+                ->map(fn (array $item) => $item)
+                ->filter(fn (array $item) => isset($item['room_type_id']))
+                ->keyBy(fn (array $item) => (string) $item['room_type_id']);
         } catch (\Throwable $exception) {
             $context = [
                 'provider_id' => $provider->id,
@@ -331,14 +330,14 @@ class HotelSyncService
     private function fetchRatePlanDefinitions(
         Provider $provider,
         ProviderAdapterInterface $adapter,
-        string $providerPropertyId
+        string $providerPropertyId,
     ): Collection {
         try {
             return $adapter->fetchRatePlans($providerPropertyId)
-                ->filter(fn($item) => is_array($item))
-                ->map(fn(array $item) => $item)
-                ->filter(fn(array $item) => isset($item['rate_plan_id']))
-                ->keyBy(fn(array $item) => (string)$item['rate_plan_id']);
+                ->filter(fn ($item) => is_array($item))
+                ->map(fn (array $item) => $item)
+                ->filter(fn (array $item) => isset($item['rate_plan_id']))
+                ->keyBy(fn (array $item) => (string) $item['rate_plan_id']);
         } catch (\Throwable $exception) {
             $context = [
                 'provider_id' => $provider->id,
@@ -349,7 +348,6 @@ class HotelSyncService
             ];
 
             $this->logProviderHttpError(__METHOD__, 'Failed to fetch provider rate plans', $context, $exception);
-
 
             return collect();
         }
@@ -370,7 +368,7 @@ class HotelSyncService
         $roomType->single_bed_count = $this->toNullableInt($definition['single_bed_count'] ?? $roomType->single_bed_count);
         $roomType->double_bed_count = $this->toNullableInt($definition['double_bed_count'] ?? $roomType->double_bed_count);
         $roomType->sofa_bed_count = $this->toNullableInt($definition['sofa_bed_count'] ?? $roomType->sofa_bed_count);
-        $roomType->out_of_service = (bool)($definition['out_of_service'] ?? $roomType->out_of_service ?? false);
+        $roomType->out_of_service = (bool) ($definition['out_of_service'] ?? $roomType->out_of_service ?? false);
         $roomType->save();
 
         return $roomType;
@@ -388,7 +386,7 @@ class HotelSyncService
         $ratePlan->en_name = $this->nullableString($definition['en_name'] ?? $ratePlan->en_name);
         $ratePlan->meal_type = $this->sanitizeMealType($definition['meal_type'] ?? $ratePlan->meal_type);
         $ratePlan->food_board_type = $this->sanitizeFoodBoardType($definition['food_board_type'] ?? $ratePlan->food_board_type);
-        $ratePlan->cancelable = (bool)($definition['cancelable'] ?? $ratePlan->cancelable ?? true);
+        $ratePlan->cancelable = (bool) ($definition['cancelable'] ?? $ratePlan->cancelable ?? true);
         $ratePlan->sleeps = $this->toNullableInt($definition['sleeps'] ?? $ratePlan->sleeps);
         $ratePlan->min_stay = $this->toNullableInt($definition['min_stay'] ?? $ratePlan->min_stay);
         $ratePlan->max_stay = $this->toNullableInt($definition['max_stay'] ?? $ratePlan->max_stay);
@@ -402,8 +400,8 @@ class HotelSyncService
     {
         $roomTypeIds = $availability
             ->pluck('room_type_id')
-            ->filter(fn($id) => $id !== null && $id !== '')
-            ->map(fn($id) => (string)$id)
+            ->filter(fn ($id) => null !== $id && '' !== $id)
+            ->map(fn ($id) => (string) $id)
             ->unique();
 
         if ($roomTypeIds->isEmpty()) {
@@ -417,11 +415,9 @@ class HotelSyncService
             ->keyBy('provider_room_type_id');
     }
 
-
     private function logProviderHttpError(string $method, string $message, array $context, \Throwable $exception): void
     {
         $this->logger->error($method, $message, array_merge(
-
             $context,
             $this->buildHttpErrorContext($exception)
         ));
@@ -433,18 +429,50 @@ class HotelSyncService
             return [];
         }
 
-        $response = $exception->response();
-        $stats = $response?->transferStats();
-        $request = $stats?->getRequest();
+        try {
+            // Get response using reflection
+            $reflectionClass = new \ReflectionClass($exception);
+            $response = null;
+            $request = null;
 
-        return $this->filterContext([
-            'request' => $this->formatRequestContext($request),
-            'response' => $this->formatResponseContext($response),
-        ]);
+            if ($reflectionClass->hasProperty('response')) {
+                $responseProperty = $reflectionClass->getProperty('response');
+                $responseProperty->setAccessible(true);
+                $response = $responseProperty->getValue($exception);
+
+                if ($response && method_exists($response, 'transferStats')) {
+                    $stats = $response->transferStats();
+                    if (method_exists($stats, 'getRequest')) {
+                        $request = $stats->getRequest();
+                    }
+                }
+            }
+
+            return $this->filterContext([
+                'request' => $this->formatRequestContext($request),
+                'response' => $this->formatResponseContext($response),
+                'error_message' => $exception->getMessage(),
+                'error_code' => $exception->getCode(),
+            ]);
+        } catch (\Throwable $e) {
+            return [
+                'error_extracting_context' => sprintf(
+                    'Failed to extract HTTP context: %s at %s:%d',
+                    $e->getMessage(),
+                    $e->getFile(),
+                    $e->getLine()
+                ),
+                'original_error' => [
+                    'message' => $exception->getMessage(),
+                    'code' => $exception->getCode(),
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                ],
+            ];
+        }
     }
 
     private function formatRequestContext(?RequestInterface $request): ?array
-
     {
         if (!$request) {
             return null;
@@ -452,13 +480,12 @@ class HotelSyncService
 
         $context = [
             'method' => $request->getMethod(),
-            'url' => (string)$request->getUri(),
+            'url' => (string) $request->getUri(),
             'headers' => $this->normalizeHeaders($request->getHeaders()),
         ];
 
-        $body = (string)$request->getBody();
-        if ($body !== '') {
-
+        $body = (string) $request->getBody();
+        if ('' !== $body) {
             $context['body'] = $this->truncateString($body);
         }
 
@@ -477,7 +504,7 @@ class HotelSyncService
         ];
 
         $body = $response->body();
-        if ($body !== '') {
+        if ('' !== $body) {
             $context['body'] = $this->truncateString($body);
         }
 
@@ -491,7 +518,7 @@ class HotelSyncService
         }
 
         foreach ($headers as $key => $value) {
-            if (is_array($value) && count($value) === 1) {
+            if (is_array($value) && 1 === count($value)) {
                 $headers[$key] = $value[0];
             }
         }
@@ -502,7 +529,7 @@ class HotelSyncService
     private function filterContext(array $context): array
     {
         return array_filter($context, function ($value) {
-            if ($value === null) {
+            if (null === $value) {
                 return false;
             }
 
@@ -511,7 +538,7 @@ class HotelSyncService
             }
 
             if (is_string($value)) {
-                return $value !== '';
+                return '' !== $value;
             }
 
             return true;
@@ -523,13 +550,12 @@ class HotelSyncService
         return Str::limit($value, $limit, '...');
     }
 
-
     private function loadRatePlanMaps(int $providerId, Collection $availability): Collection
     {
         $ratePlanIds = $availability
             ->pluck('rate_plan_id')
-            ->filter(fn($id) => $id !== null && $id !== '')
-            ->map(fn($id) => (string)$id)
+            ->filter(fn ($id) => null !== $id && '' !== $id)
+            ->map(fn ($id) => (string) $id)
             ->unique();
 
         if ($ratePlanIds->isEmpty()) {
@@ -565,9 +591,9 @@ class HotelSyncService
                     'grs_rate' => $this->toNullableInt($row['grs_rate'] ?? null),
                     'min_stay' => $this->toNullableInt($row['min_stay'] ?? null),
                     'max_stay' => $this->toNullableInt($row['max_stay'] ?? null),
-                    'cta' => (bool)($row['cta'] ?? false),
-                    'ctd' => (bool)($row['ctd'] ?? false),
-                    'closed' => (bool)($row['closed'] ?? false),
+                    'cta' => (bool) ($row['cta'] ?? false),
+                    'ctd' => (bool) ($row['ctd'] ?? false),
+                    'closed' => (bool) ($row['closed'] ?? false),
                     'inventory' => $this->toNullableInt($row['inventory'] ?? null),
                 ];
             })
@@ -577,8 +603,8 @@ class HotelSyncService
 
     private function normalizeName(?string $name, string $prefix, string $identifier): string
     {
-        $normalized = trim((string)($name ?? ''));
-        if ($normalized === '') {
+        $normalized = trim((string) ($name ?? ''));
+        if ('' === $normalized) {
             $normalized = sprintf('%s %s', $prefix, $identifier);
         }
 
@@ -587,12 +613,12 @@ class HotelSyncService
 
     private function nullableString(mixed $value): ?string
     {
-        if ($value === null) {
+        if (null === $value) {
             return null;
         }
 
-        $trimmed = trim((string)$value);
-        if ($trimmed === '') {
+        $trimmed = trim((string) $value);
+        if ('' === $trimmed) {
             return null;
         }
 
@@ -602,7 +628,7 @@ class HotelSyncService
     private function sanitizeMealType(mixed $value): ?string
     {
         $value = is_string($value) ? strtolower(trim($value)) : null;
-        if ($value === null) {
+        if (null === $value) {
             return null;
         }
 
@@ -612,7 +638,7 @@ class HotelSyncService
     private function sanitizeFoodBoardType(mixed $value): ?string
     {
         $value = is_string($value) ? strtolower(trim($value)) : null;
-        if ($value === null) {
+        if (null === $value) {
             return null;
         }
 
@@ -627,6 +653,7 @@ class HotelSyncService
 
         if (is_string($value)) {
             $decoded = json_decode($value, true);
+
             return is_array($decoded) ? $decoded : null;
         }
 
@@ -640,7 +667,7 @@ class HotelSyncService
         }
 
         if (is_numeric($value)) {
-            return (int)$value;
+            return (int) $value;
         }
 
         return null;
