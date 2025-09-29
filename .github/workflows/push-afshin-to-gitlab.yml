@@ -27,23 +27,58 @@ jobs:
           git config user.email "actions@github.com"
 
       - name: Create commit message with changes
+        id: prepare_commit_message
         run: |
           BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          CHANGES=$(git status --porcelain=1 --untracked-files=all)
+          if [ -z "$CHANGES" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           MESSAGE="📦 Auto commit on branch '$BRANCH':\n"
-          CHANGES=$(git status --short)
-          while read -r line; do
-            status=$(echo "$line" | awk '{print $1}')
-            file=$(echo "$line" | awk '{print $2}')
-            MESSAGE+="- $status $file\n"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            staged="${line:0:1}"
+            unstaged="${line:1:1}"
+            code="$staged"
+            if [ "$code" = " " ]; then
+              code="$unstaged"
+            fi
+
+            path="${line:3}"
+            path="${path# }"
+
+            case "$code" in
+              M)
+                MESSAGE+="- Modified: $path\n"
+                ;;
+              A|\?)
+                MESSAGE+="- Created: $path\n"
+                ;;
+              D)
+                MESSAGE+="- Deleted: $path\n"
+                ;;
+              R)
+                from="${path%% -> *}"
+                to="${path##* -> }"
+                MESSAGE+="- Renamed: $from -> $to\n"
+                ;;
+              *)
+                MESSAGE+="- $code: $path\n"
+                ;;
+            esac
           done <<< "$CHANGES"
+
           echo -e "$MESSAGE" > commit_message.txt
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
       - name: Commit changes if any
+        if: steps.prepare_commit_message.outputs.has_changes == 'true'
         run: |
-          git add .
-          if [ -s commit_message.txt ]; then
-            git commit -F commit_message.txt || echo "No changes to commit"
-          fi
+          git add --all
+          git commit -F commit_message.txt
 
       - name: Push to GitLab (HTTP, URL-encoded creds)
         env:
