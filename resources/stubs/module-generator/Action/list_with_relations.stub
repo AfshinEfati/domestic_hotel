@@ -1,0 +1,41 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ base_namespace }}\BaseAction;
+use {{ service_fqcn }};
+use Psr\Log\LoggerInterface;
+use ReflectionMethod;
+
+class ListWithRelations{{ model_class }}Action extends BaseAction
+{
+    public function __construct(
+        private readonly {{ service_class }} $service,
+        ?LoggerInterface $logger = null,
+    ) {
+        parent::__construct($logger);
+    }
+
+    protected function handle(mixed ...$arguments): iterable
+    {
+        $input = $arguments[0] ?? [];
+
+        // Ensure input is a numeric array
+        $input = array_values($input);
+
+        $method = new ReflectionMethod($this->service, 'getByDynamic');
+        $params = $method->getParameters();
+
+        $final = [];
+
+        foreach ($params as $index => $param) {
+            if (array_key_exists($index, $input)) {
+                $final[] = $input[$index];
+            } else {
+                $final[] = $param->getDefaultValue();
+            }
+        }
+
+        return $this->service->getByDynamic(...$final);
+    }
+}

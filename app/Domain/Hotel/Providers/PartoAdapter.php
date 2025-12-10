@@ -367,13 +367,13 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
         return ['AvailableChanged', 'ReserveChanged', 'PropertyChanged'];
     }
 
-    public function fetchFacilities()
+    public function fetchFacilities(): Collection
     {
-        // TODO: Implement fetchFacilities() method.
+        return collect();
     }
 
-    public function fetchProperties()
+    public function fetchProperties(): Collection
     {
-        // TODO: Implement fetchProperties() method.
+        return collect();
     }
 }

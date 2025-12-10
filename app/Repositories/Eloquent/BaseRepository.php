@@ -4,28 +4,117 @@ namespace App\Repositories\Eloquent;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection;
 use App\Repositories\Contracts\BaseRepositoryInterface;
+use App\Repositories\Criteria\CriteriaInterface;
 
+/**
+ * @template TModel of Model
+ * @implements BaseRepositoryInterface<TModel>
+ */
 class BaseRepository implements BaseRepositoryInterface
 {
+    /**
+     * @var TModel
+     */
     protected Model $model;
+    protected array $criteria = [];
+    protected bool $skipCriteria = false;
 
+    /**
+     * @param TModel $model
+     */
     public function __construct(Model $model)
     {
         $this->model = $model;
     }
 
+    public function getCriteria(): array
+    {
+        return $this->criteria;
+    }
+
+    public function pushCriteria(mixed $criteria): static
+    {
+        if (is_string($criteria)) {
+            $criteria = new $criteria;
+        }
+
+        // Ideally enforce CriteriaInterface, but for flexibility mixed is used here
+        // if (!$criteria instanceof CriteriaInterface) { ... }
+
+        $this->criteria[] = $criteria;
+
+        return $this;
+    }
+
+    public function popCriteria(mixed $criteria): static
+    {
+        $this->criteria = array_filter($this->criteria, function ($item) use ($criteria) {
+            if (is_object($item) && is_string($criteria)) {
+                return get_class($item) !== $criteria;
+            }
+
+            if (is_string($item) && is_object($criteria)) {
+                return $item !== get_class($criteria);
+            }
+
+            return $item !== $criteria;
+        });
+
+        return $this;
+    }
+
+    public function skipCriteria(bool $status = true): static
+    {
+        $this->skipCriteria = $status;
+
+        return $this;
+    }
+
+    public function applyCriteria(Builder $query): Builder
+    {
+        if ($this->skipCriteria) {
+            return $query;
+        }
+
+        foreach ($this->getCriteria() as $criteria) {
+            if ($criteria instanceof CriteriaInterface) {
+                $query = $criteria->apply($query);
+            } elseif (method_exists($criteria, 'apply')) {
+                $query = $criteria->apply($query);
+            }
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return iterable<TModel>
+     */
     public function getAll(): iterable
     {
-        return $this->model->query()->latest()->get();
+        $query = $this->model->query();
+        $this->applyCriteria($query);
+
+        return $query->latest()->get();
     }
 
+    /**
+     * @param int|string $id
+     * @return TModel|null
+     */
     public function find(int|string $id): ?Model
     {
-        return $this->model->find($id);
+        $query = $this->model->query();
+        $this->applyCriteria($query);
+
+        return $query->find($id);
     }
 
+    /**
+     * @return TModel|null
+     */
     public function findDynamic(
         array $where = [],
         array $with = [],
@@ -46,7 +135,7 @@ class BaseRepository implements BaseRepositoryInterface
         array $whereRaw = [],
         array $orWhereRaw = []
     ): ?Model {
-        return $this->buildDynamicQuery(
+        $query = $this->buildDynamicQuery(
             $where,
             $with,
             $whereNot,
@@ -65,9 +154,16 @@ class BaseRepository implements BaseRepositoryInterface
             $orWhereNotNull,
             $whereRaw,
             $orWhereRaw,
-        )->first();
+        );
+
+        $this->applyCriteria($query);
+
+        return $query->first();
     }
 
+    /**
+     * @return Collection<int, TModel>
+     */
     public function getByDynamic(
         array $where = [],
         array $with = [],
@@ -88,7 +184,7 @@ class BaseRepository implements BaseRepositoryInterface
         array $whereRaw = [],
         array $orWhereRaw = []
     ): Collection {
-        return $this->buildDynamicQuery(
+        $query = $this->buildDynamicQuery(
             $where,
             $with,
             $whereNot,
@@ -107,9 +203,17 @@ class BaseRepository implements BaseRepositoryInterface
             $orWhereNotNull,
             $whereRaw,
             $orWhereRaw,
-        )->get();
+        );
+
+        $this->applyCriteria($query);
+
+        return $query->get();
     }
 
+    /**
+     * @param array $data
+     * @return TModel
+     */
     public function store(array $data): Model
     {
         return $this->model->create($data);

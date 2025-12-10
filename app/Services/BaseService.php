@@ -6,29 +6,48 @@ use App\Repositories\Contracts\BaseRepositoryInterface;
 use App\Services\Contracts\BaseServiceInterface;
 use BadMethodCallException;
 use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @implements BaseServiceInterface<TModel>
+ */
 abstract class BaseService implements BaseServiceInterface
 {
     /**
-     * @param BaseRepositoryInterface $repository Concrete repository for the service.
+     * @param BaseRepositoryInterface<TModel> $repository Concrete repository for the service.
      */
     public function __construct(protected BaseRepositoryInterface $repository) {}
 
+    /**
+     * @return BaseRepositoryInterface<TModel>
+     */
     public function repository(): BaseRepositoryInterface
     {
         return $this->repository;
     }
 
+    /**
+     * @return iterable<TModel>
+     */
     public function index(): mixed
     {
         return $this->callRepository('getAll');
     }
 
+    /**
+     * @param int|string $id
+     * @return TModel|null
+     */
     public function show(int|string $id): mixed
     {
         return $this->callRepository('find', [$id]);
     }
 
+    /**
+     * @param mixed $payload
+     * @return TModel
+     */
     public function store(mixed $payload): mixed
     {
         $payload = $this->normalisePayload($payload);
@@ -48,6 +67,9 @@ abstract class BaseService implements BaseServiceInterface
         return (bool) $this->callRepository('delete', [$id]);
     }
 
+    /**
+     * @return TModel|null
+     */
     public function findDynamic(
         array $where = [],
         array $with = [],
@@ -90,6 +112,9 @@ abstract class BaseService implements BaseServiceInterface
         ]);
     }
 
+    /**
+     * @return Collection<int, TModel>
+     */
     public function getByDynamic(
         array $where = [],
         array $with = [],
@@ -110,7 +135,7 @@ abstract class BaseService implements BaseServiceInterface
         array $whereRaw = [],
         array $orWhereRaw = []
     ): Collection {
-        /** @var Collection */
+        /** @var Collection<int, TModel> */
         return $this->callRepository('getByDynamic', [
             $where,
             $with,
@@ -135,15 +160,27 @@ abstract class BaseService implements BaseServiceInterface
 
     public function __call(string $method, array $parameters): mixed
     {
-        if (method_exists($this->repository, $method)) {
-            return $this->repository->{$method}(...$parameters);
+        if (!is_string($method) || $method === '') {
+            throw new BadMethodCallException('Method name must be a non-empty string.');
         }
 
-        throw new BadMethodCallException(sprintf('Method %s::%s does not exist.', static::class, $method));
+        if (!method_exists($this->repository, $method)) {
+            throw new BadMethodCallException(sprintf('Method %s::%s does not exist.', static::class, $method));
+        }
+
+        try {
+            return $this->repository->{$method}(...$parameters);
+        } catch (\Throwable $e) {
+            throw new BadMethodCallException(sprintf('Error calling method %s::%s: %s', static::class, $method, $e->getMessage()), 0, $e);
+        }
     }
 
     protected function callRepository(string $method, array $arguments = []): mixed
     {
+        if (!is_string($method) || $method === '') {
+            throw new BadMethodCallException('Repository method name must be a non-empty string.');
+        }
+
         if (!method_exists($this->repository, $method)) {
             throw new BadMethodCallException(sprintf('Repository method %s::%s not found.', get_class($this->repository), $method));
         }
