@@ -3,7 +3,7 @@ name: Mirror afshin branch to GitLab (HTTP)
 on:
   push:
     branches:
-      - afshin
+      - main
 
 permissions:
   contents: read
