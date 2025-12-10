@@ -54,8 +54,20 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => ['single', 'hotel_sync'],
             'ignore_exceptions' => false,
+        ],
+
+        'hotel_sync' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/hotel-sync.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'permission' => 0664,
+            'formatter' => \Monolog\Formatter\JsonFormatter::class,
+            'formatter_with' => [
+                'includeStacktraces' => true,
+            ],
         ],
 
         'single' => [

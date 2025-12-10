@@ -1,0 +1,33 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ base_namespace }}\BaseAction;
+use {{ service_fqcn }};
+use {{ model_fqcn }};
+use Psr\Log\LoggerInterface;
+
+class Update{{ model_class }}Action extends BaseAction
+{
+    public function __construct(
+        private readonly {{ service_class }} $service,
+        ?LoggerInterface $logger = null,
+    ) {
+        parent::__construct($logger);
+    }
+
+    protected function handle(mixed ...$arguments): ?{{ model_class }}
+    {
+        $id = $arguments[0] ?? null;
+        $payload = $arguments[1] ?? null;
+
+        /** @var {{ payload_doc }} $payload */
+        $updated = $this->service->update($id, $payload);
+
+        if (!$updated) {
+            return null;
+        }
+
+        return $this->service->show($id);
+    }
+}

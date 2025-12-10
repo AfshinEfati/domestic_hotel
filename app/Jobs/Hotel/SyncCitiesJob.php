@@ -35,12 +35,17 @@ class SyncCitiesJob implements ShouldQueue
      */
     public function handle(): void
     {
-        $provider = Provider::where('code', $this->providerCode)->firstOrFail();
+        $provider = Provider::query()->where('code', $this->providerCode)->firstOrFail();
         /** @var ProviderAdapterInterface $adapter */
         $adapter = app()->make(ProviderAdapterInterface::class, ['provider' => $provider]);
         $cities = $adapter->fetchCities();
+
         foreach ($cities as $c) {
-            $country = Country::firstOrCreate(
+            if (empty($c['province_name']) || empty($c['name'])) {
+                continue;
+            }
+
+            $country = Country::query()->firstOrCreate(
                 ['iso2' => $c['country_code_alpha_2'] ?? 'IR'],
                 [
                     'fa_name' => $c['country_name'] ?? 'ایران',
@@ -58,10 +63,11 @@ class SyncCitiesJob implements ShouldQueue
                     'en_name' => $c['province_name_en'] ?? null,
                 ]
             );
+
             $city = City::firstOrCreate(
                 [
                     'country_id' => $country->id,
-                    'fa_name'    => $c['name'], // همون name فارسی
+                    'fa_name'    => $c['name'],
                 ],
                 [
                     'en_name'    => $c['name_en'] ?? null,
@@ -71,7 +77,6 @@ class SyncCitiesJob implements ShouldQueue
                 ]
             );
 
-            // 4) Map با provider
             ProviderCityMap::updateOrCreate(
                 [
                     'provider_id'      => $provider->id,

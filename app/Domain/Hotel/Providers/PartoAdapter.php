@@ -3,11 +3,13 @@
 namespace App\Domain\Hotel\Providers;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Models\City;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use RuntimeException;
 
 /**
  * Parto CRS Adapter
@@ -24,28 +26,27 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
      * Authenticate with Parto API
      * - If token expired or missing, login and get a new one.
      * - If token is valid, keep it but extend expire_at by 20 minutes after each request.
-     * @throws ConnectionException|RequestException
+     * @throws ConnectionException
      */
     public function authenticate(): void
     {
         $conf = $this->provider->config ?? [];
         $token = $conf['auth_token'] ?? null;
         $expire = isset($conf['expire_at']) ? Carbon::parse($conf['expire_at']) : null;
-
-        // If no token or expired -> request new login
         if (!$token || !$expire || $expire->isPast()) {
             $hashedPassword = strtoupper(hash('sha512', $conf['secret_key'] ?? ''));
-
+            $authUrl = $this->baseUrl . '/Authenticate/CreateSession';
             $response = Http::withHeaders([
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . 'Authenticate', [
-                'username' => $conf['access_key'] ?? '',
-                'password' => $hashedPassword,
-            ])->throw()->json();
-
-            $token = data_get($response, 'token');
+            ])->post($authUrl, [
+                'OfficeId' => $conf['access_key'] ?? '',
+                "UserName"=> "Api",
+                'Password' => $hashedPassword,
+            ]);
+            $response = $response->json();
+            $token = data_get($response, 'SessionId');
             if (!$token) {
-                throw new \RuntimeException("Failed to authenticate with Parto");
+                throw new RuntimeException("Failed to authenticate with Parto");
             }
 
             $expireAt = now()->addMinutes(20);
@@ -77,12 +78,35 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
 
     public function fetchCities(): Collection
     {
-        $this->authenticate();
-        $res = $this->client()->get('hotel/cities')->throw()->json();
-        return collect(data_get($res, 'data', []))->map(fn($c) => [
-            'id' => (string)$c['id'],
-            'fa_name' => $c['fa_name'],
-            'en_name' => $c['en_name'],
+        $filePath = database_path('seeders/data/DomesticPropertyCity.json');
+
+        if (!file_exists($filePath)) {
+            return collect();
+        }
+
+        $cities = json_decode(file_get_contents($filePath), true);
+
+        if (!is_array($cities)) {
+            return collect();
+        }
+
+        return collect($cities)->map(fn (array $city) => [
+            'id'                   => (string) ($city['Id'] ?? ''),
+            'name'                 => $city['NameFa'] ?? null,
+            'name_ar'              => null,
+            'name_en'              => $city['Name'] ?? null,
+
+            'province_id'          => null,
+            'province_name'        => $city['province_name'] ?? null,
+            'province_name_ar'     => null,
+            'province_name_en'     => $city['province_name_en'] ?? null,
+
+            'country_id'           => null,
+            'country_name'         => $city['country_name'] ?? null,
+            'country_name_ar'      => null,
+            'country_name_en'      => $city['country_name_en'] ?? null,
+            'country_code_alpha_2' => $city['country_code_alpha_2'] ?? 'IR',
+            'country_code_alpha_3' => $city['country_code_alpha_3'] ?? 'IRN',
         ]);
     }
 
@@ -95,29 +119,27 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
             return collect();
         }
         $data = json_decode(file_get_contents($file), true);
-        logger()->info('partoAdaptor total=' . count($data));
-        logger()->info('sample first', [$data[0] ?? null]);
         $properties = collect($data)
             ->filter(fn($p) => (int)$p['PropertyCityId'] === (int)$providerCityId);
-        logger()->info('PartoAdapter: Found ' . $properties->count() . " properties for city ID {$providerCityId}");
         return $properties->map(function ($p) use ($providerCityId) {
             return [
-                'id'         => (string)$p['Id'],
-                'city_id'    => (string)$providerCityId,
-                'name'       => $p['NameFa'] ?? null,
-                'name_en'    => $p['Name'] ?? null,
-                'type'       => 'hotel',
-                'type_en'    => 'Hotel',
-                'star'       => (int)($p['Rating'] ?? 0),
-                'grade'      => null,
-                'address'    => $p['AddressFa'] ?? null,
+                'id' => (string)$p['Id'],
+                'city_id' => (string)$providerCityId,
+                'name' => $p['NameFa'] ?? null,
+                'name_en' => $p['Name'] ?? null,
+                'type' => 'hotel',
+                'type_en' => 'Hotel',
+                'star' => (int)($p['Rating'] ?? 0),
+                'grade' => null,
+                'address' => $p['AddressFa'] ?? null,
                 'address_en' => $p['Address'] ?? null,
-                'latitude'   => $this->normalizeLatLng($p['Latitude'] ?? null),
-                'longitude'  => $this->normalizeLatLng($p['Longitude'] ?? null),
+                'latitude' => $this->normalizeLatLng($p['Latitude'] ?? null),
+                'longitude' => $this->normalizeLatLng($p['Longitude'] ?? null),
                 'facilities' => $p['DomesticPropertyFacility'] ?? [],
             ];
         });
     }
+
     protected function normalizeLatLng($value): ?float
     {
         if (!$value) {

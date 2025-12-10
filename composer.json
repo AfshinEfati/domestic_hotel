@@ -8,13 +8,13 @@
     "require": {
         "php": "^8.2",
         "darkaonline/l5-swagger": "^9.0",
-        "efati/laravel-module-generator": "^6.2.4",
         "laravel/framework": "^12.0",
         "laravel/horizon": "^5.33",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1"
     },
     "require-dev": {
+        "efati/laravel-scaffolder": "^8.0",
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",

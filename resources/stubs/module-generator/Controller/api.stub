@@ -6,7 +6,10 @@ namespace {{ namespace }};
 
 class {{ class }}
 {
-    public function __construct(public {{ service_class }} $service) {}
+    public function __construct(public {{ service_class }} $service)
+    {
+{{ middleware_block }}
+    }
 
     public function index()
     {
@@ -29,9 +32,9 @@ class {{ class }}
     public function update({{ update_request_type }} $request, {{ model_class }} ${{ model_variable }})
     {
 {{ update_payload }}
-        $updated = $this->service->update(${{ model_variable }}->id, {{ update_argument }});
+        $updated = $this->service->update(${{ model_variable }}->getKey(), {{ update_argument }});
         if (!$updated) {
-            return StatusHelper::errorResponse('update failed', 422);
+            return ApiResponseHelper::errorResponse('update failed', 422);
         }
         ${{ model_variable }}->refresh();
 {{ relations_load }}
@@ -40,9 +43,9 @@ class {{ class }}
 
     public function destroy({{ model_class }} ${{ model_variable }})
     {
-        $deleted = $this->service->destroy(${{ model_variable }}->id);
+        $deleted = $this->service->destroy(${{ model_variable }}->getKey());
         return $deleted
-            ? StatusHelper::successResponse(null, 'deleted', 204)
-            : StatusHelper::errorResponse('delete failed', 422);
+            ? ApiResponseHelper::successResponse(null, 'deleted', 204)
+            : ApiResponseHelper::errorResponse('delete failed', 422);
     }
 }

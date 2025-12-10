@@ -14,52 +14,144 @@ use App\Models\RoomTypeProviderMap;
 use App\Support\Logging\SystemLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Psr\Http\Message\RequestInterface;
+use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
+use RuntimeException;
+use Throwable;
 
+/**
+ * Service for synchronizing hotel data from various providers
+ */
 class HotelSyncService
 {
-    private const ALLOWED_MEAL_TYPES = ['breakfast', 'half_board', 'full_board'];
-    private const ALLOWED_FOOD_BOARD_TYPES = ['limit_options', 'full_options'];
+    private const DEFAULT_PAGE_SIZE = 200;
+    private const MAX_RETRY_ATTEMPTS = 3;
+    private const RETRY_DELAY_MS = 1000;
+
+    private array $config;
+    private LoggerInterface $logger;
 
     public function __construct(
         private readonly CityRepository $cityRepo,
         private readonly AccommodationRepository $accRepo,
         private readonly RoomCalendarRepository $calendarRepo,
-        private readonly SystemLogger $logger,
+        SystemLogger $systemLogger,
+        array $config = []
     ) {
+        $this->logger = $systemLogger->getLogger();
+        $this->config = array_merge([
+            'sync' => [
+                'page_size' => (int)config('hotel.sync.page_size', self::DEFAULT_PAGE_SIZE),
+                'max_retry_attempts' => self::MAX_RETRY_ATTEMPTS,
+                'retry_delay_ms' => self::RETRY_DELAY_MS,
+            ],
+        ], $config);
     }
 
+    /**
+     * Synchronize cities from provider
+     *
+     * @param Provider $provider
+     * @param ProviderAdapterInterface $adapter
+     * @throws RuntimeException When synchronization fails after retries
+     */
     public function syncCities(Provider $provider, ProviderAdapterInterface $adapter): void
     {
-        $adapter->fetchCities()->each(function (array $c) use ($provider) {
-            $this->cityRepo->upsertFromProvider($c, $provider);
-        });
+        $this->logger->info('Starting city synchronization', [
+            'provider' => $provider->code,
+            'provider_id' => $provider->id,
+        ]);
+
+        try {
+            $cities = $this->withRetry(
+                fn() => $adapter->fetchCities(),
+                'Failed to fetch cities from provider after %d attempts'
+            );
+
+            $cities->each(function (array $cityData) use ($provider) {
+                try {
+                    $this->cityRepo->upsertFromProvider($cityData, $provider);
+                } catch (\Exception $e) {
+                    $this->logger->error('Failed to upsert city', [
+                        'error' => $e->getMessage(),
+                        'city_data' => $cityData,
+                        'provider_id' => $provider->id,
+                    ]);
+                    throw $e;
+                }
+            });
+
+            $this->logger->info('Completed city synchronization', [
+                'provider' => $provider->code,
+                'cities_processed' => $cities->count(),
+            ]);
+        } catch (\Exception $e) {
+            $this->logger->error('City synchronization failed', [
+                'error' => $e->getMessage(),
+                'provider' => $provider->code,
+            ]);
+            throw new RuntimeException('City synchronization failed: ' . $e->getMessage(), 0, $e);
+        }
     }
 
+    /**
+     * Synchronize properties for a specific city from provider
+     *
+     * @param Provider $provider
+     * @param ProviderAdapterInterface $adapter
+     * @param string $providerCityId
+     * @throws RuntimeException When synchronization fails after retries
+     */
     public function syncPropertiesForCity(
         Provider $provider,
         ProviderAdapterInterface $adapter,
         string $providerCityId,
     ): void {
+        $this->logger->info('Starting property synchronization for city', [
+            'provider' => $provider->code,
+            'provider_id' => $provider->id,
+            'provider_city_id' => $providerCityId,
+        ]);
+
         $page = 1;
-        do {
-            $items = $adapter->fetchPropertiesByCity($providerCityId, $page, 200);
-            if ($items->isEmpty()) {
-                break;
-            }
+        $totalPropertiesProcessed = 0;
+        $pageSize = $this->config['sync']['page_size'];
 
-            foreach ($items as $accData) {
-                $cityId = DB::table('provider_city_maps')
-                    ->where('provider_id', $provider->id)
-                    ->where('provider_city_id', $providerCityId)
-                    ->value('city_id');
+        try {
+            do {
+                // Fetch properties with retry mechanism
+                $items = $this->withRetry(
+                    fn() => $adapter->fetchPropertiesByCity($providerCityId, $page, $pageSize),
+                    sprintf('Failed to fetch properties for city %s (page %d) after %%d attempts',
+                        $providerCityId, $page)
+                );
 
-                if (!$cityId) {
-                    continue;
+                if ($items->isEmpty()) {
+                    $this->logger->debug('No more properties to process', [
+                        'provider' => $provider->code,
+                        'provider_city_id' => $providerCityId,
+                        'page' => $page,
+                    ]);
+                    break;
+                }
+
+                // Process properties batch
+                $batchStartTime = microtime(true);
+                $batchCount = 0;
+
+                foreach ($items as $accData) {
+                    try {
+                        // Get mapped city ID with error handling
+                        $cityId = $this->getMappedCityId($provider->id, $providerCityId);
+                        if (!$cityId) {
+                            $this->logger->warning('No city mapping found', [
+                                'provider_id' => $provider->id,
+                                'provider_city_id' => $providerCityId,
+                            ]);
+                            continue;
+                        }
                 }
 
                 $city = \App\Models\City::find($cityId);
@@ -69,6 +161,71 @@ class HotelSyncService
         } while (200 === $items->count());
     }
 
+    /**
+     * Get mapped city ID from provider city ID
+     */
+    private function getMappedCityId(int $providerId, string $providerCityId): ?int
+    {
+        try {
+            return DB::table('provider_city_maps')
+                ->where('provider_id', $providerId)
+                ->where('provider_city_id', $providerCityId)
+                ->value('city_id');
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to fetch city mapping', [
+                'error' => $e->getMessage(),
+                'provider_id' => $providerId,
+                'provider_city_id' => $providerCityId,
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Execute a callback with retry logic
+     *
+     * @template T
+     * @param callable(): T $callback
+     * @param string $errorMessage Error message with %d placeholder for attempt count
+     * @return T
+     * @throws RuntimeException When max retry attempts are exceeded
+     */
+    private function withRetry(callable $callback, string $errorMessage = 'Operation failed after %d attempts')
+    {
+        $attempt = 0;
+        $maxAttempts = $this->config['sync']['max_retry_attempts'];
+        $retryDelay = $this->config['sync']['retry_delay_ms'];
+
+        while (true) {
+            try {
+                return $callback();
+            } catch (\Exception $e) {
+                $attempt++;
+
+                if ($attempt >= $maxAttempts) {
+                    $this->logger->error(sprintf($errorMessage, $maxAttempts), [
+                        'error' => $e->getMessage(),
+                        'attempt' => $attempt,
+                        'max_attempts' => $maxAttempts,
+                    ]);
+                    throw new RuntimeException(sprintf($errorMessage, $maxAttempts), 0, $e);
+                }
+
+                $this->logger->warning('Operation failed, retrying...', [
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt,
+                    'max_attempts' => $maxAttempts,
+                    'retry_delay_ms' => $retryDelay,
+                ]);
+
+                usleep($retryDelay * 1000); // Convert ms to microseconds
+            }
+        }
+    }
+
+    /**
+     * Crawl availability for a specific property
+     */
     public function crawlAvailabilityForProperty(
         Provider $provider,
         ProviderAdapterInterface $adapter,

@@ -34,7 +34,7 @@ class ProviderSeeder extends Seeder
                 'en_name' => 'Parto CRS',
                 'class'   => PartoAdapter::class,
                 'config'  => [
-                    'api_base_url' => 'https://apidemo.partocrs.com/api/',
+                    'base_url' => 'https://apidemo.partocrs.com/api/',
                     'auth_token'   => null,
                     'expire_at'    => null,
                     'access_key'   => 'CRS001539',

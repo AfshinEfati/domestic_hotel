@@ -5,8 +5,7 @@ namespace App\Services;
 use App\Repositories\Contracts\BaseRepositoryInterface;
 use App\Services\Contracts\BaseServiceInterface;
 use BadMethodCallException;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 abstract class BaseService implements BaseServiceInterface
 {
@@ -22,24 +21,19 @@ abstract class BaseService implements BaseServiceInterface
 
     public function index(): mixed
     {
-        $result = $this->callRepository('getAll');
-
-        return $this->loadRelations($result);
+        return $this->callRepository('getAll');
     }
 
     public function show(int|string $id): mixed
     {
-        $result = $this->callRepository('find', [$id]);
-
-        return $this->loadRelations($result);
+        return $this->callRepository('find', [$id]);
     }
 
     public function store(mixed $payload): mixed
     {
         $payload = $this->normalisePayload($payload);
-        $result = $this->callRepository('store', [$payload]);
 
-        return $this->loadRelations($result);
+        return $this->callRepository('store', [$payload]);
     }
 
     public function update(int|string $id, mixed $payload): bool
@@ -54,6 +48,91 @@ abstract class BaseService implements BaseServiceInterface
         return (bool) $this->callRepository('delete', [$id]);
     }
 
+    public function findDynamic(
+        array $where = [],
+        array $with = [],
+        array $whereNot = [],
+        array $whereIn = [],
+        array $whereNotIn = [],
+        array $whereBetween = [],
+        array $whereNotBetween = [],
+        array $whereNull = [],
+        array $whereNotNull = [],
+        array $orWhere = [],
+        array $orWhereIn = [],
+        array $orWhereNotIn = [],
+        array $orWhereBetween = [],
+        array $orWhereNotBetween = [],
+        array $orWhereNull = [],
+        array $orWhereNotNull = [],
+        array $whereRaw = [],
+        array $orWhereRaw = []
+    ): mixed {
+        return $this->callRepository('findDynamic', [
+            $where,
+            $with,
+            $whereNot,
+            $whereIn,
+            $whereNotIn,
+            $whereBetween,
+            $whereNotBetween,
+            $whereNull,
+            $whereNotNull,
+            $orWhere,
+            $orWhereIn,
+            $orWhereNotIn,
+            $orWhereBetween,
+            $orWhereNotBetween,
+            $orWhereNull,
+            $orWhereNotNull,
+            $whereRaw,
+            $orWhereRaw,
+        ]);
+    }
+
+    public function getByDynamic(
+        array $where = [],
+        array $with = [],
+        array $whereNot = [],
+        array $whereIn = [],
+        array $whereNotIn = [],
+        array $whereBetween = [],
+        array $whereNotBetween = [],
+        array $whereNull = [],
+        array $whereNotNull = [],
+        array $orWhere = [],
+        array $orWhereIn = [],
+        array $orWhereNotIn = [],
+        array $orWhereBetween = [],
+        array $orWhereNotBetween = [],
+        array $orWhereNull = [],
+        array $orWhereNotNull = [],
+        array $whereRaw = [],
+        array $orWhereRaw = []
+    ): Collection {
+        /** @var Collection */
+        return $this->callRepository('getByDynamic', [
+            $where,
+            $with,
+            $whereNot,
+            $whereIn,
+            $whereNotIn,
+            $whereBetween,
+            $whereNotBetween,
+            $whereNull,
+            $whereNotNull,
+            $orWhere,
+            $orWhereIn,
+            $orWhereNotIn,
+            $orWhereBetween,
+            $orWhereNotBetween,
+            $orWhereNull,
+            $orWhereNotNull,
+            $whereRaw,
+            $orWhereRaw,
+        ]);
+    }
+
     public function __call(string $method, array $parameters): mixed
     {
         if (method_exists($this->repository, $method)) {
@@ -61,34 +140,6 @@ abstract class BaseService implements BaseServiceInterface
         }
 
         throw new BadMethodCallException(sprintf('Method %s::%s does not exist.', static::class, $method));
-    }
-
-    public function loadRelations(mixed $resource): mixed
-    {
-        $relations = $this->relations();
-
-        if (empty($relations) || $resource === null) {
-            return $resource;
-        }
-
-        if ($resource instanceof Model) {
-            $resource->loadMissing($relations);
-
-            return $resource;
-        }
-
-        if ($resource instanceof EloquentCollection) {
-            $resource->load($relations);
-
-            return $resource;
-        }
-
-        return $resource;
-    }
-
-    protected function relations(): array
-    {
-        return [];
     }
 
     protected function callRepository(string $method, array $arguments = []): mixed

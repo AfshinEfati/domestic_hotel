@@ -36,6 +36,8 @@ return [
         'controller'    => 'Http/Controllers/Api/V1',
         'resource'      => 'Http/Resources',   // ← قابل‌پیکربندی
         'form_request'  => 'Http/Requests',
+        'actions'       => 'Actions',
+        'docs'          => 'Docs',
     ],
 
     /*
@@ -62,5 +64,30 @@ return [
         'with_resource'      => true,
         'with_dto'           => true,
         'with_provider'      => true,
+        'with_actions'       => false,
+        'controller_middleware' => [],
+        'controller_type'    => 'web', // 'web' or 'api' - تنظیم نوع کنترلر پیش‌فرض
     ],
+
+    'swagger' => [
+        'security' => [
+            'auth_middleware' => ['auth', 'auth:api', 'auth:sanctum'],
+            'default' => 'bearerAuth',
+            'schemes' => [
+                'bearerAuth' => [
+                    'type' => 'http',
+                    'scheme' => 'bearer',
+                    'bearer_format' => 'JWT',
+                    'description' => 'Pass a valid bearer token retrieved from the authentication endpoint.'
+                ],
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default logging channel for generated actions
+    |--------------------------------------------------------------------------
+    */
+    'logging_channel' => env('MODULE_GENERATOR_LOG_CHANNEL'),
 ];
