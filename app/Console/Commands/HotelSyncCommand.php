@@ -6,7 +6,9 @@ use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
+use DB;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Container\BindingResolutionException;
 
 class HotelSyncCommand extends Command
 {
@@ -16,6 +18,9 @@ class HotelSyncCommand extends Command
 
     protected $description = 'همگام‌سازی دیتا از تأمین‌کننده‌ها (شهرها، هتل‌ها، نرخ/ظرفیت)';
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function handle(HotelSyncService $service): int
     {
         $providerCode = $this->argument('provider');
@@ -27,10 +32,6 @@ class HotelSyncCommand extends Command
             return self::FAILURE;
         }
 
-        /**
-         * اینجا بعداً هر Adapter واقعی رو می‌سازیم.
-         * الان به عنوان تست فقط اسکلتش رو گذاشتم.
-         */
         /** @var ProviderAdapterInterface $adapter */
         $adapter = app()->makeWith(ProviderAdapterInterface::class, [
             'provider' => $provider,
@@ -42,7 +43,7 @@ class HotelSyncCommand extends Command
 
         // ۲. سنک هتل‌ها برای همه‌ی شهرهای provider
         $this->info("Syncing properties...");
-        $providerCityIds = \DB::table('provider_city_maps')
+        $providerCityIds = DB::table('provider_city_maps')
             ->where('provider_id', $provider->id)
             ->pluck('provider_city_id');
 
@@ -55,7 +56,7 @@ class HotelSyncCommand extends Command
         $to   = $from->addDays($days);
 
         $this->info("Crawling availability {$days} days...");
-        $providerPropertyIds = \DB::table('accommodation_provider_maps')
+        $providerPropertyIds = DB::table('accommodation_provider_maps')
             ->where('provider_id', $provider->id)
             ->pluck('provider_property_id');
 

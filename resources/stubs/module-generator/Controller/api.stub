@@ -45,7 +45,7 @@ class {{ class }}
     {
         $deleted = $this->service->destroy(${{ model_variable }}->getKey());
         return $deleted
-            ? ApiResponseHelper::successResponse(null, 'deleted', 204)
+            ? ApiResponseHelper::successResponse(null, 'deleted', 200)
             : ApiResponseHelper::errorResponse('delete failed', 422);
     }
 }

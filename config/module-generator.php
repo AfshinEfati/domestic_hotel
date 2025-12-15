@@ -59,12 +59,12 @@ return [
     */
     'defaults' => [
         'with_controller'    => true,
-        'with_form_requests' => true,
+        'with_form_requests' => false,
         'with_unit_test'     => true,
         'with_resource'      => true,
         'with_dto'           => true,
         'with_provider'      => true,
-        'with_actions'       => true,
+        'with_actions'       => false,
         'controller_middleware' => [],
         'controller_type'    => 'api', // 'web' or 'api' - تنظیم نوع کنترلر پیش‌فرض
     ],

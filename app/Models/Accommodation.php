@@ -54,4 +54,11 @@ class Accommodation extends Model
         return $this->belongsToMany(Facility::class, 'accommodation_facility')
             ->withTimestamps();
     }
+
+    public function rules(): BelongsToMany
+    {
+        return $this->belongsToMany(Rule::class, 'accommodation_rule')
+            ->withPivot('value')
+            ->withTimestamps();
+    }
 }

@@ -2,10 +2,11 @@
 
 namespace App\Helpers;
 
-use Carbon\Carbon;
 use DateTimeInterface;
 use Efati\ModuleGenerator\Support\Goli;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
+use Throwable;
 
 class StatusHelper
 {
@@ -60,7 +61,7 @@ class StatusHelper
         try {
             $jalali = $datetime instanceof Goli ? $datetime : Goli::instance($datetime);
             $carbon = $jalali->toCarbon();
-        } catch (\Throwable $e) {
+        } catch (Throwable) {
             try {
                 if ($datetime instanceof Carbon) {
                     $carbon = $datetime->copy();
@@ -73,7 +74,7 @@ class StatusHelper
                 }
 
                 $jalali = Goli::instance($carbon);
-            } catch (\Throwable $e) {
+            } catch (Throwable) {
                 return null;
             }
         }
@@ -81,7 +82,7 @@ class StatusHelper
         return [
             'date'    => $carbon->toDateString(),
             'time'    => $carbon->toTimeString(),
-            'fa_date' => $jalali->format('Y-m-d', false),
+            'fa_date' => $jalali->format('Y-m-d'),
             'iso'     => $carbon->toIso8601String(),
         ];
     }
@@ -98,20 +99,4 @@ class StatusHelper
         ];
     }
 
-    /**
-     * Domain example: cabin type mapping.
-     */
-    public static function getCabinType(?string $type): ?array
-    {
-        if (!$type) return null;
-
-        $map = [
-            'Y' => ['name' => 'economy', 'fa_name' => 'اکونومی', 'code' => 'Y'],
-            'W' => ['name' => 'premium_economy', 'fa_name' => 'اکونومی پریمیوم', 'code' => 'W'],
-            'C' => ['name' => 'business', 'fa_name' => 'بیزینس', 'code' => 'C'],
-            'F' => ['name' => 'first', 'fa_name' => 'فرست', 'code' => 'F'],
-        ];
-
-        return $map[$type] ?? ['name' => strtolower($type), 'fa_name' => $type, 'code' => $type];
-    }
 }

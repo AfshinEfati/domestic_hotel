@@ -46,7 +46,7 @@ return [
                  * Absolute paths to directory containing the swagger annotations are stored.
                  */
                 'annotations' => [
-                    base_path('app/OpenApi'),
+                    base_path('app/Docs'),
                     base_path('app/Http/Controllers/Api/V1/Admin'),
                     base_path('routes/api.php'),
                 ],

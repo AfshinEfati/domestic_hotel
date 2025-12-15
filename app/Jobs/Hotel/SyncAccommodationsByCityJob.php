@@ -31,6 +31,7 @@ class SyncAccommodationsByCityJob implements ShouldQueue
     public function handle(): void
     {
         $provider = Provider::where('code', $this->providerCode)->firstOrFail();
+        logger()->info('Syncing accommodations for provider: '.$this->providerCode.' , city id: '.$this->providerCityId);
         /** @var ProviderAdapterInterface $adapter */
         $adapter = app()->make(ProviderAdapterInterface::class, ['provider' => $provider]);
 
