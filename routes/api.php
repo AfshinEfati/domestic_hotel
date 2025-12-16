@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Admin\RoomCalendarController;
 use App\Http\Controllers\Api\V1\Admin\RoomCalendarSnapshotController;
 use App\Http\Controllers\Api\V1\Admin\RoomTypeController;
 use App\Http\Controllers\Api\V1\Admin\RoomTypeProviderMapController;
+use App\Http\Controllers\Api\V1\Admin\RuleController;
 use App\Http\Controllers\Api\V1\Admin\StateController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,4 +36,5 @@ Route::group(['prefix' => 'v1/admin'], function () {
     Route::apiResource('accommodation-provider-maps', AccommodationProviderMapController::class);
     Route::apiResource('room-type-provider-maps', RoomTypeProviderMapController::class);
     Route::apiResource('rate-plan-provider-maps', RatePlanProviderMapController::class);
+    Route::apiResource('rules', RuleController::class);
 });

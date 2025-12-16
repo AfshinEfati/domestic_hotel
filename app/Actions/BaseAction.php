@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Actions;
+
+use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
+use Throwable;
+
+abstract class BaseAction
+{
+    protected LoggerInterface $logger;
+
+    public function __construct(?LoggerInterface $logger = null)
+    {
+        $channel = config('module-generator.logging_channel') ?? config('logging.default') ?? 'stack';
+        $this->logger = $logger ?? Log::channel($channel);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function __invoke(mixed ...$arguments): mixed
+    {
+        return $this->execute(...$arguments);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function execute(mixed ...$arguments): mixed
+    {
+        try {
+            return $this->handle(...$arguments);
+        } catch (Throwable $exception) {
+            $this->logger->error('Action failed', [
+                'action'    => static::class,
+                'exception' => $exception,
+            ]);
+
+            throw $exception;
+        }
+    }
+
+    abstract protected function handle(mixed ...$arguments): mixed;
+}

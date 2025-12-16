@@ -1,0 +1,292 @@
+<?php
+
+namespace Tests\Feature;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\WithFaker;
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
+
+class RuleCrudTest extends TestCase
+{
+    use RefreshDatabase, WithFaker;
+
+    protected string $baseUri = '/test-rules';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Route::middleware('api')->group(function () {
+            Route::apiResource('test-rules', \App\Http\Controllers\Api\V1\Admin\RuleController::class);
+        });
+    }
+
+    private function fillable(): array
+    {
+        return ['title', 'name', 'is_active'];
+    }
+
+    private function fieldMetadata(): array
+    {
+        return [
+            'title' => [
+                            'type' => 'string',
+                            'cast' => 'string',
+                            'nullable' => false,
+                            'unique' => false,
+                        ],
+            'name' => [
+                            'type' => 'string',
+                            'cast' => 'string',
+                            'nullable' => false,
+                            'unique' => true,
+                        ],
+            'is_active' => [
+                            'type' => 'boolean',
+                            'cast' => 'bool',
+                            'nullable' => false,
+                            'unique' => false,
+                        ],
+        ];
+    }
+
+    private function uniqueField(): ?string
+    {
+        foreach ($this->fieldMetadata() as $field => $meta) {
+            if (!empty($meta['unique'])) {
+                return $field;
+            }
+        }
+
+        foreach ($this->fillable() as $field) {
+            if ($field === 'slug' || str_contains($field, 'slug')) {
+                return $field;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildValidPayload(bool $forCreate = true): array
+    {
+        $payload = [];
+
+        if (method_exists(\App\Models\Rule::class, 'factory')) {
+            try {
+                $model = \App\Models\Rule::factory()->make();
+                $data = $model->toArray();
+
+                // Filter to only fillable fields to simulate API request
+                $fillable = $this->fillable();
+                $payload = array_intersect_key($data, array_flip($fillable));
+
+                // Override password or sensitive fields if necessary
+                // if (isset($payload['password'])) $payload['password'] = 'password';
+
+                return [$payload, true];
+            } catch (\Throwable $e) {
+                // Fallback if factory fails
+            }
+        }
+
+        $canCreate = true;
+        $metadata = $this->fieldMetadata();
+
+        foreach ($this->fillable() as $field) {
+            if (str_ends_with($field, '_at')) {
+                continue;
+            }
+
+            $meta = $metadata[$field] ?? [];
+
+            if (!empty($meta['foreign']['related_model'])) {
+                $related = $meta['foreign']['related_model'];
+                $id = null;
+                if (is_string($related) && class_exists($related)) {
+                    if (method_exists($related, 'factory')) {
+                        $id = $related::factory()->create()->getKey();
+                    } else {
+                        try {
+                            $obj = new $related();
+                            $fill = method_exists($obj, 'getFillable') ? $obj->getFillable() : [];
+                            $data = [];
+                            foreach ($fill as $f) {
+                                if (str_ends_with($f, '_id')) { continue; }
+                                if (stripos($f, 'email') !== false) { $data[$f] = 'x'.uniqid().'@example.test'; continue; }
+                                if (stripos($f, 'slug') !== false) { $data[$f] = 'slug-'.uniqid(); continue; }
+                                if (stripos($f, 'name') !== false) { $data[$f] = 'Name '.uniqid(); continue; }
+                                if (stripos($f, 'price') !== false || stripos($f, 'amount') !== false) { $data[$f] = 1; continue; }
+                                if (stripos($f, 'is_') === 0 || stripos($f, 'has_') === 0) { $data[$f] = true; continue; }
+                                $data[$f] = 'val';
+                            }
+                            $obj = $related::query()->create($data);
+                            $id = $obj->getKey();
+                        } catch (\Throwable $e) {}
+                    }
+                }
+                if ($id === null) {
+                    $canCreate = false;
+                } else {
+                    $payload[$field] = $id;
+                }
+                continue;
+            }
+
+            $payload[$field] = $this->fakeValueForField($field, $meta);
+        }
+
+        return [$payload, $canCreate];
+    }
+
+    private function fakeValueForField(string $field, array $meta): mixed
+    {
+        if (!empty($meta['enum']) && is_array($meta['enum'])) {
+            return $meta['enum'][0];
+        }
+
+        $cast = $meta['cast'] ?? null;
+        if (is_string($cast) && str_contains($cast, ':')) {
+            $cast = strtolower(strtok($cast, ':'));
+        }
+        $type = $meta['type'] ?? null;
+
+        if (stripos($field, 'email') !== false) {
+            return 'u'.uniqid().'@example.test';
+        }
+        if (stripos($field, 'slug') !== false || stripos($field, 'code') !== false) {
+            return 'slug-'.uniqid();
+        }
+        if (stripos($field, 'name') !== false || stripos($field, 'title') !== false) {
+            return 'Title '.uniqid();
+        }
+        if (stripos($field, 'price') !== false || stripos($field, 'amount') !== false || stripos($field, 'rate') !== false) {
+            return 1000;
+        }
+        if (stripos($field, 'is_') === 0 || stripos($field, 'has_') === 0) {
+            return true;
+        }
+
+        if (in_array($type, ['boolean'], true) || in_array($cast, ['bool', 'boolean'], true)) {
+            return true;
+        }
+        if (in_array($type, ['integer'], true) || in_array($cast, ['int', 'integer'], true)) {
+            return 1;
+        }
+        if (in_array($type, ['float', 'decimal'], true) || in_array($cast, ['float', 'double', 'decimal'], true)) {
+            return 1.0;
+        }
+        if (in_array($type, ['json'], true) || in_array($cast, ['array', 'collection'], true)) {
+            return ['sample' => 'data'];
+        }
+        if ($type === 'date') {
+            return '2024-01-01';
+        }
+        if ($type === 'datetime') {
+            return '2024-01-01 00:00:00';
+        }
+        if ($type === 'uuid') {
+            return 'uuid-'.uniqid();
+        }
+
+        return 'text';
+    }
+
+    private function createModel(): \App\Models\Rule
+    {
+        if (method_exists(\App\Models\Rule::class, 'factory')) {
+            return \App\Models\Rule::factory()->create();
+        }
+
+        [$payload] = $this->buildValidPayload(true);
+
+        return \App\Models\Rule::query()->create($payload);
+    }
+
+    public function test_index_returns_list(): void
+    {
+        try {
+            if (method_exists(\App\Models\Rule::class, 'factory')) {
+                \App\Models\Rule::factory()->count(3)->create();
+            }
+        } catch (\Throwable $e) {}
+        $res = $this->json('GET', $this->baseUri);
+        $res->assertStatus(200)->assertJsonStructure(['success', 'message', 'data']);
+    }
+
+    public function test_store_creates_resource_with_valid_data_or_422_when_unresolvable_fk(): void
+    {
+        [$payload, $canCreate] = $this->buildValidPayload(true);
+        $res = $this->postJson($this->baseUri, $payload);
+        if ($canCreate) {
+            $res->assertStatus(201)->assertJson(['success' => true]);
+        } else {
+            $res->assertStatus(422);
+        }
+    }
+
+    public function test_store_returns_validation_error_for_duplicate_unique_when_applicable(): void
+    {
+        $uniqueField = $this->uniqueField();
+        if (!$uniqueField) {
+            $this->markTestSkipped('no unique-like field to test duplication');
+        }
+        $existing = $this->createModel();
+        [$payload] = $this->buildValidPayload(true);
+        $payload[$uniqueField] = $existing->{$uniqueField};
+        $res = $this->postJson($this->baseUri, $payload);
+        $res->assertStatus(422);
+    }
+
+    public function test_show_returns_single_resource(): void
+    {
+        $model = $this->createModel();
+        $res = $this->getJson($this->baseUri . '/' . $model->getKey());
+        $res->assertStatus(200)->assertJson(['success' => true]);
+    }
+
+    public function test_show_returns_404_for_missing_resource(): void
+    {
+        $res = $this->getJson($this->baseUri . '/999999999');
+        $res->assertStatus(404);
+    }
+
+    public function test_update_updates_resource_with_valid_data(): void
+    {
+        $model = $this->createModel();
+        [$payload] = $this->buildValidPayload(false);
+        foreach ($payload as $k => $v) {
+            if (is_string($v) && !str_ends_with($k, '_id')) {
+                $payload[$k] = 'updated-' . uniqid();
+                break;
+            }
+        }
+        $res = $this->patchJson($this->baseUri . '/' . $model->getKey(), $payload);
+        ($payload ? $res->assertStatus(200) : $res->assertStatus(422));
+    }
+
+    public function test_update_returns_validation_error_on_duplicate_unique_when_applicable(): void
+    {
+        $uniqueField = $this->uniqueField();
+        if (!$uniqueField) {
+            $this->markTestSkipped('no unique-like field to test duplication on update');
+        }
+        $a = $this->createModel();
+        $b = $this->createModel();
+        $res = $this->patchJson($this->baseUri . '/' . $b->getKey(), [$uniqueField => $a->{$uniqueField}]);
+        $res->assertStatus(422);
+    }
+
+    public function test_destroy_deletes_resource(): void
+    {
+        $model = $this->createModel();
+        $res = $this->deleteJson($this->baseUri . '/' . $model->getKey());
+        $res->assertStatus(204);
+    }
+
+    public function test_destroy_returns_404_for_missing_resource(): void
+    {
+        $res = $this->deleteJson($this->baseUri . '/999999999');
+        $res->assertStatus(404);
+    }
+}
