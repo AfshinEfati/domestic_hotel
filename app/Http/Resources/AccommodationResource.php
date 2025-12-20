@@ -27,6 +27,7 @@ class AccommodationResource extends JsonResource
             'type' => AccommodationTypeResource::make(
                 $this->whenLoaded('type', fn ($type) => $type->withoutRelations())
             ),
+            'rooms' => RoomTypeResource::collection($this->whenLoaded('rooms')),
             'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
         ];
     }

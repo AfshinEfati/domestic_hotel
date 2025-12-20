@@ -17,7 +17,7 @@ class StateController
     public function index(): JsonResponse
     {
         $data = $this->service->index();
-
+        $data->load(['country']);
         return StatusHelper::successResponse(StateResource::collection($data));
     }
     public function store(StoreStateRequest $request): JsonResponse

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Accommodation extends Model
 {
@@ -60,5 +61,9 @@ class Accommodation extends Model
         return $this->belongsToMany(Rule::class, 'accommodation_rule')
             ->withPivot('value')
             ->withTimestamps();
+    }
+    public function rooms(): HasMany
+    {
+        return $this->hasMany(RoomType::class);
     }
 }

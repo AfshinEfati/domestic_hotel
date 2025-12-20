@@ -18,13 +18,14 @@ class AccommodationController
     public function index()
     {
         $data = $this->service->index();
-
+        $data->load(['city','type']);
         return StatusHelper::successResponse(AccommodationResource::collection($data));
     }
 
     public function store(StoreAccommodationRequest $request)
     {
         $dto = AccommodationDTO::fromRequest($request);
+
         $model = $this->service->store($dto);
 
         return StatusHelper::successResponse(new AccommodationResource($model), 'created', 201);
@@ -32,7 +33,7 @@ class AccommodationController
 
     public function show(Accommodation $accommodation): JsonResponse
     {
-        $accommodation->load(['city','facilities','type']);
+        $accommodation->load(['city','facilities','type','rooms']);
 
         return StatusHelper::successResponse(new AccommodationResource($accommodation));
     }
