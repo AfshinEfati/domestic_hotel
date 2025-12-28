@@ -18,4 +18,5 @@ interface AccommodationRepositoryInterface extends BaseRepositoryInterface
     public function update(int|string $id, array $data): bool;
 
     public function delete(int|string $id): bool;
+    public function getList(array $filters): iterable;
 }

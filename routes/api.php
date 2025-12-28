@@ -19,22 +19,25 @@ use App\Http\Controllers\Api\V1\Admin\RuleController;
 use App\Http\Controllers\Api\V1\Admin\StateController;
 use Illuminate\Support\Facades\Route;
 
-Route::group(['prefix' => 'v1/admin'], function () {
-    Route::apiResource('accommodation-types', AccommodationTypeController::class);
-    Route::apiResource('accommodations', AccommodationController::class);
-    Route::apiResource('countries', CountryController::class);
-    Route::apiResource('states', StateController::class);
-    Route::apiResource('cities', CityController::class);
-    Route::apiResource('providers', ProviderController::class);
-    Route::apiResource('facility-groups', FacilityGroupController::class);
-    Route::apiResource('facilities', FacilityController::class);
-    Route::apiResource('rate-plans', RatePlanController::class);
-    Route::apiResource('room-types', RoomTypeController::class);
-    Route::apiResource('room-calendars', RoomCalendarController::class);
-    Route::apiResource('room-calendar-snapshots', RoomCalendarSnapshotController::class);
-    Route::apiResource('provider-city-maps', ProviderCityMapController::class);
-    Route::apiResource('accommodation-provider-maps', AccommodationProviderMapController::class);
-    Route::apiResource('room-type-provider-maps', RoomTypeProviderMapController::class);
-    Route::apiResource('rate-plan-provider-maps', RatePlanProviderMapController::class);
-    Route::apiResource('rules', RuleController::class);
+Route::group(['prefix' => 'v1'], function () {
+    Route::group(['prefix' => 'admin'], function () {
+        Route::apiResource('accommodation-types', AccommodationTypeController::class);
+        Route::apiResource('accommodations', AccommodationController::class);
+        Route::apiResource('countries', CountryController::class);
+        Route::apiResource('states', StateController::class);
+        Route::apiResource('cities', CityController::class);
+        Route::apiResource('providers', ProviderController::class);
+        Route::apiResource('facility-groups', FacilityGroupController::class);
+        Route::apiResource('facilities', FacilityController::class);
+        Route::apiResource('rate-plans', RatePlanController::class);
+        Route::apiResource('room-types', RoomTypeController::class);
+        Route::apiResource('room-calendars', RoomCalendarController::class);
+        Route::apiResource('room-calendar-snapshots', RoomCalendarSnapshotController::class);
+        Route::apiResource('provider-city-maps', ProviderCityMapController::class);
+        Route::apiResource('accommodation-provider-maps', AccommodationProviderMapController::class);
+        Route::apiResource('room-type-provider-maps', RoomTypeProviderMapController::class);
+        Route::apiResource('rate-plan-provider-maps', RatePlanProviderMapController::class);
+        Route::apiResource('rules', RuleController::class);
+    });
+    require_once 'Front.php';
 });

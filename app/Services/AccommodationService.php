@@ -71,4 +71,8 @@ class AccommodationService extends BaseService implements AccommodationServiceIn
             'facilities',
         ];
     }
+    public function getList(array $data): iterable
+    {
+       return $this->repository->getList($data);
+    }
 }

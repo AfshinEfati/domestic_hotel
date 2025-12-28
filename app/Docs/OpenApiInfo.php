@@ -9,7 +9,7 @@ use OpenApi\Annotations as OA;
  *     openapi="3.0.0",
  *     @OA\Info(
  *         version="1.0.0",
- *         title="Domestic Hotel Api",
+ *         title="Laravel",
  *         description="API Documentation",
  *         @OA\Contact(
  *             name="API Support"
@@ -20,7 +20,7 @@ use OpenApi\Annotations as OA;
  *         description="Development Server"
  *     ),
  *     @OA\Server(
- *         url="https://newhotel.shahansafar.ir",
+ *         url="https://api.example.com",
  *         description="Production Server"
  *     )
  * )

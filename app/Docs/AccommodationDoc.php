@@ -274,4 +274,54 @@ class AccommodationDoc
      * )
      */
     public function deleteApiV1AdminAccommodationsAccommodation(){}
+
+    /**
+     * @OA\Post(
+     *     path="/api/v1/front/accommodations/list",
+     *     summary="List",
+     *     tags={"Front / Accommodation"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *                 type="object",
+     *                 required={"from","to"},
+     *                 @OA\Property(property="from", type="integer", example=42),
+     *                 @OA\Property(property="to", type="integer", example=42),
+     *                 example={"from":42,"to":42}
+     *             )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Created",
+     *         @OA\JsonContent(
+     *                 type="array",
+     *                 @OA\Items(
+     *                     type="object",
+     *                     @OA\Property(property="id", type="integer", example=1),
+     *                     @OA\Property(property="city_id", type="integer", example=1),
+     *                     @OA\Property(property="fa_name", type="string", example="Sample Fa Name"),
+     *                     @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
+     *                     @OA\Property(property="accommodation_type_id", type="integer", example=1),
+     *                     @OA\Property(property="star", type="integer", nullable=true, example=42),
+     *                     @OA\Property(property="grade", type="string", nullable=true, example="Grade"),
+     *                     @OA\Property(property="address", type="string", nullable=true, example="Address"),
+     *                     @OA\Property(property="lat", type="number", format="float", nullable=true, example=99.99),
+     *                     @OA\Property(property="lng", type="number", format="float", nullable=true, example=99.99),
+     *                     @OA\Property(property="is_active", type="integer", example=1),
+     *                     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
+     *                     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
+     *                     example={"id":1,"city_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","accommodation_type_id":1,"star":42,"grade":"Grade","address":"Address","lat":99.99,"lng":99.99,"is_active":"1","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 )
+     *             )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="The given data was invalid.")
+     *         )
+     *     ),
+     * )
+     */
+    public function postApiV1FrontAccommodationsList(){}
 }
