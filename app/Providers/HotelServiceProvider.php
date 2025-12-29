@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domain\Hotel\Providers\SnappTripAdapter;
 use Illuminate\Support\ServiceProvider;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Providers\GRSAdapter;
@@ -22,9 +23,10 @@ class HotelServiceProvider extends ServiceProvider
             }
 
             return match ($provider->code) {
-                'grs'   => new GRSAdapter($provider),
+                'grs' => new GRSAdapter($provider),
                 'parto' => new PartoAdapter($provider),
-                'iho'   => new IHOAdapter($provider),
+                'iho' => new IHOAdapter($provider),
+                'snap' => new SnappTripAdapter($provider),
                 default => throw new \RuntimeException("Unknown provider code: {$provider->code}")
             };
         });

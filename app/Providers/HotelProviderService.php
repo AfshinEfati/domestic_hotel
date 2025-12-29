@@ -8,6 +8,7 @@ use App\Models\Provider;
 use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
+use App\Domain\Hotel\Providers\SnappTripAdapter;
 
 class HotelProviderService extends ServiceProvider
 {
@@ -20,13 +21,13 @@ class HotelProviderService extends ServiceProvider
             if (!$provider) {
                 throw new \InvalidArgumentException('Provider is required to resolve adapter.');
             }
-            $conf = (array)$provider->config;
 
             return match ($provider->code) {
-                'grs'  => new GRSAdapter($conf),
-                'iho'  => new IHOAdapter($conf),
-                'parto'=> new PartoAdapter($conf),
-                default => throw new \RuntimeException("Unknown provider code: {$provider->code}"),
+                'grs'       => new GRSAdapter($provider),
+                'iho'       => new IHOAdapter($provider),
+                'parto'     => new PartoAdapter($provider),
+                'snapptrip' => new SnappTripAdapter($provider),
+                default     => throw new \RuntimeException("Unknown provider code: {$provider->code}"),
             };
         });
     }

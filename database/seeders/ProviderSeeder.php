@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
+use App\Domain\Hotel\Providers\SnappTripAdapter;
 use Illuminate\Database\Seeder;
 use App\Models\Provider;
 
@@ -53,6 +54,20 @@ class ProviderSeeder extends Seeder
                 'config'  => [
                     'base_url' => 'https://www.iranhotelonline.com:443',
                     'version'  => 1,
+                ],
+            ]
+        );
+
+        // SnappTrip
+        Provider::updateOrCreate(
+            ['code' => 'snapptrip'],
+            [
+                'fa_name' => 'اسنپ تریپ',
+                'en_name' => 'SnappTrip',
+                'class'   => SnappTripAdapter::class,
+                'config'  => [
+                    'base_url' => 'https://b2bapiv2.snapptrip.com/', // Placeholder
+                    'token'    => '9EcxDBS7gmfvh5HaHDtjjxQhEVRHaPJP6hegUJ5FBerz8Cam3Xt6X97k8rf5GDGL',
                 ],
             ]
         );
