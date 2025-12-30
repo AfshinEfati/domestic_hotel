@@ -70,6 +70,10 @@ interface BaseRepositoryInterface
         array $orWhereRaw = []
     ): Collection;
 
+    public function firstOrCreate(array $attributes = [], array $values = []): Model;
+
+    public function updateOrCreate(array $attributes, array $values = []): Model;
+
     /**
      * @param array $data
      * @return TModel

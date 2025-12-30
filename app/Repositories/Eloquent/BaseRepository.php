@@ -210,6 +210,16 @@ class BaseRepository implements BaseRepositoryInterface
         return $query->get();
     }
 
+    public function firstOrCreate(array $attributes = [], array $values = []): Model
+    {
+        return $this->model->firstOrCreate($attributes, $values);
+    }
+
+    public function updateOrCreate(array $attributes, array $values = []): Model
+    {
+        return $this->model->updateOrCreate($attributes, $values);
+    }
+
     /**
      * @param array $data
      * @return TModel

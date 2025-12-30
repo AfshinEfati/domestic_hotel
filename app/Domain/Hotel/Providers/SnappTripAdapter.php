@@ -3,10 +3,13 @@
 namespace App\Domain\Hotel\Providers;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Models\SystemLog;
+use Exception;
 use Illuminate\Support\Collection;
 use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\ConnectionException;
+use RuntimeException;
 
 /**
  * SnappTrip Adapter
@@ -23,7 +26,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     {
         $token = $this->provider->config['token'] ?? null;
         if (!$token) {
-            throw new \RuntimeException("SnappTrip provider missing token (api-key) in config");
+            throw new RuntimeException("SnappTrip provider missing token (api-key) in config");
         }
         $this->setHeader('api-key', $token);
     }
@@ -41,10 +44,10 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
         $res = $this->client()->get('/cities/')->throw()->json();
         return collect($res)->map(function ($c) {
             return [
-                'id' => (string) ($c['id'] ?? ''),
+                'id' => (string)($c['id'] ?? ''),
                 'name' => $c['title_fa'] ?? null,
                 'name_en' => $c['title_en'] ?? null,
-                'province_id' => (string) ($c['state']['id'] ?? ''),
+                'province_id' => (string)($c['state']['id'] ?? ''),
                 'province_name' => $c['state']['title'] ?? null,
                 'country_id' => null, // Not provided
             ];
@@ -58,34 +61,78 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
      * @param int $page
      * @param int $count
      * @return Collection
-     * @throws RequestException
-     * @throws ConnectionException
      */
-    public function fetchPropertiesByCity(string $providerCityId, int $page = 1, int $count = 100): Collection
+    public function fetchPropertiesByCity(string $providerCityId, int $page = 1, int $count = 1000): Collection
     {
         $this->authenticate();
 
-        $offset = ($page - 1) * $count;
-        $res = $this->client()->get("/cities/{$providerCityId}/hotels", [
-            'limit' => $count,
-            'offset' => $offset,
-        ])->throw()->json();
+        try {
+            $res = $this->client()->get("/cities/$providerCityId/hotels", [
+                'limit' => $count,
+                'offset' => 0,
+            ])->throw()->json();
+        } catch (Exception $e) {
+            SystemLog::create([
+                'level' => 'error',
+                'method' => 'fetchPropertiesByCity',
+                'message' => $e->getMessage(),
+                'provider_id' => $this->provider->id,
+                'context' => ['city_id' => $providerCityId, 'step' => 'list_fetch'],
+            ]);
+            return collect();
+        }
+        $items = $res['items'] ?? $res;
+        $detailedHotels = collect();
+        foreach ($items as $h) {
+            $hotelId = $h['id'];
 
-        return collect(data_get($res, 'items', []))->map(function ($h) use ($providerCityId) {
-            return [
-                'id' => (string) $h['id'],
-                'city_provider_id' => (string) $providerCityId,
-                'name' => $h['name'] ?? null,
-                'fa_name' => $h['name'] ?? null,
-                // Brief endpoint doesn't provide these, would need detail fetch
-                'en_name' => null,
-                'address' => null,
-                'latitude' => null,
-                'longitude' => null,
-                'star' => null,
-                'type' => 'hotel',
-            ];
-        });
+            try {
+                $detailRes = $this->client()->get('/hotels/', [
+                    'id' => $hotelId
+                ])->throw()->json();
+
+                $detail = $detailRes[0] ?? null;
+
+                if (!$detail) {
+                    continue;
+                }
+
+                $detailedHotels->push([
+                    'id' => (string)$detail['id'],
+                    'city_provider_id' => $providerCityId,
+                    'name' => $detail['title'] ?? $h['name'],
+                    'fa_name' => $detail['title'] ?? $h['name'],
+                    'en_name' => $detail['title_en'] ?? null,
+                    'address' => $detail['address'] ?? null,
+                    'latitude' => $detail['location']['lat'] ?? null,
+                    'longitude' => $detail['location']['lon'] ?? null,
+                    'star' => $detail['stars'] ?? 0,
+                    'type' => $detail['accommodation_title'] ?? 'هتل',
+                    'type_en' => $detail['accommodation_type'] ?? 'Hotel',
+                    'facilities' => collect($detail['facilities'] ?? [])->map(function ($f) {
+                        return [
+                            'name' => $f['title'],
+                            'name_en' => null,
+                            'group_name' => 'امکانات',
+                            'group_name_en' => 'Facilities',
+                            'description' => null,
+                        ];
+                    })->toArray(),
+                ]);
+
+            } catch (Exception $e) {
+                SystemLog::create([
+                    'level' => 'error',
+                    'method' => 'fetchPropertiesByCity',
+                    'message' => $e->getMessage(),
+                    'provider_id' => $this->provider->id,
+                    'context' => ['hotel_id' => $hotelId, 'step' => 'detail_fetch'],
+                ]);
+                continue;
+            }
+        }
+
+        return $detailedHotels;
     }
 
     /**
@@ -110,7 +157,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
 
         return collect($rooms)->map(function ($r) {
             return [
-                'room_type_id' => (string) $r['id'],
+                'room_type_id' => (string)$r['id'],
                 'fa_name' => $r['title'] ?? null,
                 'en_name' => null,
                 'capacity' => ($r['adults'] ?? 0) + ($r['children'] ?? 0),
@@ -134,7 +181,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
         // Since rate plans are tied to rooms (board_type), we could return dummy plans
         // or rely on fetchAvailability to provide rate info.
         // For now, returning empty as per typical adapter pattern if not explicit.
-        return collect([]);
+        return collect();
     }
 
     /**
@@ -148,13 +195,14 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
      * @throws ConnectionException
      */
     public function fetchAvailability(
-        string $providerPropertyId,
+        string            $providerPropertyId,
         DateTimeInterface $from,
         DateTimeInterface $to
-    ): Collection {
+    ): Collection
+    {
         $this->authenticate();
 
-        $res = $this->client()->get("/availability/hotels/{$providerPropertyId}/calendar", [
+        $res = $this->client()->get("/availability/hotels/$providerPropertyId/calendar", [
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
         ])->throw()->json();
@@ -165,7 +213,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
         $availability = collect();
 
         foreach ($rooms as $room) {
-            $roomId = (string) $room['id'];
+            $roomId = (string)$room['id'];
             $dailyData = $room['daily'] ?? [];
 
             foreach ($dailyData as $dateStr => $data) {
@@ -200,21 +248,8 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     public function reserve(array $payload): array
     {
         $this->authenticate();
-
-        // Map internal payload to SnappTrip payload
-        // Expected internal payload structure:
-        // [
-        //   'hotel_id' => ...,
-        //   'checkin' => 'Y-m-d',
-        //   'checkout' => 'Y-m-d',
-        //   'rooms' => [
-        //      ['room_type_id' => ..., 'guests' => [['first_name' => ..., 'last_name' => ..., 'is_foreigner' => ...]]]
-        //   ],
-        //   'holder' => ['email' => ..., 'mobile' => ..., 'note' => ...]
-        // ]
-
         $snappPayload = [
-            'hotel_id' => (int) ($payload['hotel_id'] ?? 0),
+            'hotel_id' => (int)($payload['hotel_id'] ?? 0),
             'checkin' => $payload['checkin'],
             'checkout' => $payload['checkout'],
             'email' => $payload['holder']['email'] ?? '',
@@ -234,7 +269,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
             }
 
             $snappPayload['rooms'][] = [
-                'room_id' => (int) $room['room_type_id'],
+                'room_id' => (int)$room['room_type_id'],
                 'children' => $room['children_count'] ?? 0,
                 'infants' => $room['infants_count'] ?? 0,
                 'extra_beds' => $room['extra_beds'] ?? 0,
@@ -265,7 +300,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     {
         $this->authenticate();
 
-        $this->client()->post("/booking/{$reserveId}/lock")->throw();
+        $this->client()->post("/booking/$reserveId/lock")->throw();
 
         return [
             'reserve_id' => $reserveId,
@@ -287,7 +322,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
 
         $reserveId = $payload['reserve_id'];
 
-        $res = $this->client()->post("/booking/{$reserveId}/confirm")->throw()->json();
+        $res = $this->client()->post("/booking/$reserveId/confirm")->throw()->json();
 
         return [
             'reserve_id' => $res['reservation_code'] ?? $reserveId,
@@ -305,7 +340,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
      */
     public function modify(array $payload): array
     {
-        throw new \RuntimeException("Modify operation not supported by SnappTrip API.");
+        throw new RuntimeException("Modify operation not supported by SnappTrip API.");
     }
 
     /**
@@ -316,7 +351,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
      */
     public function cancel(array $payload): array
     {
-        throw new \RuntimeException("Cancel operation not supported by SnappTrip API.");
+        throw new RuntimeException("Cancel operation not supported by SnappTrip API.");
     }
 
     /**
@@ -327,7 +362,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
      */
     public function reservesList(array $filters = []): Collection
     {
-        return collect([]);
+        return collect();
     }
 
     /**
@@ -342,14 +377,14 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     {
         $this->authenticate();
 
-        $res = $this->client()->get("/booking/{$reserveId}")->throw()->json();
+        $res = $this->client()->get("/booking/$reserveId")->throw()->json();
 
         return [
             'reserve_id' => $res['reservation_code'],
             'status' => $res['state'],
             'total_price' => $res['price'],
             'created_at' => null, // Not provided
-            'hotel_id' => (string) $res['hotel_id'],
+            'hotel_id' => (string)$res['hotel_id'],
             'rooms' => $res['rooms'] ?? [],
         ];
     }
@@ -363,17 +398,17 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
         return [];
     }
 
-    public function fetchFacilities()
+    public function fetchFacilities(): Collection
     {
         $this->authenticate();
         // Endpoint: GET /hotels/facilities?id=...
         // Requires IDs, so leaving empty for generic call
-        return collect([]);
+        return collect();
     }
 
-    public function fetchProperties()
+    public function fetchProperties(): Collection
     {
         // Not efficient to fetch all
-        return collect([]);
+        return collect();
     }
 }

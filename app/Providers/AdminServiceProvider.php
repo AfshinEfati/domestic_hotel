@@ -19,6 +19,7 @@ use App\Repositories\Contracts\{
     RoomTypeProviderMapRepositoryInterface,
     RoomTypeRepositoryInterface,
     StateRepositoryInterface,
+    SystemLogRepositoryInterface,
 };
 use App\Repositories\Eloquent\{
     AccommodationProviderMapRepository,
@@ -37,6 +38,7 @@ use App\Repositories\Eloquent\{
     RoomTypeProviderMapRepository,
     RoomTypeRepository,
     StateRepository,
+    SystemLogRepository,
 };
 use App\Services\{
     AccommodationProviderMapService,
