@@ -46,6 +46,7 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
     /**
      * @param int|string $id
      * @param AccommodationProviderMapDTO|array $payload
+     * @return bool
      */
     public function update(int|string $id, mixed $payload): bool
     {
@@ -63,6 +64,7 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
 
     public function chunkByProvider(int $providerId, callable $callback): void
     {
+        /** @var AccommodationProviderMapRepositoryInterface $callback */
         $this->repository->chunkByProvider($providerId, $callback);
     }
 
