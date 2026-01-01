@@ -18,4 +18,6 @@ interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInte
     public function update(int|string $id, array $data): bool;
 
     public function delete(int|string $id): bool;
+
+    public function chunkByProvider(int $providerId, callable $callback): void;
 }

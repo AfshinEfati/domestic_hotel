@@ -61,6 +61,11 @@ class ProviderService extends BaseService implements ProviderServiceInterface
         return parent::destroy($id);
     }
 
+    public function getActiveProviders(): iterable
+    {
+        return $this->repository->getByDynamic(['is_active' => true]);
+    }
+
     protected function relations(): array
     {
         return ['cityMaps.city'];

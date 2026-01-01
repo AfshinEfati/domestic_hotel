@@ -61,6 +61,11 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
         return parent::destroy($id);
     }
 
+    public function chunkByProvider(int $providerId, callable $callback): void
+    {
+        $this->repository->chunkByProvider($providerId, $callback);
+    }
+
     protected function relations(): array
     {
         return [

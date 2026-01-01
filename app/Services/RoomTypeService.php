@@ -61,6 +61,14 @@ class RoomTypeService extends BaseService implements RoomTypeServiceInterface
         return parent::destroy($id);
     }
 
+    public function findByAccommodationAndName(int $accommodationId, string $name): ?RoomType
+    {
+        return $this->repository->findDynamic([
+            'accommodation_id' => $accommodationId,
+            'fa_name' => $name
+        ]);
+    }
+
     protected function relations(): array
     {
         return [

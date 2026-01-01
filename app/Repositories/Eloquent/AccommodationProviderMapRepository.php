@@ -32,4 +32,9 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
         /** @var AccommodationProviderMap */
         return parent::store($data);
     }
+
+    public function chunkByProvider(int $providerId, callable $callback): void
+    {
+        $this->model->where('provider_id', $providerId)->chunk(100, $callback);
+    }
 }

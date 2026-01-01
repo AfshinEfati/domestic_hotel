@@ -27,4 +27,7 @@ interface ProviderServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
-}
+    /**
+     * @return iterable<Provider>
+     */
+    public function getActiveProviders(): iterable;}

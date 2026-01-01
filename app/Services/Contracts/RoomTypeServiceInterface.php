@@ -27,4 +27,4 @@ interface RoomTypeServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
-}
+    public function findByAccommodationAndName(int $accommodationId, string $name): ?RoomType;}

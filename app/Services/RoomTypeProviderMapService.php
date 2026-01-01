@@ -61,6 +61,14 @@ class RoomTypeProviderMapService extends BaseService implements RoomTypeProvider
         return parent::destroy($id);
     }
 
+    public function findByProviderAndRemoteId(int $providerId, string $remoteId): ?RoomTypeProviderMap
+    {
+        return $this->repository->findDynamic([
+            'provider_id' => $providerId,
+            'provider_room_type_id' => $remoteId
+        ]);
+    }
+
     protected function relations(): array
     {
         return [
