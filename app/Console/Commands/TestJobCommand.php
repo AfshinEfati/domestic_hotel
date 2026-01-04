@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\Hotel\SyncAllProvidersAvailabilityJob;
 use App\Jobs\Hotel\SyncGrsAvailabilityJob;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Command\Command as CommandAlias;
@@ -28,7 +29,8 @@ class TestJobCommand extends Command
     public function handle(): int
     {
         $this->info('TestJobCommand executed successfully!');
-        SyncGrsAvailabilityJob::dispatch();
+//        SyncGrsAvailabilityJob::dispatch();
+        SyncAllProvidersAvailabilityJob::dispatch();
         return CommandAlias::SUCCESS;
     }
 }

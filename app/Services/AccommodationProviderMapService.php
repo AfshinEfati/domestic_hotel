@@ -64,7 +64,6 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
 
     public function chunkByProvider(int $providerId, callable $callback): void
     {
-        /** @var AccommodationProviderMapRepositoryInterface $callback */
         $this->repository->chunkByProvider($providerId, $callback);
     }
 
