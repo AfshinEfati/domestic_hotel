@@ -7,6 +7,10 @@ Route::group(['prefix' => 'front'], function () {
     Route::group(['prefix' => 'accommodations'], function () {
         Route::post('list', [AccommodationController::class, 'list']);
         Route::post('availability', [AccommodationController::class, 'getAvailability']);
+        Route::post('available-rooms', [
+            AccommodationController::class,
+            'getAvailableRooms'
+        ]);
     });
     Route::group(['prefix' => 'facility-groups'], function () {
         Route::post('list', [AccommodationController::class, 'getFacilityGroups']);

@@ -76,4 +76,85 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
             'provider.cityMaps.city',
         ];
     }
+
+    public function getAvailableRoomsByAccommodationId(int $accommodationId): array
+    {
+        $calendars = $this->repository
+            ->getAvailableByAccommodationId($accommodationId);
+
+        $rooms = $calendars
+            ->groupBy('room_type_id')
+            ->map(function ($roomCalendars) {
+                $firstCalendar = $roomCalendars->first();
+                $room = $firstCalendar->roomType;
+
+                $ratePlans = $roomCalendars
+                    ->groupBy('rate_plan_id')
+                    ->map(function ($ratePlanCalendars) {
+                        $first = $ratePlanCalendars->first();
+                        $ratePlan = $first->ratePlan;
+
+                        return [
+                            'id' => $ratePlan?->id,
+                            'fa_name' => $ratePlan?->fa_name,
+                            'en_name' => $ratePlan?->en_name,
+                            'meal_type' => $ratePlan?->meal_type,
+                            'food_board_type' => $ratePlan?->food_board_type,
+                            'cancelable' => $ratePlan?->cancelable,
+
+                            'calendar' => $ratePlanCalendars
+                                ->map(fn ($calendar) => [
+                                    'day' => $calendar->day?->format('Y-m-d'),
+                                    'inventory' => $calendar->inventory,
+
+                                    'rack_rate' => $calendar->rack_rate,
+                                    'daily_rate' => $calendar->daily_rate,
+                                    'grs_rate' => $calendar->grs_rate,
+
+                                    'baby_cot_rack_rate' => $calendar->baby_cot_rack_rate,
+                                    'baby_cot_daily_rate' => $calendar->baby_cot_daily_rate,
+                                    'baby_cot_grs_rate' => $calendar->baby_cot_grs_rate,
+
+                                    'extend_bed_rack_rate' => $calendar->extend_bed_rack_rate,
+                                    'extend_bed_daily_rate' => $calendar->extend_bed_daily_rate,
+                                    'extend_bed_grs_rate' => $calendar->extend_bed_grs_rate,
+
+                                    'min_stay' => $calendar->min_stay,
+                                    'max_stay' => $calendar->max_stay,
+                                    'cta' => $calendar->cta,
+                                    'ctd' => $calendar->ctd,
+                                ])
+                                ->values(),
+                        ];
+                    })
+                    ->values();
+
+                return [
+                    'id' => $room->id,
+                    'fa_name' => $room->fa_name,
+                    'en_name' => $room->en_name,
+                    'capacity' => $room->capacity,
+                    'extra_capacity' => $room->extra_capacity,
+                    'single_bed_count' => $room->single_bed_count,
+                    'double_bed_count' => $room->double_bed_count,
+                    'sofa_bed_count' => $room->sofa_bed_count,
+
+                    'room_type_name' => $room->roomTypeName
+                        ? [
+                            'id' => $room->roomTypeName->id,
+                            'fa_name' => $room->roomTypeName->fa_name,
+                            'en_name' => $room->roomTypeName->en_name,
+                        ]
+                        : null,
+
+                    'rate_plans' => $ratePlans,
+                ];
+            })
+            ->values();
+
+        return [
+            'accommodation_id' => $accommodationId,
+            'rooms' => $rooms,
+        ];
+    }
 }

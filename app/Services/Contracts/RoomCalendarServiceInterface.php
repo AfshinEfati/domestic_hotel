@@ -27,4 +27,5 @@ interface RoomCalendarServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
+    public function getAvailableRoomsByAccommodationId(int $accommodationId): array;
 }

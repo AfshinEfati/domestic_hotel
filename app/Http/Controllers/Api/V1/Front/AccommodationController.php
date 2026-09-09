@@ -6,6 +6,7 @@ use App\Helpers\ApiResponseHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Front\AccommodationListRequest;
 use App\Http\Requests\Front\AvailabilityRequest;
+use App\Http\Requests\Front\AvailableRoomsRequest;
 use App\Http\Requests\Front\FacilityGroupsListRequest;
 use App\Http\Requests\Front\FacilityListRequest;
 use App\Http\Requests\Front\RoomTypeListRequest;
@@ -19,6 +20,7 @@ use App\Http\Resources\HotelChildPolicyResource;
 use App\Http\Resources\RoomTypeNameResource;
 use App\Http\Resources\RuleResource;
 use App\Services\AccommodationService;
+use App\Services\Contracts\RoomCalendarServiceInterface;
 use App\Services\FacilityGroupService;
 use App\Services\FacilityService;
 use App\Services\HotelChildPolicyService;
@@ -88,6 +90,21 @@ class AccommodationController extends Controller
         $availability = $this->accommodationService->getAvailability($request->validated());
         $availability = AvailabilityResource::collection($availability);
         return ApiResponseHelper::successResponse($availability, 'Accommodation Availability Fetched Successfully');
+    }
+
+    public function getAvailableRooms(
+        AvailableRoomsRequest        $request,
+        RoomCalendarServiceInterface $roomCalendarService
+    )
+    {
+        $data = $roomCalendarService->getAvailableRoomsByAccommodationId(
+            (int)$request->validated('hotel_id')
+        );
+
+        return ApiResponseHelper::successResponse(
+            $data,
+            'Available Rooms Fetched Successfully'
+        );
     }
 
 }
