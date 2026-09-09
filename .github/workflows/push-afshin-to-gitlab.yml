@@ -1,4 +1,4 @@
-name: Mirror afshin branch to GitLab (HTTP)
+name: Mirror afshin branch to GitLab (SSH)
 
 on:
   push:
@@ -11,10 +11,13 @@ permissions:
 jobs:
   push-to-gitlab:
     runs-on: ubuntu-latest
+
     env:
       GITLAB_HOST: 194.5.195.194
+      GITLAB_PORT: 3131
       GITLAB_REPO_PATH: root/domestic_hotel_gds.git
       GITLAB_TARGET_BRANCH: afshin
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,18 +34,21 @@ jobs:
         run: |
           BRANCH=$(git rev-parse --abbrev-ref HEAD)
           CHANGES=$(git status --porcelain=1 --untracked-files=all)
+
           if [ -z "$CHANGES" ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           MESSAGE="📦 Auto commit on branch '$BRANCH':\n"
+
           while IFS= read -r line; do
             [ -z "$line" ] && continue
 
             staged="${line:0:1}"
             unstaged="${line:1:1}"
             code="$staged"
+
             if [ "$code" = " " ]; then
               code="$unstaged"
             fi
@@ -80,16 +86,31 @@ jobs:
           git add --all
           git commit -F commit_message.txt
 
-      - name: Push to GitLab (HTTP, URL-encoded creds)
+      - name: Setup GitLab SSH key
         env:
-          GITLAB_USERNAME: ${{ secrets.GITLAB_USERNAME }}
-          GITLAB_PASSWORD: ${{ secrets.GITLAB_PASSWORD }}
+          SSH_PRIVATE_KEY: ${{ secrets.GITLAB_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          ENC_USER=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$GITLAB_USERNAME")
-          ENC_PASS=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$GITLAB_PASSWORD")
-          REMOTE_URL="http://${ENC_USER}:${ENC_PASS}@${GITLAB_HOST}/${GITLAB_REPO_PATH}"
-          export GIT_TERMINAL_PROMPT=0
-          git remote add gitlab "$REMOTE_URL" 2>/dev/null || git remote set-url gitlab "$REMOTE_URL"
-          # بدون force برای ایمنی؛ اگر لازم شد بعدا می‌تونی --force-with-lease اضافه کنی
-          git push --set-upstream gitlab HEAD:${GITLAB_TARGET_BRANCH} --force
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519_company
+          chmod 600 ~/.ssh/id_ed25519_company
+
+          ssh-keyscan -p "$GITLAB_PORT" "$GITLAB_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Push to GitLab via SSH
+        run: |
+          set -euo pipefail
+
+          REMOTE_URL="ssh://git@${GITLAB_HOST}:${GITLAB_PORT}/${GITLAB_REPO_PATH}"
+
+          git remote add gitlab "$REMOTE_URL" 2>/dev/null || \
+            git remote set-url gitlab "$REMOTE_URL"
+
+          GIT_SSH_COMMAND="ssh \
+            -i ~/.ssh/id_ed25519_company \
+            -o IdentitiesOnly=yes" \
+            git push gitlab HEAD:${GITLAB_TARGET_BRANCH} --force
