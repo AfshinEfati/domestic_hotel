@@ -11,7 +11,7 @@ class AvailabilityRequest extends FormRequest
         return [
             'state' => ['required', 'string'],
             'city' => ['required', 'string'],
-            'check_in' => ['required', 'date_format:Y-m-d'],
+            'check_in' => ['required', 'date_format:Y-m-d','after_or_equal:today'],
             'check_out' => ['required', 'date_format:Y-m-d', 'after:check_in'],
             'rooms' => ['required', 'array','max:5', 'min:1'],
             'rooms.*.passengers' => ['required', 'array'],

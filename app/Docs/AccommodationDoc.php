@@ -328,57 +328,101 @@ class AccommodationDoc
     /**
      * @OA\Post(
      *     path="/api/v1/front/accommodations/availability",
-     *     summary="Getavailability",
+     *     summary="Get accommodation availability",
      *     tags={"Accommodation"},
+     *
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *                 type="object",
-     *                 required={"state","city","check_in","check_out","rooms","rooms.*.passengers","rooms.*.passengers.*.type","rooms.*.passengers.*.age","rooms.*.passengers.*.title"},
-     *                 @OA\Property(property="state", type="string", example="State"),
-     *                 @OA\Property(property="city", type="string", example="City"),
-     *                 @OA\Property(property="check_in", type="string", example="Check In"),
-     *                 @OA\Property(property="check_out", type="string", example="Check Out"),
-     *                 @OA\Property(property="rooms", type="array", example="Rooms", @OA\Items(type="object")),
-     *                 @OA\Property(property="rooms.*.passengers", type="array", example="Rooms.*.Passengers", @OA\Items(type="object")),
-     *                 @OA\Property(property="rooms.*.passengers.*.type", type="string", example="Rooms.*.Passengers.*.Type"),
-     *                 @OA\Property(property="rooms.*.passengers.*.age", type="integer", example=42),
-     *                 @OA\Property(property="rooms.*.passengers.*.title", type="string", example="Sample Rooms.*.Passengers.*.Title"),
-     *                 example={"state":"State","city":"City","check_in":"Check In","check_out":"Check Out","rooms":"Rooms","rooms.*.passengers":"Rooms.*.Passengers","rooms.*.passengers.*.type":"Rooms.*.Passengers.*.Type","rooms.*.passengers.*.age":42,"rooms.*.passengers.*.title":"Sample Rooms.*.Passengers.*.Title"}
+     *             type="object",
+     *             required={"state","city","check_in","check_out","rooms"},
+     *
+     *             @OA\Property(
+     *                 property="state",
+     *                 type="string",
+     *                 example="tehran"
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="city",
+     *                 type="string",
+     *                 example="tehran"
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="check_in",
+     *                 type="string",
+     *                 format="date",
+     *                 example="2026-09-10"
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="check_out",
+     *                 type="string",
+     *                 format="date",
+     *                 example="2026-09-12"
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="rooms",
+     *                 type="array",
+     *                 minItems=1,
+     *                 maxItems=5,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"passengers"},
+     *
+     *                     @OA\Property(
+     *                         property="passengers",
+     *                         type="array",
+     *
+     *                         @OA\Items(
+     *                             type="object",
+     *                             required={"type"},
+     *
+     *                             @OA\Property(
+     *                                 property="type",
+     *                                 type="string",
+     *                                 enum={"adult","adl","child","chd","infant","inf"},
+     *                                 example="adl"
+     *                             ),
+     *
+     *                             @OA\Property(
+     *                                 property="age",
+     *                                 type="integer",
+     *                                 nullable=true,
+     *                                 minimum=0,
+     *                                 example=30
+     *                             ),
+     *
+     *                             @OA\Property(
+     *                                 property="title",
+     *                                 type="string",
+     *                                 nullable=true,
+     *                                 example="بزرگسال"
+     *                             )
+     *                         )
+     *                     )
+     *                 )
      *             )
-     *     ),
-     *     @OA\Response(
-     *         response=201,
-     *         description="Created",
-     *         @OA\JsonContent(
-     *                 type="object",
-     *                 required={"id","city_id","fa_name","accommodation_type_id","is_active"},
-     *                 @OA\Property(property="id", type="integer", example=1),
-     *                 @OA\Property(property="city_id", type="integer", example=1),
-     *                 @OA\Property(property="fa_name", type="string", example="Sample Fa Name"),
-     *                 @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
-     *                 @OA\Property(property="accommodation_type_id", type="integer", example=1),
-     *                 @OA\Property(property="star", type="integer", nullable=true, example=42),
-     *                 @OA\Property(property="grade", type="string", nullable=true, example="Grade"),
-     *                 @OA\Property(property="address", type="string", nullable=true, example="Address"),
-     *                 @OA\Property(property="lat", type="number", format="float", nullable=true, example=99.99),
-     *                 @OA\Property(property="lng", type="number", format="float", nullable=true, example=99.99),
-     *                 @OA\Property(property="is_active", type="integer", example=1),
-     *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"city_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","accommodation_type_id":1,"star":42,"grade":"Grade","address":"Address","lat":99.99,"lng":99.99,"is_active":"1","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
-     *             )
-     *     ),
-     *     @OA\Response(
-     *         response=422,
-     *         description="Validation error",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="The given data was invalid.")
      *         )
      *     ),
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful response"
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error"
+     *     )
      * )
      */
-    public function postApiV1FrontAccommodationsAvailability(){}
+    public function postApiV1FrontAccommodationsAvailability(): void
+    {
+    }
 
     /**
      * @OA\Post(

@@ -1,13 +1,11 @@
 <?php
 
 return [
-    App\Providers\HotelChildPolicyServiceProvider::class,
-
-    App\Providers\RoomTypeNameServiceProvider::class,
-
-    App\Providers\RuleServiceProvider::class,
-
     App\Providers\AdminServiceProvider::class,
     App\Providers\AppServiceProvider::class,
+    App\Providers\HorizonServiceProvider::class,
+    App\Providers\HotelChildPolicyServiceProvider::class,
     App\Providers\HotelServiceProvider::class,
+    App\Providers\RoomTypeNameServiceProvider::class,
+    App\Providers\RuleServiceProvider::class,
 ];
