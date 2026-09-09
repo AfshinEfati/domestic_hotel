@@ -29,7 +29,6 @@ class TestJobCommand extends Command
     public function handle(): int
     {
         $this->info('TestJobCommand executed successfully!');
-//        SyncGrsAvailabilityJob::dispatch();
         SyncAllProvidersAvailabilityJob::dispatch();
         return CommandAlias::SUCCESS;
     }

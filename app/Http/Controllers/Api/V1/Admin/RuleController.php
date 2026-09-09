@@ -46,7 +46,7 @@ class RuleController
         if (!$model) {
             return ApiResponseHelper::errorResponse('not found', 404);
         }
-        $model->load(['accommodations']);
+        $model->load(['hotel', 'category']);
 
         return ApiResponseHelper::successResponse(new RuleResource($model));
     }
@@ -58,7 +58,7 @@ class RuleController
         if (!$model) {
             return ApiResponseHelper::errorResponse('update failed', 422);
         }
-        $model->load(['accommodations']);
+        $model->load(['hotel', 'category']);
 
         return ApiResponseHelper::successResponse(new RuleResource($model), 'updated');
     }

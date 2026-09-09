@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\FacilityGroup;
 use App\Repositories\Contracts\FacilityGroupRepositoryInterface;
+use Illuminate\Database\Eloquent\Model;
 
 class FacilityGroupRepository extends BaseRepository implements FacilityGroupRepositoryInterface
 {
@@ -31,5 +32,29 @@ class FacilityGroupRepository extends BaseRepository implements FacilityGroupRep
     {
         /** @var FacilityGroup */
         return parent::store($data);
+    }
+
+    public function firstOrCreate(array $attributes = [], array $values = []): Model
+    {
+
+    }
+
+    public function updateOrCreate(array $attributes, array $values = []): Model
+    {
+        // TODO: Implement updateOrCreate() method.
+    }
+
+    public function getList(array $filters = []): iterable
+    {
+        $query = $this->model->query();
+        if (isset($filters['from'], $filters['to'])) {
+            $from = (int)$filters['from'];
+            $to = (int)$filters['to'];
+            $query->skip($from)->take($to);
+        }
+        return $query
+            ->with(['facilities'])
+            ->orderBy('id')
+            ->get();
     }
 }

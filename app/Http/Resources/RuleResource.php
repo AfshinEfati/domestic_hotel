@@ -15,15 +15,22 @@ class RuleResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'title' => $this->title,
+            'hotel_id' => $this->hotel_id,
+            'provider_rule_id' => $this->provider_rule_id,
+            'rule_id' => $this->rule_id,
+            'type' => $this->type,
+            'category' => RuleCategoryResource::make($this->whenLoaded('category')),
             'name' => $this->name,
-            'is_active' => ApiResponseHelper::getStatus((bool) $this->is_active),
-            'accommodations' => class_exists('App\Http\Resources\AccommodationResource')
-                ? new \App\Http\Resources\AccommodationResource($this->whenLoaded('accommodations'))
-                : $this->whenLoaded('accommodations'),
-            'morphTo' => class_exists('App\Http\Resources\RuleResource')
-                ? new \App\Http\Resources\RuleResource($this->whenLoaded('morphTo'))
-                : $this->whenLoaded('morphTo'),
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
+            'conditions' => $this->conditions,
+            'room_type_id' => $this->room_type_id,
+            'rate_plan_id' => $this->rate_plan_id,
+            'description' => $this->description,
+            'description_ar' => $this->description_ar,
+            'description_en' => $this->description_en,
+            'status' => ApiResponseHelper::getStatus((bool) $this->status),
+            'hotel' => AccommodationResource::make($this->whenLoaded('hotel')),
         ];
     }
 }

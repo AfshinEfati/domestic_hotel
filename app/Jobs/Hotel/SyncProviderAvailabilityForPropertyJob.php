@@ -29,6 +29,7 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
     private const RATE_LIMITER_PREFIX = 'provider-availability';
     private const RATE_LIMITER_DECAY_SECONDS = 60;
     private const LOG_CONTENT_LIMIT = 2048;
+    private const MAX_TRIES = 2;
 
     /**
      * The number of minutes the job should be unique.
@@ -48,7 +49,7 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
      */
     public function uniqueId(): string
     {
-        return $this->providerId.'_'.$this->providerPropertyId.'_'.$this->fromDate.'_'.$this->toDate;
+        return $this->providerId . '_' . $this->providerPropertyId . '_' . $this->fromDate . '_' . $this->toDate;
     }
 
     /**
@@ -61,21 +62,22 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
         return [
             'sync',
             'provider-availability',
-            'provider:'.$this->providerId,
-            'property:'.$this->providerPropertyId,
+            'provider:' . $this->providerId,
+            'property:' . $this->providerPropertyId,
         ];
     }
 
     public function __construct(
-        public int $providerId,
+        public int    $providerId,
         public string $providerPropertyId,
         public string $fromDate,
         public string $toDate,
-        public int $maxAttempts,
-        public int $throttleMs,
-        public int $requestsPerMinute,
-    ) {
-        $this->maxAttempts = max(1, $maxAttempts);
+        public int    $maxAttempts,
+        public int    $throttleMs,
+        public int    $requestsPerMinute,
+    )
+    {
+        $this->maxAttempts = $this->resolveMaxAttempts($maxAttempts);
         $this->throttleMs = max(0, $throttleMs);
         $this->requestsPerMinute = max(0, $requestsPerMinute);
         $this->tries = $this->maxAttempts;
@@ -85,60 +87,17 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
      * Handle the job execution.
      * This job will never fail, instead it logs errors and completes.
      *
-     * @throws BindingResolutionException
      */
     public function handle(HotelSyncService $service, SystemLogger $logger): void
     {
-        $logger->info(__METHOD__, 'START - Job execution started', [
-            'job_id' => $this->job?->getJobId() ?? 'unknown',
-            'provider_id' => $this->providerId,
-            'property_id' => $this->providerPropertyId,
-            'attempts' => $this->attempts(),
-            'max_attempts' => $this->maxAttempts,
-        ]);
-
         $jobId = $this->job?->getJobId() ?? 'unknown';
-
-        $logger->info(__METHOD__, 'Starting job execution', [
-            'job_id' => $jobId,
-            'provider_id' => $this->providerId,
-            'property_id' => $this->providerPropertyId,
-        ]);
-
         try {
             $provider = Provider::find($this->providerId);
             if (!$provider) {
-                // Log error but don't fail the job
-                JobErrorLog::createFromException(
-                    new \RuntimeException('Provider not found'),
-                    [
-                        'job_class' => static::class,
-                        'job_id' => $jobId,
-                        'queue' => $this->job?->getQueue() ?? 'default',
-                        'attempts' => $this->attempts(),
-                        'max_attempts' => $this->maxAttempts,
-                        'job_payload' => $this->buildJobPayloadContext(),
-                        'additional_context' => [
-                            'provider_id' => $this->providerId,
-                            'provider_property_id' => $this->providerPropertyId,
-                        ],
-                    ]
-                );
-
-                $logger->warning(__METHOD__, 'SyncProviderAvailabilityForPropertyJob completed with warning: provider not found', [
-                    'provider_id' => $this->providerId,
-                    'provider_property_id' => $this->providerPropertyId,
-                ]);
-
                 return;
             }
-
             $propertyKey = trim($this->providerPropertyId);
             if ('' === $propertyKey) {
-                $logger->warning(__METHOD__, 'SyncProviderAvailabilityForPropertyJob skipped because provider property id is empty', [
-                    'provider_id' => $this->providerId,
-                ]);
-
                 return;
             }
 
@@ -146,10 +105,8 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
             $adapter = app()->makeWith(ProviderAdapterInterface::class, [
                 'provider' => $provider,
             ]);
-
             $from = CarbonImmutable::parse($this->fromDate);
             $to = CarbonImmutable::parse($this->toDate);
-
             $this->syncPropertyWithRetry(
                 $service,
                 $provider,
@@ -163,76 +120,29 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
                 $logger
             );
         } catch (\Throwable $e) {
-            // Log the error in database
-            JobErrorLog::createFromException($e, [
-                'job_class' => static::class,
-                'job_id' => $jobId,
-                'queue' => $this->job?->getQueue() ?? 'default',
-                'attempts' => $this->attempts(),
-                'max_attempts' => $this->maxAttempts,
-                'job_payload' => $this->buildJobPayloadContext(),
-                'additional_context' => [
-                    'step' => 'handle',
-                    'provider_id' => $this->providerId,
-                    'provider_property_id' => $this->providerPropertyId,
-                ],
-            ]);
-
-            $logger->error(__METHOD__, 'Job completed with error', [
-                'exception_message' => $e->getMessage(),
-                'exception_class' => get_class($e),
-                'exception_code' => $e->getCode(),
-                'exception_file' => $e->getFile(),
-                'exception_line' => $e->getLine(),
-                'exception_trace' => $e->getTraceAsString(),
-                'job_id' => $jobId,
-                'attempt_number' => $this->attempts(),
-                'max_attempts' => $this->maxAttempts,
-            ]);
-
-            // Don't throw the error, just return
             return;
         }
     }
 
     private function syncPropertyWithRetry(
-        HotelSyncService $service,
-        Provider $provider,
+        HotelSyncService         $service,
+        Provider                 $provider,
         ProviderAdapterInterface $adapter,
-        string $propertyKey,
-        CarbonImmutable $from,
-        CarbonImmutable $to,
-        int $maxAttempts,
-        int $throttleMs,
-        int $requestsPerMinute,
-        SystemLogger $logger,
-    ): void {
+        string                   $propertyKey,
+        CarbonImmutable          $from,
+        CarbonImmutable          $to,
+        int                      $maxAttempts,
+        int                      $throttleMs,
+        int                      $requestsPerMinute,
+        SystemLogger             $logger,
+    ): void
+    {
         $attempt = 0;
         $lastRequestAt = null;
         $minimumIntervalMs = $this->calculateMinimumIntervalMs($requestsPerMinute);
         $limiterKey = $this->resolveRateLimiterKey($propertyKey);
-
-        $logger->info(
-            __METHOD__,
-            'Starting Provider availability sync',
-            [
-                'provider' => $provider->id,
-                'property' => $propertyKey,
-                'max_attempts' => $maxAttempts,
-                'throttle_ms' => $throttleMs,
-                'requests_per_minute' => $requestsPerMinute,
-            ]
-        );
-
         while ($attempt < $maxAttempts) {
             $nextAttempt = $attempt + 1;
-
-            $logger->info(
-                __METHOD__,
-                'Attempting Provider availability sync',
-                ['attempt' => $nextAttempt, 'max_attempts' => $maxAttempts]
-            );
-
             if (
                 $requestsPerMinute > 0
                 && $this->shouldDelayForRateLimit(
@@ -249,12 +159,6 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
                     $logger
                 )
             ) {
-                $logger->info(
-                    __METHOD__,
-                    'Job delayed due to rate limiting',
-                    ['attempt' => $nextAttempt]
-                );
-
                 return;
             }
 
@@ -267,19 +171,6 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
             }
 
             try {
-                $logger->info(
-                    __METHOD__,
-                    'Making request to Provider API',
-                    [
-                        'attempt' => $attempt,
-                        'job_id' => $this->job->getJobId(),
-                        'provider' => $provider->name,
-                        'property' => $propertyKey,
-                        'from' => $from->toDateString(),
-                        'to' => $to->toDateString(),
-                    ]
-                );
-
                 $service->crawlAvailabilityForProperty(
                     $provider,
                     $adapter,
@@ -287,108 +178,9 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
                     $from,
                     $to
                 );
-
-                $logger->info(
-                    __METHOD__,
-                    'Successfully synced Provider availability',
-                    ['attempt' => $attempt, 'job_id' => $this->job->getJobId()]
-                );
-
                 return;
             } catch (\Throwable $exception) {
-                $errorDetails = [
-                    'job_id' => $this->job?->getJobId() ?? 'unknown',
-                    'attempt' => $attempt,
-                    'exception' => [
-                        'class' => get_class($exception),
-                        'message' => $exception->getMessage(),
-                        'code' => $exception->getCode(),
-                        'file' => $exception->getFile(),
-                        'line' => $exception->getLine(),
-                        'trace' => $exception->getTraceAsString(),
-                    ],
-                ];
-
-                if ($exception instanceof RequestException && $exception->response) {
-                    $errorDetails['http'] = [
-                        'response_status' => $exception->response->status(),
-                        'response_body' => $exception->response->body(),
-                        'request_url' => $exception->response->effectiveUri(),
-                        'request_method' => $exception->response->effectiveMethod(),
-                    ];
-                }
-
-                $context = array_merge(
-                    $this->buildAttemptContext(
-                        $provider,
-                        $propertyKey,
-                        $from,
-                        $to,
-                        $maxAttempts,
-                        $throttleMs,
-                        $requestsPerMinute,
-                        $attempt
-                    ),
-                    $errorDetails
-                );
-
-                $logger->warning(
-                    __METHOD__,
-                    sprintf(
-                        'Failed to sync Provider availability for property. Error: %s at %s:%d',
-                        $exception->getMessage(),
-                        $exception->getFile(),
-                        $exception->getLine()
-                    ),
-                    $context
-                );
-
-                if ($attempt >= $maxAttempts) {
-                    // Log to database but don't throw
-                    JobErrorLog::createFromException($exception, [
-                        'job_class' => static::class,
-                        'job_id' => $this->job?->getJobId() ?? 'unknown',
-                        'queue' => $this->job?->getQueue() ?? 'default',
-                        'attempts' => $this->attempts(),
-                        'max_attempts' => $this->maxAttempts,
-                        'job_payload' => $this->buildJobPayloadContext(),
-                        'additional_context' => array_merge(
-                            $this->buildAttemptContext(
-                                $provider,
-                                $propertyKey,
-                                $from,
-                                $to,
-                                $maxAttempts,
-                                $throttleMs,
-                                $requestsPerMinute,
-                                $attempt
-                            ),
-                            ['step' => 'sync_property']
-                        ),
-                    ]);
-
-                    $logger->error(
-                        __METHOD__,
-                        'Completed sync with errors after max attempts',
-                        array_merge(
-                            $this->buildAttemptContext(
-                                $provider,
-                                $propertyKey,
-                                $from,
-                                $to,
-                                $maxAttempts,
-                                $throttleMs,
-                                $requestsPerMinute,
-                                $attempt
-                            ),
-                            [
-                                'exception' => $exception,
-                            ]
-                        )
-                    );
-
-                    return;
-                }
+                return;
             }
         }
     }
@@ -403,7 +195,7 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
 
         if (null !== $lastRequestAt) {
             $elapsedMs = (microtime(true) - $lastRequestAt) * 1000;
-            $remaining = (int) max(0, ($throttleMs - $elapsedMs) * 1000);
+            $remaining = (int)max(0, ($throttleMs - $elapsedMs) * 1000);
             if ($remaining > 0) {
                 usleep($remaining);
             }
@@ -413,62 +205,41 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
     }
 
     private function shouldDelayForRateLimit(
-        string $limiterKey,
-        int $requestsPerMinute,
-        int $minimumIntervalMs,
-        Provider $provider,
-        string $propertyKey,
+        string          $limiterKey,
+        int             $requestsPerMinute,
+        int             $minimumIntervalMs,
+        Provider        $provider,
+        string          $propertyKey,
         CarbonImmutable $from,
         CarbonImmutable $to,
-        int $maxAttempts,
-        int $throttleMs,
-        int $attempt,
-        SystemLogger $logger,
-    ): bool {
+        int             $maxAttempts,
+        int             $throttleMs,
+        int             $attempt,
+        SystemLogger    $logger,
+    ): bool
+    {
         if (!RateLimiter::tooManyAttempts($limiterKey, $requestsPerMinute)) {
             return false;
         }
 
         $availableInSeconds = RateLimiter::availableIn($limiterKey);
         $delaySeconds = $this->determineRateLimitDelaySeconds($availableInSeconds, $minimumIntervalMs);
-
-        $logger->info(
-            __METHOD__,
-            'Delaying Provider availability sync due to provider rate limit',
-            array_merge(
-                $this->buildAttemptContext(
-                    $provider,
-                    $propertyKey,
-                    $from,
-                    $to,
-                    $maxAttempts,
-                    $throttleMs,
-                    $requestsPerMinute,
-                    $attempt
-                ),
-                [
-                    'rate_limiter_key' => $limiterKey,
-                    'rate_limit_delay_seconds' => $delaySeconds,
-                    'available_in_seconds' => $availableInSeconds,
-                ]
-            )
-        );
-
         $this->release($delaySeconds);
 
         return true;
     }
 
     private function buildAttemptContext(
-        Provider $provider,
-        string $propertyKey,
+        Provider        $provider,
+        string          $propertyKey,
         CarbonImmutable $from,
         CarbonImmutable $to,
-        int $maxAttempts,
-        int $throttleMs,
-        int $requestsPerMinute,
-        int $attempt,
-    ): array {
+        int             $maxAttempts,
+        int             $throttleMs,
+        int             $requestsPerMinute,
+        int             $attempt,
+    ): array
+    {
         return array_merge(
             $this->buildBaseContext(
                 $provider,
@@ -487,14 +258,15 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
     }
 
     private function buildBaseContext(
-        Provider $provider,
-        string $propertyKey,
+        Provider        $provider,
+        string          $propertyKey,
         CarbonImmutable $from,
         CarbonImmutable $to,
-        int $maxAttempts,
-        int $throttleMs,
-        int $requestsPerMinute,
-    ): array {
+        int             $maxAttempts,
+        int             $throttleMs,
+        int             $requestsPerMinute,
+    ): array
+    {
         return [
             'provider_id' => $provider->id,
             'provider_property_id' => $propertyKey,
@@ -548,8 +320,8 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
     {
         $segments = [
             self::RATE_LIMITER_PREFIX,
-            'provider-'.$this->providerId,
-            'property-'.$this->normalizeRateLimiterSegment($propertyKey),
+            'provider-' . $this->providerId,
+            'property-' . $this->normalizeRateLimiterSegment($propertyKey),
         ];
 
         return implode(':', $segments);
@@ -572,23 +344,30 @@ class SyncProviderAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUni
             return 0;
         }
 
-        return (int) ceil(60000 / $requestsPerMinute);
+        return (int)ceil(60000 / $requestsPerMinute);
     }
 
     private function determineRateLimitDelaySeconds(?int $availableInSeconds, int $minimumIntervalMs): int
     {
-        $baseDelaySeconds = max(1, (int) ceil(max(0, $minimumIntervalMs) / 1000));
+        $baseDelaySeconds = max(1, (int)ceil(max(0, $minimumIntervalMs) / 1000));
 
         if (null === $availableInSeconds) {
             return $baseDelaySeconds;
         }
 
-        $availableInSeconds = (int) max(0, $availableInSeconds);
+        $availableInSeconds = (int)max(0, $availableInSeconds);
 
         if (0 === $availableInSeconds) {
             return $baseDelaySeconds;
         }
 
         return max($baseDelaySeconds, $availableInSeconds);
+    }
+
+    private function resolveMaxAttempts(int $maxAttempts): int
+    {
+        $value = max(1, $maxAttempts);
+
+        return min($value, self::MAX_TRIES);
     }
 }

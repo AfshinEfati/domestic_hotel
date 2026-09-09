@@ -20,6 +20,7 @@ use App\Repositories\Contracts\{
     RoomTypeRepositoryInterface,
     StateRepositoryInterface,
     SystemLogRepositoryInterface,
+    RoomTypeNameRepositoryInterface,
 };
 use App\Repositories\Eloquent\{
     AccommodationProviderMapRepository,
@@ -39,6 +40,7 @@ use App\Repositories\Eloquent\{
     RoomTypeRepository,
     StateRepository,
     SystemLogRepository,
+    RoomTypeNameRepository,
 };
 use App\Services\{
     AccommodationProviderMapService,
@@ -57,6 +59,7 @@ use App\Services\{
     RoomTypeProviderMapService,
     RoomTypeService,
     StateService,
+    RoomTypeNameService,
 };
 use App\Services\Contracts\{
     AccommodationProviderMapServiceInterface,
@@ -75,6 +78,7 @@ use App\Services\Contracts\{
     RoomTypeProviderMapServiceInterface,
     RoomTypeServiceInterface,
     StateServiceInterface,
+    RoomTypeNameServiceInterface,
 };
 use Illuminate\Support\ServiceProvider;
 
@@ -127,6 +131,8 @@ class AdminServiceProvider extends ServiceProvider
         RoomCalendarServiceInterface::class => RoomCalendarService::class,
         RoomCalendarSnapshotRepositoryInterface::class => RoomCalendarSnapshotRepository::class,
         RoomCalendarSnapshotServiceInterface::class => RoomCalendarSnapshotService::class,
+        RoomTypeNameRepositoryInterface::class => RoomTypeNameRepository::class,
+        RoomTypeNameServiceInterface::class => RoomTypeNameService::class,
     ];
 
     public function register(): void

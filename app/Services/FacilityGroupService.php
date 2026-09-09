@@ -61,6 +61,11 @@ class FacilityGroupService extends BaseService implements FacilityGroupServiceIn
         return parent::destroy($id);
     }
 
+    public function getList(mixed $validated)
+    {
+        return $this->repository->getList($validated);
+    }
+
     protected function relations(): array
     {
         return ['facilities.group'];

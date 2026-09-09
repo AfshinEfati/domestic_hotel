@@ -6,21 +6,26 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
+use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 use App\Models\RatePlanProviderMap;
 use App\Models\RoomTypeProviderMap;
+use App\Services\HotelDataSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class HotelSyncService
+readonly class HotelSyncService
 {
     public function __construct(
-        private readonly CityRepository $cityRepo,
-        private readonly AccommodationRepository $accRepo,
-        private readonly RoomCalendarRepository $calendarRepo,
-    ) {}
+        private CityRepository          $cityRepo,
+        private AccommodationRepository $accRepo,
+        private RoomCalendarRepository  $calendarRepo,
+        private HotelDataSyncService    $dataSyncService,
+    )
+    {
+    }
 
     public function syncCities(Provider $provider, ProviderAdapterInterface $adapter): void
     {
@@ -30,10 +35,11 @@ class HotelSyncService
     }
 
     public function syncPropertiesForCity(
-        Provider $provider,
+        Provider                 $provider,
         ProviderAdapterInterface $adapter,
-        string $providerCityId
-    ): void {
+        string                   $providerCityId
+    ): void
+    {
         $page = 1;
         do {
             $items = $adapter->fetchPropertiesByCity($providerCityId, $page, 200);
@@ -59,30 +65,34 @@ class HotelSyncService
     }
 
     public function crawlAvailabilityForProperty(
-        Provider $provider,
+        Provider                 $provider,
         ProviderAdapterInterface $adapter,
-        string $providerPropertyId,
-        CarbonImmutable $from,
-        CarbonImmutable $to
-    ): void {
+        string                   $providerPropertyId,
+        CarbonImmutable          $from,
+        CarbonImmutable          $to
+    ): void
+    {
         $availability = $adapter->fetchAvailability($providerPropertyId, $from, $to);
-
         if ($availability->isEmpty()) {
             return;
         }
 
-        $accId = DB::table('accommodation_provider_maps')
-            ->where('provider_id', $provider->id)
-            ->where('provider_property_id', $providerPropertyId)
-            ->value('accommodation_id');
-
-        if (!$accId) {
+        $map = $this->findAccommodationMap($provider->id, $providerPropertyId);
+        if (!$map) {
             return;
         }
 
+        $accId = (int)$map->accommodation_id;
         $roomTypeMaps = $this->loadRoomTypeMaps($provider->id, $availability);
         $ratePlanMaps = $this->loadRatePlanMaps($provider->id, $availability);
-
+        [$roomTypeMaps, $ratePlanMaps] = $this->ensureAvailabilityMappings(
+            $provider,
+            $adapter,
+            $map,
+            $availability,
+            $roomTypeMaps,
+            $ratePlanMaps
+        );
         $availability->groupBy(fn(array $row) => ($row['room_type_id'] ?? '') . '#' . ($row['rate_plan_id'] ?? ''))
             ->each(function (Collection $rows) use (
                 $provider,
@@ -100,10 +110,6 @@ class HotelSyncService
                 $providerRatePlanId = (string)($first['rate_plan_id'] ?? '');
 
                 if ($providerRoomTypeId === '' || $providerRatePlanId === '') {
-                    Log::warning('Availability row missing provider identifiers', [
-                        'provider_id' => $provider->id,
-                        'property_id' => $providerPropertyId,
-                    ]);
                     return;
                 }
 
@@ -138,13 +144,87 @@ class HotelSyncService
             });
     }
 
-    private function loadRoomTypeMaps(int $providerId, Collection $availability): Collection
+    private function findAccommodationMap(int $providerId, string $providerPropertyId): ?AccommodationProviderMap
     {
-        $roomTypeIds = $availability
-            ->pluck('room_type_id')
+        return AccommodationProviderMap::query()
+            ->where('provider_id', $providerId)
+            ->where('provider_property_id', $providerPropertyId)
+            ->first();
+    }
+
+    /**
+     * @return array{0: Collection, 1: Collection}
+     */
+    private function ensureAvailabilityMappings(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        AccommodationProviderMap $map,
+        Collection $availability,
+        Collection $roomTypeMaps,
+        Collection $ratePlanMaps
+    ): array {
+        $missingRoomTypeIds = $this->missingProviderIds($availability, 'room_type_id', $roomTypeMaps);
+        $missingRatePlanIds = $this->missingProviderIds($availability, 'rate_plan_id', $ratePlanMaps);
+
+        if ($missingRoomTypeIds->isEmpty() && $missingRatePlanIds->isEmpty()) {
+            return [$roomTypeMaps, $ratePlanMaps];
+        }
+
+        $this->syncRoomTypesFromProvider($provider, $adapter, $map);
+
+        return [
+            $this->loadRoomTypeMaps($provider->id, $availability),
+            $this->loadRatePlanMaps($provider->id, $availability),
+        ];
+    }
+
+    private function syncRoomTypesFromProvider(
+        Provider $provider,
+        ProviderAdapterInterface $adapter,
+        AccommodationProviderMap $map
+    ): void {
+        try {
+            $roomTypes = $adapter->fetchRoomTypes($map->provider_property_id);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch provider room types', [
+                'provider_id' => $provider->id,
+                'property_id' => $map->provider_property_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        if ($roomTypes === null || $roomTypes->isEmpty()) {
+            return;
+        }
+
+        $this->dataSyncService->syncRoomTypes($map, $roomTypes->all());
+    }
+
+    private function missingProviderIds(Collection $availability, string $key, Collection $existingMaps): Collection
+    {
+        return $this->extractProviderIds($availability, $key)
+            ->reject(fn(string $id) => $existingMaps->has($id))
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function extractProviderIds(Collection $availability, string $key): Collection
+    {
+        return $availability
+            ->pluck($key)
             ->filter(fn($id) => $id !== null && $id !== '')
             ->map(fn($id) => (string)$id)
-            ->unique();
+            ->unique()
+            ->values();
+    }
+
+    private function loadRoomTypeMaps(int $providerId, Collection $availability): Collection
+    {
+        $roomTypeIds = $this->extractProviderIds($availability, 'room_type_id');
 
         if ($roomTypeIds->isEmpty()) {
             return collect();
@@ -159,11 +239,7 @@ class HotelSyncService
 
     private function loadRatePlanMaps(int $providerId, Collection $availability): Collection
     {
-        $ratePlanIds = $availability
-            ->pluck('rate_plan_id')
-            ->filter(fn($id) => $id !== null && $id !== '')
-            ->map(fn($id) => (string)$id)
-            ->unique();
+        $ratePlanIds = $this->extractProviderIds($availability, 'rate_plan_id');
 
         if ($ratePlanIds->isEmpty()) {
             return collect();

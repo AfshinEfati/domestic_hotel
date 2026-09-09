@@ -10,4 +10,6 @@ use App\Repositories\Contracts\BaseRepositoryInterface;
  */
 interface RuleRepositoryInterface extends BaseRepositoryInterface
 {
+    public function getList(array $filters): iterable;
+
 }

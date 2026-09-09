@@ -26,7 +26,8 @@ class RoomTypeDoc
      *     @OA\Property(property="out_of_service", type="integer", example=0),
      *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *     example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *     @OA\Property(property="room_type_name_id", type="integer", nullable=true, example=1),
+     *     example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z","room_type_name_id":1}
      * )
      */
     public function roomTypeSchema(): void
@@ -57,7 +58,8 @@ class RoomTypeDoc
      *                     @OA\Property(property="out_of_service", type="integer", example=0),
      *                     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                     example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                     @OA\Property(property="room_type_name_id", type="integer", nullable=true, example=1),
+     *                     example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z","room_type_name_id":1}
      *                 )
      *             )
      *     ),
@@ -115,7 +117,8 @@ class RoomTypeDoc
      *                 @OA\Property(property="out_of_service", type="integer", example=0),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 @OA\Property(property="room_type_name_id", type="integer", nullable=true, example=1),
+     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z","room_type_name_id":1}
      *             )
      *     ),
      *     @OA\Response(
@@ -158,7 +161,8 @@ class RoomTypeDoc
      *                 @OA\Property(property="out_of_service", type="integer", example=0),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 @OA\Property(property="room_type_name_id", type="integer", nullable=true, example=1),
+     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z","room_type_name_id":1}
      *             )
      *     ),
      *     @OA\Response(
@@ -220,7 +224,8 @@ class RoomTypeDoc
      *                 @OA\Property(property="out_of_service", type="integer", example=0),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 @OA\Property(property="room_type_name_id", type="integer", nullable=true, example=1),
+     *                 example={"id":1,"accommodation_id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","capacity":42,"extra_capacity":42,"single_bed_count":3,"double_bed_count":3,"sofa_bed_count":3,"out_of_service":"0","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z","room_type_name_id":1}
      *             )
      *     ),
      *     @OA\Response(

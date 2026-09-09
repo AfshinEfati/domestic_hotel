@@ -14,12 +14,14 @@ use App\Http\Controllers\Api\V1\Admin\RatePlanProviderMapController;
 use App\Http\Controllers\Api\V1\Admin\RoomCalendarController;
 use App\Http\Controllers\Api\V1\Admin\RoomCalendarSnapshotController;
 use App\Http\Controllers\Api\V1\Admin\RoomTypeController;
+use App\Http\Controllers\Api\V1\Admin\RoomTypeNameController;
 use App\Http\Controllers\Api\V1\Admin\RoomTypeProviderMapController;
 use App\Http\Controllers\Api\V1\Admin\RuleController;
 use App\Http\Controllers\Api\V1\Admin\StateController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'v1'], function () {
+    Route::get('test-hotel', [\App\Http\Controllers\Api\V1\TestHotelController::class, 'test']);
     Route::group(['prefix' => 'admin'], function () {
         Route::apiResource('accommodation-types', AccommodationTypeController::class);
         Route::apiResource('accommodations', AccommodationController::class);
@@ -31,6 +33,7 @@ Route::group(['prefix' => 'v1'], function () {
         Route::apiResource('facilities', FacilityController::class);
         Route::apiResource('rate-plans', RatePlanController::class);
         Route::apiResource('room-types', RoomTypeController::class);
+        Route::apiResource('room-type-names', RoomTypeNameController::class);
         Route::apiResource('room-calendars', RoomCalendarController::class);
         Route::apiResource('room-calendar-snapshots', RoomCalendarSnapshotController::class);
         Route::apiResource('provider-city-maps', ProviderCityMapController::class);

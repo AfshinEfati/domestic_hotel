@@ -62,9 +62,24 @@ class AccommodationProviderMapService extends BaseService implements Accommodati
         return parent::destroy($id);
     }
 
+    public function countMappedPropertiesByProvider(int $providerId): int
+    {
+        return $this->repository->countMappedPropertiesByProvider($providerId);
+    }
+
+    public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void
+    {
+        $this->repository->chunkMappedPropertiesByProvider($providerId, $chunkSize, $callback);
+    }
+
     public function chunkByProvider(int $providerId, callable $callback): void
     {
         $this->repository->chunkByProvider($providerId, $callback);
+    }
+
+    public function chunkActive(callable $callback): void
+    {
+        $this->repository->chunkActive($callback);
     }
 
     protected function relations(): array

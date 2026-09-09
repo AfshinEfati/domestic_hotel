@@ -3,24 +3,41 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Rule extends Model
 {
     protected $fillable = [
-        'title',
+        'hotel_id',
+        'rule_category_id',
+        'provider_rule_id',
+        'rule_id',
+        'type',
         'name',
-        'is_active',
+        'name_ar',
+        'name_en',
+        'conditions',
+        'room_type_id',
+        'rate_plan_id',
+        'description',
+        'description_ar',
+        'description_en',
+        'status',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'conditions' => 'array',
+        'status' => 'boolean',
+        'rule_id' => 'integer',
     ];
 
-    public function accommodations(): BelongsToMany
+    public function hotel(): BelongsTo
     {
-        return $this->belongsToMany(Accommodation::class, 'accommodation_rule')
-            ->withPivot('value')
-            ->withTimestamps();
+        return $this->belongsTo(Accommodation::class, 'hotel_id');
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(RuleCategory::class, 'rule_category_id');
     }
 }

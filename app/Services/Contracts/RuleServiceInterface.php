@@ -11,4 +11,6 @@ use App\DTOs\RuleDTO;
  */
 interface RuleServiceInterface extends BaseServiceInterface
 {
+    public function getList(array $filters): iterable;
+
 }

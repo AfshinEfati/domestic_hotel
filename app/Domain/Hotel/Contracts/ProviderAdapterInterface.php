@@ -17,7 +17,7 @@ interface ProviderAdapterInterface
     // [{property_id, fa_name, en_name?, city_provider_id, lat?, lng?, address?, star?, type?}]
 
     /** Room Types & Rate Plans (if available per provider) */
-    public function fetchRoomTypes(string $providerPropertyId): Collection; // [{room_type_id, fa_name, en_name?, capacity?, extra?}]
+    public function fetchRoomTypes(string $providerPropertyId): ?Collection; // [{room_type_id, fa_name, en_name?, capacity?, extra?}]
     public function fetchRatePlans(string $providerPropertyId): Collection; // [{rate_plan_id, fa_name, en_name?, meal_type?, sleeps?, cancelable?}]
 
     /** Availability Calendar */

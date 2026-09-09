@@ -60,7 +60,7 @@ class ProviderSeeder extends Seeder
 
         // SnappTrip
         Provider::updateOrCreate(
-            ['code' => 'snapptrip'],
+            ['code' => 'snap'],
             [
                 'fa_name' => 'اسنپ تریپ',
                 'en_name' => 'SnappTrip',

@@ -3,6 +3,7 @@
 namespace App\Domain\Hotel\Providers;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
@@ -14,7 +15,10 @@ use DateTimeInterface;
  */
 class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
 {
-    public function code(): string { return 'grs'; }
+    public function code(): string
+    {
+        return 'grs';
+    }
 
     public function authenticate(): void
     {
@@ -74,9 +78,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'page'    => $page,
             'count'   => $count,
         ])->throw()->json();
-
         $properties = data_get($res, 'value.properties', []);
-
         return collect($properties)->map(function ($p) use ($providerCityId) {
             return [
                 'id'         => (string)$p['id'],
@@ -104,7 +106,14 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
     public function fetchProperties(): array
     {
         $this->authenticate();
-        $res = $this->client()->get('/v1/properties')->throw()->json();
+        $res = $this->client()
+            ->get('/v1/properties', [
+                'page'  => 1,
+                'count' => 5000,
+            ])
+            ->throw()
+            ->json();
+
         return data_get($res, 'value.properties', []);
     }
 
@@ -115,16 +124,37 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
     public function fetchRoomTypes(string $providerPropertyId): Collection
     {
         $this->authenticate();
-        $res = $this->client()->get('/v1/room-types', [
-            'property_id' => $providerPropertyId,
-        ])->throw()->json();
+        $res = $this->client()
+            ->get("/v1/properties/{$providerPropertyId}")
+            ->throw()
+            ->json();
 
-        return collect(data_get($res, 'value.room_types', []))->map(fn($r) => [
+        $property = data_get($res, 'value.property', []);
+
+        $roomTypes = data_get($property, 'room_types', data_get($res, 'value.room_types', []));
+        if (!is_array($roomTypes)) {
+            $roomTypes = [];
+        }
+
+        $facilities = data_get($property, 'facilities', []);
+        if (!is_array($facilities)) {
+            $facilities = [];
+        }
+
+        $rules = data_get($property, 'rules', []);
+        if (!is_array($rules)) {
+            $rules = [];
+        }
+
+        return collect($roomTypes)->map(fn($r) => [
             'room_type_id' => (string)$r['id'],
             'fa_name'      => $r['name'],
-            'en_name'      => $r['en_name'] ?? null,
+            'en_name'      => $r['name_en'] ?? null,
             'capacity'     => data_get($r, 'capacity'),
             'extra'        => data_get($r, 'extra_capacity'),
+            'rate_plans'   => data_get($r, 'rate_plans', []),
+            'property_facilities' => $facilities,
+            'property_rules' => $rules,
         ]);
     }
 
@@ -161,7 +191,6 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'check_in'    => $from->format('Y-m-d'),
             'check_out'   => $to->format('Y-m-d'),
         ])->throw()->json();
-
         $rooms = data_get($res, 'value.rooms', []);
         return collect($rooms)->flatMap(function ($room) {
             $roomTypeId = (string)data_get($room, 'room_type_id', '');
@@ -203,7 +232,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'ok'           => true,
             'reserve_id'   => (string)data_get($val, 'reserve_id'),
             'expires_at'   => data_get($val, 'expires_at'),
-            'price_summary'=> data_get($val, 'price_summary'),
+            'price_summary' => data_get($val, 'price_summary'),
             'hold_details' => data_get($val, 'hold'),
         ];
     }
@@ -222,7 +251,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         return [
             'ok'            => true,
             'reserve_id'    => (string)($val['reserve_id'] ?? $reserveId),
-            'new_expires_at'=> data_get($val, 'expires_at'),
+            'new_expires_at' => data_get($val, 'expires_at'),
         ];
     }
 
@@ -257,7 +286,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'ok'              => true,
             'reserve_id'      => (string)data_get($val, 'reserve_id'),
             'status'          => data_get($val, 'status'),
-            'difference_price'=> data_get($val, 'difference_price'),
+            'difference_price' => data_get($val, 'difference_price'),
         ];
     }
 
@@ -274,7 +303,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'ok'           => true,
             'reserve_id'   => (string)data_get($val, 'reserve_id'),
             'status'       => data_get($val, 'status'),
-            'refund_amount'=> data_get($val, 'refund_amount'),
+            'refund_amount' => data_get($val, 'refund_amount'),
         ];
     }
 
@@ -314,7 +343,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
             'room_type_id' => (string)data_get($val, 'room_type_id'),
             'rate_plan_id' => (string)data_get($val, 'rate_plan_id'),
             'guests'       => data_get($val, 'guests', []),
-            'price_summary'=> data_get($val, 'price_summary'),
+            'price_summary' => data_get($val, 'price_summary'),
             'check_in'     => data_get($val, 'check_in'),
             'check_out'    => data_get($val, 'check_out'),
             'voucher_url'  => data_get($val, 'voucher_url'),
@@ -324,7 +353,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
     /** -------------------- Webhooks -------------------- */
     public function supportedWebhooks(): array
     {
-        return ['AvailableChanged','ReserveChanged','PropertyChanged','ReserveActivity'];
+        return ['AvailableChanged', 'ReserveChanged', 'PropertyChanged', 'ReserveActivity'];
     }
 
     /**

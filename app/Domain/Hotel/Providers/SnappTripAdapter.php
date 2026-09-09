@@ -3,18 +3,16 @@
 namespace App\Domain\Hotel\Providers;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
-use App\Models\SystemLog;
-use Exception;
-use Illuminate\Support\Collection;
+use App\Models\AccommodationProviderMap;
+use App\Services\HotelDataSyncService;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
-/**
- * SnappTrip Adapter
- * Auth: API Key in header
- */
 class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
 {
     public function code(): string
@@ -26,172 +24,14 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     {
         $token = $this->provider->config['token'] ?? null;
         if (!$token) {
-            throw new RuntimeException("SnappTrip provider missing token (api-key) in config");
+            throw new RuntimeException('SnappTrip provider missing token (api-key)');
         }
+
         $this->setHeader('api-key', $token);
+        $this->setHeader('Accept', 'application/json');
     }
 
     /**
-     * Fetch Cities
-     * Endpoint: GET /cities/
-     * @return Collection
-     * @throws RequestException
-     * @throws ConnectionException
-     */
-    public function fetchCities(): Collection
-    {
-        $this->authenticate();
-        $res = $this->client()->get('/cities/')->throw()->json();
-        return collect($res)->map(function ($c) {
-            return [
-                'id' => (string)($c['id'] ?? ''),
-                'name' => $c['title_fa'] ?? null,
-                'name_en' => $c['title_en'] ?? null,
-                'province_id' => (string)($c['state']['id'] ?? ''),
-                'province_name' => $c['state']['title'] ?? null,
-                'country_id' => null, // Not provided
-            ];
-        });
-    }
-
-    /**
-     * Fetch Properties (Hotels) by City
-     * Endpoint: GET /cities/{id}/hotels
-     * @param string $providerCityId
-     * @param int $page
-     * @param int $count
-     * @return Collection
-     */
-    public function fetchPropertiesByCity(string $providerCityId, int $page = 1, int $count = 1000): Collection
-    {
-        $this->authenticate();
-
-        try {
-            $res = $this->client()->get("/cities/$providerCityId/hotels", [
-                'limit' => $count,
-                'offset' => 0,
-            ])->throw()->json();
-        } catch (Exception $e) {
-            SystemLog::create([
-                'level' => 'error',
-                'method' => 'fetchPropertiesByCity',
-                'message' => $e->getMessage(),
-                'provider_id' => $this->provider->id,
-                'context' => ['city_id' => $providerCityId, 'step' => 'list_fetch'],
-            ]);
-            return collect();
-        }
-        $items = $res['items'] ?? $res;
-        $detailedHotels = collect();
-        foreach ($items as $h) {
-            $hotelId = $h['id'];
-
-            try {
-                $detailRes = $this->client()->get('/hotels/', [
-                    'id' => $hotelId
-                ])->throw()->json();
-
-                $detail = $detailRes[0] ?? null;
-
-                if (!$detail) {
-                    continue;
-                }
-
-                $detailedHotels->push([
-                    'id' => (string)$detail['id'],
-                    'city_provider_id' => $providerCityId,
-                    'name' => $detail['title'] ?? $h['name'],
-                    'fa_name' => $detail['title'] ?? $h['name'],
-                    'en_name' => $detail['title_en'] ?? null,
-                    'address' => $detail['address'] ?? null,
-                    'latitude' => $detail['location']['lat'] ?? null,
-                    'longitude' => $detail['location']['lon'] ?? null,
-                    'star' => $detail['stars'] ?? 0,
-                    'type' => $detail['accommodation_title'] ?? 'هتل',
-                    'type_en' => $detail['accommodation_type'] ?? 'Hotel',
-                    'facilities' => collect($detail['facilities'] ?? [])->map(function ($f) {
-                        return [
-                            'name' => $f['title'],
-                            'name_en' => null,
-                            'group_name' => 'امکانات',
-                            'group_name_en' => 'Facilities',
-                            'description' => null,
-                        ];
-                    })->toArray(),
-                ]);
-
-            } catch (Exception $e) {
-                SystemLog::create([
-                    'level' => 'error',
-                    'method' => 'fetchPropertiesByCity',
-                    'message' => $e->getMessage(),
-                    'provider_id' => $this->provider->id,
-                    'context' => ['hotel_id' => $hotelId, 'step' => 'detail_fetch'],
-                ]);
-                continue;
-            }
-        }
-
-        return $detailedHotels;
-    }
-
-    /**
-     * Fetch Room Types
-     * Endpoint: GET /hotels/rooms?id={id}
-     * @param string $providerPropertyId
-     * @return Collection
-     * @throws RequestException
-     * @throws ConnectionException
-     */
-    public function fetchRoomTypes(string $providerPropertyId): Collection
-    {
-        $this->authenticate();
-
-        $res = $this->client()->get('/hotels/rooms', [
-            'id' => $providerPropertyId,
-        ])->throw()->json();
-
-        // Response structure: items[0].rooms[]
-        $hotelData = data_get($res, 'items.0', []);
-        $rooms = data_get($hotelData, 'rooms', []);
-
-        return collect($rooms)->map(function ($r) {
-            return [
-                'room_type_id' => (string)$r['id'],
-                'fa_name' => $r['title'] ?? null,
-                'en_name' => null,
-                'capacity' => ($r['adults'] ?? 0) + ($r['children'] ?? 0),
-                'adults' => $r['adults'] ?? 0,
-                'children' => $r['children'] ?? 0,
-                'extra' => $r['extra_bed'] ?? 0,
-                'board_type' => $r['board_type'] ?? null, // Useful for rate plan mapping
-            ];
-        });
-    }
-
-    /**
-     * Fetch Rate Plans
-     * SnappTrip doesn't have explicit RatePlans endpoint.
-     * We can infer them from Room Types or return empty if not applicable.
-     * @param string $providerPropertyId
-     * @return Collection
-     */
-    public function fetchRatePlans(string $providerPropertyId): Collection
-    {
-        // Since rate plans are tied to rooms (board_type), we could return dummy plans
-        // or rely on fetchAvailability to provide rate info.
-        // For now, returning empty as per typical adapter pattern if not explicit.
-        return collect();
-    }
-
-    /**
-     * Fetch Availability
-     * Endpoint: GET /availability/hotels/{id}/calendar
-     * @param string $providerPropertyId
-     * @param DateTimeInterface $from
-     * @param DateTimeInterface $to
-     * @return Collection
-     * @throws RequestException
      * @throws ConnectionException
      */
     public function fetchAvailability(
@@ -202,197 +42,391 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
     {
         $this->authenticate();
 
-        $res = $this->client()->get("/availability/hotels/$providerPropertyId/calendar", [
-            'from' => $from->format('Y-m-d'),
-            'to' => $to->format('Y-m-d'),
-        ])->throw()->json();
+        $providerId = (int)$this->provider->id;
 
-        $hotelData = data_get($res, 'items.0', []);
-        $rooms = data_get($hotelData, 'rooms', []);
+        $map = AccommodationProviderMap::query()
+            ->where('provider_id', $providerId)
+            ->where('provider_property_id', $providerPropertyId)
+            ->first();
 
-        $availability = collect();
+        if (!$map) {
+            Log::warning('SnappTrip: AccommodationProviderMap not found', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+            ]);
+            return collect();
+        }
 
-        foreach ($rooms as $room) {
-            $roomId = (string)$room['id'];
-            $dailyData = $room['daily'] ?? [];
+        // 1) meta (short range)
+        $roomMeta = $this->fetchRoomMetaFromAvailabilityEndpoint($providerPropertyId, $from);
 
-            foreach ($dailyData as $dateStr => $data) {
-                $availability->push([
-                    'day' => $dateStr,
-                    'room_type_id' => $roomId,
-                    'inventory' => $data['availability'] ?? 0,
-                    'daily_rate' => $data['price'] ?? 0,
-                    'rack_rate' => $data['original_sell_price'] ?? 0,
-                    'min_stay' => $data['min_stay'] ?? 1,
-                    'max_stay' => null,
-                    'cta' => false,
-                    'ctd' => false,
-                    'closed' => ($data['availability'] ?? 0) <= 0,
-                    // Rate plan info is implicit in the room/price
-                    'rate_plan_id' => null,
+        // 2) calendar (long range)
+        try {
+            $calendar = $this->client()->get(
+                "/availability/hotels/{$providerPropertyId}/calendar",
+                [
+                    'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
+                    'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
+                ]
+            )->json();
+        } catch (ConnectionException $e) {
+            Log::error('SnappTrip: calendar request connection failed', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
+                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        } catch (Throwable $e) {
+            Log::error('SnappTrip: calendar request failed', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
+                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
+                'error' => $e->getMessage(),
+            ]);
+            return collect();
+        }
+
+        $rooms = data_get($calendar, 'rooms', []);
+        if (!is_array($rooms) || empty($rooms)) {
+            Log::warning('SnappTrip: calendar returned empty rooms', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
+                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
+            ]);
+            return collect();
+        }
+
+        // 3) sync virtual room_types + rate_plans (NO extra snapp requests)
+        $roomTypesData = $this->buildRoomTypesDataForSync($rooms, $roomMeta);
+
+        if (empty($roomTypesData)) {
+            Log::warning('SnappTrip: generated roomTypesData is empty (cannot sync room_types/rate_plans)', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+            ]);
+        } else {
+            try {
+                /** @var HotelDataSyncService $syncService */
+                $syncService = app(HotelDataSyncService::class);
+                $syncService->syncRoomTypes($map, $roomTypesData);
+
+                Log::info('SnappTrip: synced virtual room types & rate plans via HotelDataSyncService', [
+                    'provider_id' => $providerId,
+                    'property_id' => $providerPropertyId,
+                    'room_types_count' => count($roomTypesData),
+                ]);
+            } catch (Throwable $e) {
+                Log::error('SnappTrip: syncRoomTypes failed (room_types/rate_plans may be missing => calendars may not save)', [
+                    'provider_id' => $providerId,
+                    'property_id' => $providerPropertyId,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        return $availability;
+        // 4) output normalized availability rows
+        return collect($rooms)->flatMap(function (array $room) use ($roomMeta) {
+
+            $roomId = $this->asNumericString($room['id'] ?? null);
+            if ($roomId === null) {
+                return collect();
+            }
+
+            $meta = $roomMeta->get($roomId, []);
+
+            $roomTitle = (string)($meta['title'] ?? $room['name'] ?? $room['title'] ?? $roomId);
+            $boardType = (string)($room['board_type'] ?? ($meta['board_type'] ?? 'default'));
+
+            $ratePlanProviderId = $this->makeVirtualRatePlanProviderId($roomId, $boardType);
+            $ratePlanName = $this->makeVirtualRatePlanName($roomTitle, $boardType);
+
+            $daily = $room['daily'] ?? [];
+            if (!is_array($daily) || empty($daily)) {
+                return collect();
+            }
+
+            return collect($daily)->map(function (array $dayData, string $day) use (
+                $roomId,
+                $ratePlanProviderId,
+                $ratePlanName
+            ) {
+                $inventory = (int)($dayData['availability'] ?? 0);
+
+                return [
+                    'day' => $day,
+                    'inventory' => $inventory,
+                    'rack_rate' => $this->toIntOrNull($dayData['original_sell_price'] ?? null),
+                    'daily_rate' => $this->toIntOrNull($dayData['price'] ?? null),
+                    'grs_rate' => null,
+                    'min_stay' => $this->normalizeMinStay($dayData['min_stay'] ?? null),
+                    'max_stay' => null,
+                    'cta' => false,
+                    'ctd' => false,
+                    'closed' => $inventory <= 0,
+                    'room_type_id' => $roomId,
+                    'rate_plan_id' => $ratePlanProviderId,
+                    'rate_plan_name' => $ratePlanName,
+                ];
+            });
+        })->values();
     }
 
     /**
-     * Reserve
-     * Endpoint: POST /booking/create
-     * @param array $payload
-     * @return array
-     * @throws RequestException
-     * @throws ConnectionException
+     * DISABLED FOR SNAPP (must not hit provider endpoints here)
      */
-    public function reserve(array $payload): array
+    public function fetchRoomTypes(string $providerPropertyId): ?Collection
     {
-        $this->authenticate();
-        $snappPayload = [
-            'hotel_id' => (int)($payload['hotel_id'] ?? 0),
-            'checkin' => $payload['checkin'],
-            'checkout' => $payload['checkout'],
-            'email' => $payload['holder']['email'] ?? '',
-            'phone' => $payload['holder']['mobile'] ?? '',
-            'note' => $payload['holder']['note'] ?? '',
-            'rooms' => [],
-        ];
+        return null;
+    }
 
-        foreach ($payload['rooms'] as $room) {
-            $guests = [];
-            foreach ($room['guests'] as $guest) {
-                $guests[] = [
-                    'first_name' => $guest['first_name'],
-                    'last_name' => $guest['last_name'],
-                    'foreigner' => $guest['is_foreigner'] ?? false,
-                ];
+    public function fetchRatePlans(string $providerPropertyId): Collection
+    {
+        return collect();
+    }
+
+    private function fetchRoomMetaFromAvailabilityEndpoint(
+        string            $providerPropertyId,
+        DateTimeInterface $from
+    ): Collection
+    {
+        $providerId = (int)$this->provider->id;
+
+        $checkin = CarbonImmutable::parse($from)->format('Y-m-d');
+        $checkout = CarbonImmutable::parse($from)->addDays(2)->format('Y-m-d');
+
+        try {
+            $res = $this->client()->get('/availability/hotels', [
+                'id' => (int)$providerPropertyId,
+                'checkin' => $checkin,
+                'checkout' => $checkout,
+            ])->json();
+        } catch (Throwable $e) {
+            Log::warning('SnappTrip: availability(hotels) meta request failed', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+                'checkin' => $checkin,
+                'checkout' => $checkout,
+                'error' => $e->getMessage(),
+            ]);
+            return collect();
+        }
+
+        $items = is_array($res) ? $res : [];
+        $firstHotel = $items[0] ?? null;
+
+        $avail = is_array($firstHotel) ? ($firstHotel['availability'] ?? []) : [];
+        if (!is_array($avail) || empty($avail)) {
+            Log::warning('SnappTrip: availability(hotels) meta returned empty', [
+                'provider_id' => $providerId,
+                'property_id' => $providerPropertyId,
+                'checkin' => $checkin,
+                'checkout' => $checkout,
+            ]);
+            return collect();
+        }
+
+        return collect($avail)
+            ->map(fn($it) => is_array($it) ? ($it['room'] ?? null) : null)
+            ->filter(fn($room) => is_array($room) && !empty($room['id']))
+            ->mapWithKeys(function (array $room) {
+                $id = $this->asNumericString($room['id'] ?? null);
+                if ($id === null) {
+                    return [];
+                }
+
+                return [$id => [
+                    'id' => $id,
+                    'title' => (string)($room['title'] ?? $room['name'] ?? $id),
+                    'board_type' => (string)($room['board_type'] ?? 'default'),
+                    'adults' => $room['adults'] ?? null,
+                    'children' => $room['children'] ?? null,
+                    'extra_bed' => $room['extra_bed'] ?? null,
+                ]];
+            });
+    }
+
+    private function buildRoomTypesDataForSync(array $calendarRooms, Collection $roomMeta): array
+    {
+        $out = [];
+
+        foreach ($calendarRooms as $room) {
+            if (!is_array($room)) continue;
+
+            $roomId = $this->asNumericString($room['id'] ?? null);
+            if ($roomId === null) continue;
+
+            $meta = $roomMeta->get($roomId, []);
+
+            $title = (string)($meta['title'] ?? $room['name'] ?? $room['title'] ?? $roomId);
+            $boardType = (string)($room['board_type'] ?? ($meta['board_type'] ?? 'default'));
+
+            $adults = $this->toIntOrNull($meta['adults'] ?? null);
+            $children = $this->toIntOrNull($meta['children'] ?? null);
+            $extra = $this->toIntOrNull($meta['extra_bed'] ?? null);
+
+            $capacity = null;
+            if (($adults ?? 0) + ($children ?? 0) > 0) {
+                $capacity = (int)(($adults ?? 0) + ($children ?? 0));
             }
 
-            $snappPayload['rooms'][] = [
-                'room_id' => (int)$room['room_type_id'],
-                'children' => $room['children_count'] ?? 0,
-                'infants' => $room['infants_count'] ?? 0,
-                'extra_beds' => $room['extra_beds'] ?? 0,
-                'guests' => $guests,
+            $providerRatePlanId = $this->makeVirtualRatePlanProviderId($roomId, $boardType);
+            $ratePlanName = $this->makeVirtualRatePlanName($title, $boardType);
+            $mealTypeForDb = $this->mapMealTypeForDb($boardType);
+            $out[] = [
+                'room_type_id' => $roomId,
+                'fa_name' => $title,
+                'en_name' => null,
+                'capacity' => $capacity,
+                'extra' => ($extra !== null && $extra > 0) ? $extra : null,
+                'rate_plans' => [
+                    [
+                        'id' => $providerRatePlanId,
+                        'name' => $ratePlanName,
+                        'name_en' => null,
+                        'meal_type_included' => $mealTypeForDb,
+                        'cancelable' => true,
+                        'sleeps' => $capacity,
+                        'min_stay' => null,
+                        'max_stay' => null,
+                    ],
+                ],
             ];
         }
 
-        $res = $this->client()->post('/booking/create', $snappPayload)->throw()->json();
+        $unique = [];
+        foreach ($out as $row) {
+            $unique[$row['room_type_id']] = $row;
+        }
 
-        return [
-            'reserve_id' => $res['reservation_code'],
-            'expires_at' => now()->addMinutes(15)->toDateTimeString(), // Assumed 15 mins based on lock endpoint
-            'price_summary' => $res['price'],
-            'status' => $res['state'],
-            'raw_response' => $res,
-        ];
+        return array_values($unique);
     }
 
     /**
-     * Extend Expiration (Lock)
-     * Endpoint: POST /booking/{code}/lock
-     * @param string $reserveId
-     * @return array
-     * @throws RequestException
-     * @throws ConnectionException
+     * Map Snapp board_type to YOUR DB allowed values for rate_plans.meal_type
+     * If you don't know the enum set, safest is returning null.
+     *
+     * ✅ You can adjust these strings to whatever your DB expects, e.g:
+     * - 'BB' / 'RO' / 'HB' / 'FB' / 'AI' ...
+     * - or 'breakfast' / 'room_only' ...
      */
+    private function mapMealTypeForDb(string $boardType): ?string
+    {
+        $bt = strtolower(trim($boardType));
+        return match ($bt) {
+            'bed_breakfast', 'bed_breakfasts', 'bb', 'breakfast' => 'breakfast',
+            'room_only', 'ro' => null,
+            'half_breakfast', 'half_board', 'hb' => 'half_board',
+            'full_board' => 'full_board',
+            default => null,
+        };
+    }
+
+    private function makeVirtualRatePlanProviderId(string $roomId, string $boardType): string
+    {
+        $base = (int)$roomId;
+        $code = $this->boardCode($boardType);
+        return (string)(($base * 1000) + $code);
+    }
+
+    private function boardCode(string $boardType): int
+    {
+        $bt = strtolower(trim($boardType));
+
+        return match ($bt) {
+            'bed_breakfast', 'bed_breakfasts', 'bb', 'breakfast' => 1,
+            'room_only', 'ro' => 2,
+            'default', '', 'standard' => 9,
+            default => (abs(crc32($bt)) % 900) + 100,
+        };
+    }
+
+    private function makeVirtualRatePlanName(string $roomTitle, string $boardType): string
+    {
+        $bt = strtolower(trim($boardType));
+
+        return match ($bt) {
+            'bed_breakfast', 'bed_breakfasts', 'bb', 'breakfast' => "{$roomTitle} (BB)",
+            'room_only', 'ro' => "{$roomTitle} (RO)",
+            default => "{$roomTitle} (Standard)",
+        };
+    }
+
+    private function normalizeMinStay(mixed $value): ?int
+    {
+        if (!is_numeric($value)) return null;
+        $v = (int)$value;
+        return $v > 0 ? $v : null;
+    }
+
+    private function toIntOrNull(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int)$value : null;
+    }
+
+    private function asNumericString(mixed $value): ?string
+    {
+        if ($value === null) return null;
+        if (is_int($value)) return (string)$value;
+        if (is_string($value) && preg_match('/^\d+$/', $value)) return $value;
+        if (is_numeric($value)) return (string)((int)$value);
+        return null;
+    }
+
+    /* Unsupported */
+    public function fetchCities(): Collection
+    {
+        return collect();
+    }
+
+    public function fetchProperties(): Collection
+    {
+        return collect();
+    }
+
+    public function fetchPropertiesByCity(string $providerCityId, int $page = 1, int $count = 1000): Collection
+    {
+        return collect();
+    }
+
+    public function reserve(array $payload): array
+    {
+        throw new RuntimeException('Not supported');
+    }
+
     public function extendExpire(string $reserveId): array
     {
-        $this->authenticate();
-
-        $this->client()->post("/booking/$reserveId/lock")->throw();
-
-        return [
-            'reserve_id' => $reserveId,
-            'new_expires_at' => now()->addMinutes(15)->toDateTimeString(),
-        ];
+        throw new RuntimeException('Not supported');
     }
 
-    /**
-     * Book (Confirm)
-     * Endpoint: POST /booking/{code}/confirm
-     * @param array $payload
-     * @return array
-     * @throws RequestException
-     * @throws ConnectionException
-     */
     public function book(array $payload): array
     {
-        $this->authenticate();
-
-        $reserveId = $payload['reserve_id'];
-
-        $res = $this->client()->post("/booking/$reserveId/confirm")->throw()->json();
-
-        return [
-            'reserve_id' => $res['reservation_code'] ?? $reserveId,
-            'status' => $res['state'] ?? 'confirmed',
-            'voucher_url' => null, // Not provided in response
-            'reference_code' => $res['reservation_code'] ?? null,
-        ];
+        throw new RuntimeException('Not supported');
     }
 
-    /**
-     * Modify
-     * Not supported by API v2
-     * @param array $payload
-     * @return array
-     */
     public function modify(array $payload): array
     {
-        throw new RuntimeException("Modify operation not supported by SnappTrip API.");
+        throw new RuntimeException('Not supported');
     }
 
-    /**
-     * Cancel
-     * Not supported by API v2
-     * @param array $payload
-     * @return array
-     */
     public function cancel(array $payload): array
     {
-        throw new RuntimeException("Cancel operation not supported by SnappTrip API.");
+        throw new RuntimeException('Not supported');
     }
 
-    /**
-     * Reserves List
-     * Not supported by API v2
-     * @param array $filters
-     * @return Collection
-     */
     public function reservesList(array $filters = []): Collection
     {
         return collect();
     }
 
-    /**
-     * Reserve Details
-     * Endpoint: GET /booking/{code}
-     * @param string $reserveId
-     * @return array
-     * @throws RequestException
-     * @throws ConnectionException
-     */
     public function reserveDetails(string $reserveId): array
     {
-        $this->authenticate();
-
-        $res = $this->client()->get("/booking/$reserveId")->throw()->json();
-
-        return [
-            'reserve_id' => $res['reservation_code'],
-            'status' => $res['state'],
-            'total_price' => $res['price'],
-            'created_at' => null, // Not provided
-            'hotel_id' => (string)$res['hotel_id'],
-            'rooms' => $res['rooms'] ?? [],
-        ];
+        throw new RuntimeException('Not supported');
     }
 
-    /**
-     * Supported Webhooks
-     * @return array
-     */
     public function supportedWebhooks(): array
     {
         return [];
@@ -400,15 +434,6 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
 
     public function fetchFacilities(): Collection
     {
-        $this->authenticate();
-        // Endpoint: GET /hotels/facilities?id=...
-        // Requires IDs, so leaving empty for generic call
-        return collect();
-    }
-
-    public function fetchProperties(): Collection
-    {
-        // Not efficient to fetch all
         return collect();
     }
 }

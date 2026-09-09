@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\RoomType;
 use App\Repositories\Contracts\RoomTypeRepositoryInterface;
+use Illuminate\Database\Eloquent\Model;
 
 class RoomTypeRepository extends BaseRepository implements RoomTypeRepositoryInterface
 {
@@ -31,5 +32,29 @@ class RoomTypeRepository extends BaseRepository implements RoomTypeRepositoryInt
     {
         /** @var RoomType */
         return parent::store($data);
+    }
+
+    public function firstOrCreate(array $attributes = [], array $values = []): Model
+    {
+        // TODO: Implement firstOrCreate() method.
+    }
+
+    public function updateOrCreate(array $attributes, array $values = []): Model
+    {
+        // TODO: Implement updateOrCreate() method.
+    }
+
+    public function getList(array $filters = []): iterable
+    {
+        $query = $this->model->query();
+        if (isset($filters['from'], $filters['to'])) {
+            $from = (int)$filters['from'];
+            $to = (int)$filters['to'];
+            $query->skip($from)->take($to);
+        }
+        return $query
+            ->with(['roomTypeName'])
+            ->orderBy('id')
+            ->get();
     }
 }

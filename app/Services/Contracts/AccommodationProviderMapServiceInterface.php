@@ -27,4 +27,12 @@ interface AccommodationProviderMapServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
-    public function chunkByProvider(int $providerId, callable $callback): void;}
+
+    public function countMappedPropertiesByProvider(int $providerId): int;
+
+    public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void;
+
+    public function chunkByProvider(int $providerId, callable $callback): void;
+
+    public function chunkActive(callable $callback): void;
+}

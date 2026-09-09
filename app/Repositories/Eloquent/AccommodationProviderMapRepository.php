@@ -33,8 +33,42 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
         return parent::store($data);
     }
 
+    public function countMappedPropertiesByProvider(int $providerId): int
+    {
+        return (int) $this->model
+            ->where('provider_id', $providerId)
+            ->whereNotNull('provider_property_id')
+            ->count();
+    }
+
+    public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void
+    {
+        $this->model
+            ->where('provider_id', $providerId)
+            ->whereNotNull('provider_property_id')
+            ->select('id', 'provider_property_id')
+            ->orderBy('id')
+            ->chunkById(max(1, $chunkSize), $callback, 'id');
+    }
+
     public function chunkByProvider(int $providerId, callable $callback): void
     {
         $this->model->where('provider_id', $providerId)->chunk(100, $callback);
+    }
+
+    public function chunkActive(callable $callback): void
+    {
+        // برای تست فعلا ۱۰ دونه میگیریم
+//        $maps = $this->model
+//            ->whereHas('provider', function ($query) {
+//                $query->where('is_active', true);
+//            })
+//            ->limit(20)
+//            ->get();
+//        $callback($maps);
+        // بعد از تست اون بالا رو پاک کن و این پایین رو فعال کن .
+        $this->model->whereHas('provider', function ($query) {
+            $query->where('is_active', true);
+        })->chunk(100, $callback);
     }
 }

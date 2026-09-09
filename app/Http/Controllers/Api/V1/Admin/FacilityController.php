@@ -18,7 +18,7 @@ class FacilityController
     public function index(): JsonResponse
     {
         $data = $this->service->index();
-
+        $data->load(['group']);
         return StatusHelper::successResponse(FacilityResource::collection($data));
     }
 

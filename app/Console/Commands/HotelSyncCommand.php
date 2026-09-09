@@ -6,9 +6,10 @@ use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
-use DB;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class HotelSyncCommand extends Command
 {
@@ -19,49 +20,89 @@ class HotelSyncCommand extends Command
     protected $description = 'همگام‌سازی دیتا از تأمین‌کننده‌ها (شهرها، هتل‌ها، نرخ/ظرفیت)';
 
     /**
-     * @throws BindingResolutionException
+     * @param HotelSyncService $service
+     * @return int
      */
     public function handle(HotelSyncService $service): int
     {
         $providerCode = $this->argument('provider');
         $days = (int)$this->option('days');
 
-        $provider = Provider::where('code', $providerCode)->first();
+        $provider = Provider::query()->where('code', $providerCode)->first();
         if (!$provider) {
             $this->error("Provider {$providerCode} not found.");
             return self::FAILURE;
         }
 
-        /** @var ProviderAdapterInterface $adapter */
-        $adapter = app()->makeWith(ProviderAdapterInterface::class, [
-            'provider' => $provider,
-        ]);
-
-        // ۱. سنک شهرها
-        $this->info("Syncing cities for provider: {$providerCode}");
-        $service->syncCities($provider, $adapter);
-
-        // ۲. سنک هتل‌ها برای همه‌ی شهرهای provider
-        $this->info("Syncing properties...");
-        $providerCityIds = DB::table('provider_city_maps')
-            ->where('provider_id', $provider->id)
-            ->pluck('provider_city_id');
-
-        foreach ($providerCityIds as $providerCityId) {
-            $service->syncPropertiesForCity($provider, $adapter, (string)$providerCityId);
+        try {
+            /** @var ProviderAdapterInterface $adapter */
+            $adapter = app()->makeWith(ProviderAdapterInterface::class, [
+                'provider' => $provider,
+            ]);
+        } catch (BindingResolutionException $e) {
+            $this->error("Failed to resolve adapter for provider {$providerCode}: {$e->getMessage()}");
+            return self::FAILURE;
         }
 
-        // ۳. کراول نرخ/ظرفیت
-        $from = CarbonImmutable::today();
-        $to   = $from->addDays($days);
+        try {
+            $this->info("Syncing cities for provider: {$providerCode}");
+            $service->syncCities($provider, $adapter);
+        } catch (Throwable $e) {
+            $this->error("Failed to sync cities: {$e->getMessage()}");
+            return self::FAILURE;
+        }
 
-        $this->info("Crawling availability {$days} days...");
-        $providerPropertyIds = DB::table('accommodation_provider_maps')
-            ->where('provider_id', $provider->id)
-            ->pluck('provider_property_id');
+        try {
+            $this->info("Syncing properties...");
+            $providerCityIds = DB::table('provider_city_maps')
+                ->where('provider_id', $provider->id)
+                ->lazy()
+                ->pluck('provider_city_id');
 
-        foreach ($providerPropertyIds as $ppid) {
-            $service->crawlAvailabilityForProperty($provider, $adapter, (string)$ppid, $from, $to);
+            $bar = $this->output->createProgressBar($providerCityIds->count());
+            $bar->start();
+
+            foreach ($providerCityIds as $providerCityId) {
+                try {
+                    $service->syncPropertiesForCity($provider, $adapter, (string)$providerCityId);
+                } catch (Throwable $e) {
+                    $this->warn("Failed to sync properties for city {$providerCityId}: {$e->getMessage()}");
+                }
+                $bar->advance();
+            }
+            $bar->finish();
+            $this->newLine();
+        } catch (Throwable $e) {
+            $this->error("Error during properties sync: {$e->getMessage()}");
+            return self::FAILURE;
+        }
+
+        try {
+            $from = CarbonImmutable::today();
+            $to = $from->addDays($days);
+
+            $this->info("Crawling availability {$days} days...");
+            $providerPropertyIds = DB::table('accommodation_provider_maps')
+                ->where('provider_id', $provider->id)
+                ->lazy()
+                ->pluck('provider_property_id');
+
+            $bar = $this->output->createProgressBar($providerPropertyIds->count());
+            $bar->start();
+
+            foreach ($providerPropertyIds as $ppid) {
+                try {
+                    $service->crawlAvailabilityForProperty($provider, $adapter, (string)$ppid, $from, $to);
+                } catch (Throwable $e) {
+                    $this->warn("Failed to crawl availability for property {$ppid}: {$e->getMessage()}");
+                }
+                $bar->advance();
+            }
+            $bar->finish();
+            $this->newLine();
+        } catch (Throwable $e) {
+            $this->error("Error during availability crawl: {$e->getMessage()}");
+            return self::FAILURE;
         }
 
         $this->info("Sync completed for provider: {$providerCode}");

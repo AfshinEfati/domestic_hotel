@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Accommodation extends Model
 {
@@ -56,11 +57,14 @@ class Accommodation extends Model
             ->withTimestamps();
     }
 
-    public function rules(): BelongsToMany
+    public function rules(): HasMany
     {
-        return $this->belongsToMany(Rule::class, 'accommodation_rule')
-            ->withPivot('value')
-            ->withTimestamps();
+        return $this->hasMany(Rule::class, 'hotel_id');
+    }
+
+    public function childPolicy(): HasOne
+    {
+        return $this->hasOne(HotelChildPolicy::class, 'accommodation_id');
     }
     public function rooms(): HasMany
     {

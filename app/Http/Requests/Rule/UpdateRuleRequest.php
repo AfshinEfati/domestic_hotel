@@ -14,9 +14,21 @@ class UpdateRuleRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['sometimes', 'required', 'string'],
-            'name' => ['sometimes', 'required', 'string', 'unique:rules,name,' . $this->route('rule')->id],
-            'is_active' => ['sometimes', 'required', 'boolean'],
+            'hotel_id' => ['sometimes', 'required', 'integer', 'exists:accommodations,id'],
+            'rule_category_id' => ['sometimes', 'required', 'integer', 'exists:rule_categories,id'],
+            'provider_rule_id' => ['sometimes', 'required', 'string'],
+            'rule_id' => ['sometimes', 'nullable', 'integer'],
+            'type' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'name_ar' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'name_en' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'conditions' => ['sometimes', 'nullable', 'array'],
+            'room_type_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'rate_plan_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'description' => ['sometimes', 'nullable', 'string'],
+            'description_ar' => ['sometimes', 'nullable', 'string'],
+            'description_en' => ['sometimes', 'nullable', 'string'],
+            'status' => ['sometimes', 'nullable', 'boolean'],
         ];
     }
 }

@@ -29,6 +29,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUnique
     private const RATE_LIMITER_PREFIX = 'grs-availability';
     private const RATE_LIMITER_DECAY_SECONDS = 60;
     private const LOG_CONTENT_LIMIT = 2048;
+    private const MAX_TRIES = 2;
 
     /**
      * The number of minutes the job should be unique.
@@ -75,7 +76,7 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUnique
         public int $throttleMs,
         public int $requestsPerMinute,
     ) {
-        $this->maxAttempts = max(1, $maxAttempts);
+        $this->maxAttempts = $this->resolveMaxAttempts($maxAttempts);
         $this->throttleMs = max(0, $throttleMs);
         $this->requestsPerMinute = max(0, $requestsPerMinute);
         $this->tries = $this->maxAttempts;
@@ -589,5 +590,12 @@ class SyncGrsAvailabilityForPropertyJob implements ShouldQueue, ShouldBeUnique
         }
 
         return max($baseDelaySeconds, $availableInSeconds);
+    }
+
+    private function resolveMaxAttempts(int $maxAttempts): int
+    {
+        $value = max(1, $maxAttempts);
+
+        return min($value, self::MAX_TRIES);
     }
 }

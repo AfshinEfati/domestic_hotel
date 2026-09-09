@@ -10,6 +10,7 @@ class RoomType extends Model
     protected $fillable = [
         'id',
         'accommodation_id',
+        'room_type_name_id',
         'fa_name',
         'en_name',
         'capacity',
@@ -40,5 +41,10 @@ class RoomType extends Model
     public function accommodation(): BelongsTo
     {
         return $this->belongsTo(Accommodation::class);
+    }
+
+    public function roomTypeName(): BelongsTo
+    {
+        return $this->belongsTo(RoomTypeName::class);
     }
 }

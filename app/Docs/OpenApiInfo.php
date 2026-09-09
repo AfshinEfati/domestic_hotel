@@ -16,11 +16,11 @@ use OpenApi\Annotations as OA;
  *         )
  *     ),
  *     @OA\Server(
- *         url="http://dhotel.local",
+ *         url="http://domestic-hotel.local",
  *         description="Development Server"
  *     ),
  *     @OA\Server(
- *         url="https://api.example.com",
+ *         url="https://newhotel.shahansafar.ir",
  *         description="Production Server"
  *     )
  * )

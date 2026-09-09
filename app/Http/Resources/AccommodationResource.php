@@ -3,10 +3,12 @@
 namespace App\Http\Resources;
 
 use App\Helpers\StatusHelper;
+use App\Models\Accommodation;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class AccommodationResource extends JsonResource
 {
+    /** @mixin Accommodation */
     public function toArray($request): array
     {
         return [
@@ -27,6 +29,8 @@ class AccommodationResource extends JsonResource
             'type' => AccommodationTypeResource::make(
                 $this->whenLoaded('type', fn ($type) => $type->withoutRelations())
             ),
+            'rules' => RuleResource::collection($this->whenLoaded('rules')),
+            'childPolicy'=> HotelChildPolicyResource::make($this->whenLoaded('childPolicy')),
             'rooms' => RoomTypeResource::collection($this->whenLoaded('rooms')),
             'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
         ];

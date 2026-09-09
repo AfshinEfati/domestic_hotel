@@ -154,20 +154,9 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
      * @throws RequestException
      * @throws ConnectionException
      */
-    public function fetchRoomTypes(string $providerPropertyId): Collection
+    public function fetchRoomTypes(string $providerPropertyId): ?Collection
     {
-        $this->authenticate();
-        $res = $this->client()->get('hotel/room-types', [
-            'propertyId' => $providerPropertyId,
-        ])->throw()->json();
-
-        return collect(data_get($res, 'data', []))->map(fn($rt) => [
-            'room_type_id' => (string)$rt['id'],
-            'fa_name' => $rt['fa_name'],
-            'en_name' => $rt['en_name'] ?? null,
-            'capacity' => data_get($rt, 'capacity'),
-            'extra' => data_get($rt, 'extra_capacity'),
-        ]);
+        return null;
     }
 
     /**

@@ -12,7 +12,7 @@ jobs:
   push-to-gitlab:
     runs-on: ubuntu-latest
     env:
-      GITLAB_HOST: 185.8.173.250
+      GITLAB_HOST: 194.5.195.194
       GITLAB_REPO_PATH: root/domestic_hotel_gds.git
       GITLAB_TARGET_BRANCH: afshin
     steps:

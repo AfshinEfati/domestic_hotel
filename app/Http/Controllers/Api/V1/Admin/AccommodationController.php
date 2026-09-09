@@ -18,7 +18,7 @@ class AccommodationController
     public function index()
     {
         $data = $this->service->index();
-        $data->load(['city','type']);
+        $data->load(['city','type','facilities']);
         return StatusHelper::successResponse(AccommodationResource::collection($data));
     }
 

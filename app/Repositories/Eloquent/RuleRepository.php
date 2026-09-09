@@ -15,4 +15,16 @@ class RuleRepository extends BaseRepository implements RuleRepositoryInterface
     {
         parent::__construct($model);
     }
+    public function getList(array $filters): iterable
+    {
+        $query = $this->model->query();
+        if (isset($filters['from'], $filters['to'])) {
+            $from = (int)$filters['from'];
+            $to = (int)$filters['to'];
+            $query->skip($from)->take($to);
+        }
+        return $query
+            ->orderBy('id')
+            ->get();
+    }
 }

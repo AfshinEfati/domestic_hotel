@@ -5,12 +5,17 @@ namespace App\Repositories\Eloquent;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
 use App\Repositories\Eloquent\BaseRepository;
 use App\Models\Accommodation;
+use App\Services\AvailabilityFilterService;
+use Illuminate\Database\Eloquent\Model;
 
 class AccommodationRepository extends BaseRepository implements AccommodationRepositoryInterface
 {
-    public function __construct(Accommodation $model)
+    private AvailabilityFilterService $filterService;
+
+    public function __construct(Accommodation $model, AvailabilityFilterService $filterService)
     {
         parent::__construct($model);
+        $this->filterService = $filterService;
     }
 
     /**
@@ -43,7 +48,23 @@ class AccommodationRepository extends BaseRepository implements AccommodationRep
             $query->skip($from)->take($to);
         }
         return $query
+            ->with(['city', 'type','facilities','facilities.group','rooms','rooms.roomTypeName','rules','childPolicy'])
             ->orderBy('id')
             ->get();
+    }
+
+    public function getAvailability(array $data): iterable
+    {
+        return $this->filterService->filterAvailability($data);
+    }
+
+    public function firstOrCreate(array $attributes = [], array $values = []): Model
+    {
+        return $this->model->firstOrCreate($attributes, $values);
+    }
+
+    public function updateOrCreate(array $attributes, array $values = []): Model
+    {
+        return $this->model->updateOrCreate($attributes, $values);
     }
 }

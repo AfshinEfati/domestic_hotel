@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Jobs\Hotel\DispatchAccommodationSyncJobs;
 use Illuminate\Console\Command;
-use App\Jobs\Hotel\SyncAccommodationsJob;
 
 class HotelSyncAccommodationsCommand extends Command
 {

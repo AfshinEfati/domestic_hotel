@@ -50,4 +50,9 @@ abstract class BaseAdapter
             ],
         ];
     }
+
+    public function fetchRoomTypes(string $providerPropertyId): ?\Illuminate\Support\Collection
+    {
+        return null;
+    }
 }

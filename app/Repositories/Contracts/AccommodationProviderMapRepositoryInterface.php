@@ -3,6 +3,7 @@
 namespace App\Repositories\Contracts;
 
 use App\Models\AccommodationProviderMap;
+use Illuminate\Support\Collection;
 
 interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInterface
 {
@@ -19,5 +20,14 @@ interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInte
 
     public function delete(int|string $id): bool;
 
+    public function countMappedPropertiesByProvider(int $providerId): int;
+
+    /**
+     * @param callable(Collection<int, AccommodationProviderMap>): void $callback
+     */
+    public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void;
+
     public function chunkByProvider(int $providerId, callable $callback): void;
+
+    public function chunkActive(callable $callback): void;
 }

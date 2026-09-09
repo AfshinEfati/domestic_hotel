@@ -3,6 +3,8 @@
 namespace App\Jobs\Hotel;
 
 use App\Models\Provider;
+use App\Services\Contracts\AccommodationProviderMapServiceInterface;
+use App\Services\Contracts\ProviderServiceInterface;
 use App\Support\Logging\SystemLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -10,14 +12,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 
 class SyncAllProvidersAvailabilityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public function __construct(
-        public ?int $days = null,
+        public ?int $days = 30,
         public ?int $chunkSize = null,
         public ?int $throttleMs = null,
         public ?int $maxAttempts = null,
@@ -25,26 +26,31 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
     ) {
     }
 
-    public function handle(SystemLogger $logger): void
-    {
-        $providers = Provider::where('is_active', true)->get();
+    public function handle(
+        SystemLogger $logger,
+        ProviderServiceInterface $providerService,
+        AccommodationProviderMapServiceInterface $mapService
+    ): void {
+        $providers = collect($providerService->getActiveProviders());
 
         if ($providers->isEmpty()) {
             $logger->info(__METHOD__, 'SyncAllProvidersAvailabilityJob skipped because no active providers found');
-
             return;
         }
 
         foreach ($providers as $provider) {
-            $this->syncProvider($provider, $logger);
+            $this->syncProvider($provider, $mapService, $logger);
         }
     }
 
-    private function syncProvider(Provider $provider, SystemLogger $logger): void
-    {
-        $config = config("hotel.providers.{$provider->code}.availability", []);
+    private function syncProvider(
+        Provider $provider,
+        AccommodationProviderMapServiceInterface $mapService,
+        SystemLogger $logger
+    ): void {
+        $config =$provider->config ?? [];
 
-        $days = $this->resolvePositiveInt($this->days, (int)($config['days'] ?? 60), 1);
+        $days = $this->resolvePositiveInt($this->days, (int)($config['days'] ?? 30), 1);
         $chunkSize = $this->resolvePositiveInt($this->chunkSize, (int)($config['chunk_size'] ?? 20), 1);
         $throttleMs = max(0, (int)($this->throttleMs ?? $config['throttle_ms'] ?? 500));
         $maxAttempts = $this->resolvePositiveInt($this->maxAttempts, (int)($config['max_attempts'] ?? 3), 1);
@@ -57,42 +63,17 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
         $from = CarbonImmutable::today();
         $to = $from->addDays($days);
 
-        $baseQuery = DB::table('accommodation_provider_maps')
-            ->where('provider_id', $provider->id)
-            ->whereNotNull('provider_property_id');
-
-        $totalProperties = (clone $baseQuery)->count();
+        $totalProperties = $mapService->countMappedPropertiesByProvider($provider->id);
         if ($totalProperties === 0) {
-            $logger->info(__METHOD__, 'SyncProviderAvailabilityJob skipped because no mapped properties found', [
-                'provider_id' => $provider->id,
-                'provider_code' => $provider->code,
-            ]);
-
             return;
         }
-
-        $logger->info(__METHOD__, 'SyncProviderAvailabilityJob started', [
-            'provider_id' => $provider->id,
-            'provider_code' => $provider->code,
-            'date_range' => [
-                'from' => $from->toDateString(),
-                'to' => $to->toDateString(),
-            ],
-            'total_properties' => $totalProperties,
-            'chunk_size' => $chunkSize,
-            'throttle_ms' => $throttleMs,
-            'max_attempts' => $maxAttempts,
-            'requests_per_minute' => $requestsPerMinute,
-            'dispatch_mode' => 'per_property',
-        ]);
-
         $queued = 0;
         $skipped = 0;
 
-        $baseQuery
-            ->select('id', 'provider_property_id')
-            ->orderBy('id')
-            ->chunkById($chunkSize, function ($rows) use (
+        $mapService->chunkMappedPropertiesByProvider(
+            $provider->id,
+            $chunkSize,
+            function ($rows) use (
                 $provider,
                 $from,
                 $to,
@@ -106,16 +87,9 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
                 foreach ($rows as $row) {
                     $propertyKey = trim((string)($row->provider_property_id ?? ''));
                     if ($propertyKey === '') {
-                        $logger->warning(__METHOD__, 'Skipping provider availability sync because provider property id is empty', [
-                            'provider_id' => $provider->id,
-                            'provider_code' => $provider->code,
-                            'map_id' => $row->id,
-                        ]);
                         $skipped++;
-
                         continue;
                     }
-
                     SyncProviderAvailabilityForPropertyJob::dispatch(
                         $provider->id,
                         $propertyKey,
@@ -125,17 +99,10 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
                         $throttleMs,
                         $requestsPerMinute
                     );
-
                     $queued++;
                 }
-            }, 'id');
-
-        $logger->info(__METHOD__, 'SyncProviderAvailabilityJob finished', [
-            'provider_id' => $provider->id,
-            'provider_code' => $provider->code,
-            'queued_properties' => $queued,
-            'skipped_properties' => $skipped,
-        ]);
+            }
+        );
     }
 
     private function resolvePositiveInt(?int $value, int $default, int $min): int

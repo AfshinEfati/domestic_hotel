@@ -47,6 +47,9 @@ class SyncRoomsForHotelJob implements ShouldQueue
             ]);
 
             $rooms = $adapter->fetchRoomTypes($this->providerHotelId);
+            if ($rooms === null) {
+                return;
+            }
 
             foreach ($rooms as $roomData) {
                 $this->syncRoom($roomData, $roomTypeService, $mapService);

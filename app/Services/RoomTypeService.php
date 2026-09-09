@@ -69,6 +69,11 @@ class RoomTypeService extends BaseService implements RoomTypeServiceInterface
         ]);
     }
 
+    public function getList(mixed $validated)
+    {
+        return $this->repository->getList($validated);
+    }
+
     protected function relations(): array
     {
         return [

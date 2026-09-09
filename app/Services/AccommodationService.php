@@ -63,16 +63,26 @@ class AccommodationService extends BaseService implements AccommodationServiceIn
         return parent::destroy($id);
     }
 
+    public function getAvailability(mixed $validated)
+    {
+        return $this->repository->getAvailability($validated);
+    }
+
     protected function relations(): array
     {
         return [
             'city',
             'type',
             'facilities',
+            'room-types',
+            'room-types.roomTypeName',
+            'facilities.group',
+            'rules',
         ];
     }
+
     public function getList(array $data): iterable
     {
-       return $this->repository->getList($data);
+        return $this->repository->getList($data);
     }
 }

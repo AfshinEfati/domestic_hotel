@@ -32,4 +32,18 @@ class FacilityRepository extends BaseRepository implements FacilityRepositoryInt
         /** @var Facility */
         return parent::store($data);
     }
+
+    public function getList(array $filters = []): iterable
+    {
+        $query = $this->model->query();
+        if (isset($filters['from'], $filters['to'])) {
+            $from = (int)$filters['from'];
+            $to = (int)$filters['to'];
+            $query->skip($from)->take($to);
+        }
+        return $query
+            ->with(['group'])
+            ->orderBy('id')
+            ->get();
+    }
 }

@@ -17,4 +17,9 @@ class RuleService extends BaseService implements RuleServiceInterface
     {
         parent::__construct($repository);
     }
+
+    public function getList(mixed $validated): iterable
+    {
+        return $this->repository->getList($validated);
+    }
 }
