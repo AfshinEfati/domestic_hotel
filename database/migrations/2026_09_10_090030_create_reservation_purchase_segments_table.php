@@ -30,8 +30,14 @@ return new class extends Migration
             $table->text('notes')->nullable();
             $table->timestamps();
 
-            $table->index(['reservation_room_id', 'from_date', 'to_date']);
-            $table->index(['provider_id', 'purchase_method']);
+            $table->index(
+                ['reservation_room_id', 'from_date', 'to_date'],
+                'rps_room_dates_idx'
+            );
+            $table->index(
+                ['provider_id', 'purchase_method'],
+                'rps_provider_method_idx'
+            );
         });
     }
 
