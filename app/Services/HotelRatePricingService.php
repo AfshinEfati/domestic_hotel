@@ -4,14 +4,20 @@ namespace App\Services;
 
 use App\Repositories\Contracts\ProviderPricingRuleRepositoryInterface;
 use App\Services\Contracts\HotelRatePricingServiceInterface;
+use App\Services\Contracts\HotelSettingServiceInterface;
+use App\Support\Hotel\HotelSettingKey;
 
 class HotelRatePricingService implements HotelRatePricingServiceInterface
 {
     /** @var array<int, array{percentage: float, fixed_amount: int}> */
     private array $resolvedProviderRules = [];
 
+    /** @var array{percentage: float, fixed_amount: int}|null */
+    private ?array $resolvedDefaultRule = null;
+
     public function __construct(
-        private readonly ProviderPricingRuleRepositoryInterface $pricingRuleRepository
+        private readonly ProviderPricingRuleRepositoryInterface $pricingRuleRepository,
+        private readonly HotelSettingServiceInterface $settingService,
     ) {}
 
     public function calculateFinalRate(int|float|null $baseRate, ?int $providerId = null): ?int
@@ -31,13 +37,8 @@ class HotelRatePricingService implements HotelRatePricingServiceInterface
 
     public function resolveRule(?int $providerId = null): array
     {
-        $defaultRule = [
-            'percentage' => (float) config('hotel.pricing.default_percentage', 5),
-            'fixed_amount' => (int) config('hotel.pricing.default_fixed_amount', 0),
-        ];
-
         if ($providerId === null) {
-            return $defaultRule;
+            return $this->resolveDefaultRule();
         }
 
         if (isset($this->resolvedProviderRules[$providerId])) {
@@ -47,12 +48,28 @@ class HotelRatePricingService implements HotelRatePricingServiceInterface
         $providerRule = $this->pricingRuleRepository->findActiveByProviderId($providerId);
 
         if ($providerRule === null) {
-            return $this->resolvedProviderRules[$providerId] = $defaultRule;
+            return $this->resolvedProviderRules[$providerId] = $this->resolveDefaultRule();
         }
 
         return $this->resolvedProviderRules[$providerId] = [
             'percentage' => (float) $providerRule->percentage,
             'fixed_amount' => (int) $providerRule->fixed_amount,
+        ];
+    }
+
+    private function resolveDefaultRule(): array
+    {
+        if ($this->resolvedDefaultRule !== null) {
+            return $this->resolvedDefaultRule;
+        }
+
+        return $this->resolvedDefaultRule = [
+            'percentage' => (float) $this->settingService->getValue(
+                HotelSettingKey::PRICING_DEFAULT_PERCENTAGE
+            ),
+            'fixed_amount' => (int) $this->settingService->getValue(
+                HotelSettingKey::PRICING_DEFAULT_FIXED_AMOUNT
+            ),
         ];
     }
 }
