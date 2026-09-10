@@ -38,6 +38,14 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
             ->first();
     }
 
+    public function existsByReservationNumber(string $reservationNumber): bool
+    {
+        return $this->model
+            ->newQuery()
+            ->where('reservation_number', $reservationNumber)
+            ->exists();
+    }
+
     public function findForUpdate(int $id): ?Reservation
     {
         return $this->model
