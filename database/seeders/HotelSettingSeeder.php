@@ -47,6 +47,41 @@ class HotelSettingSeeder extends Seeder
                 'value_type' => HotelSettingValueType::INTEGER,
                 'is_active' => true,
             ],
+            [
+                'key' => HotelSettingKey::GRS_AVAILABILITY_DAYS,
+                'group' => 'provider.grs.availability',
+                'value' => '60',
+                'value_type' => HotelSettingValueType::INTEGER,
+                'is_active' => true,
+            ],
+            [
+                'key' => HotelSettingKey::GRS_AVAILABILITY_CHUNK_SIZE,
+                'group' => 'provider.grs.availability',
+                'value' => '20',
+                'value_type' => HotelSettingValueType::INTEGER,
+                'is_active' => true,
+            ],
+            [
+                'key' => HotelSettingKey::GRS_AVAILABILITY_THROTTLE_MS,
+                'group' => 'provider.grs.availability',
+                'value' => '500',
+                'value_type' => HotelSettingValueType::INTEGER,
+                'is_active' => true,
+            ],
+            [
+                'key' => HotelSettingKey::GRS_AVAILABILITY_MAX_ATTEMPTS,
+                'group' => 'provider.grs.availability',
+                'value' => '1',
+                'value_type' => HotelSettingValueType::INTEGER,
+                'is_active' => true,
+            ],
+            [
+                'key' => HotelSettingKey::GRS_AVAILABILITY_REQUESTS_PER_MINUTE,
+                'group' => 'provider.grs.availability',
+                'value' => '10',
+                'value_type' => HotelSettingValueType::INTEGER,
+                'is_active' => true,
+            ],
         ];
 
         foreach ($settings as $setting) {
