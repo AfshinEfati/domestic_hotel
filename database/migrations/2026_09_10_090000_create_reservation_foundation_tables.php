@@ -66,6 +66,7 @@ return new class extends Migration
                 ->constrained('providers')
                 ->nullOnDelete();
             $table->unsignedTinyInteger('purchase_method')->default(1);
+            $table->unsignedSmallInteger('quantity')->default(1);
             $table->date('from_date');
             $table->date('to_date');
             $table->string('provider_reference')->nullable();
