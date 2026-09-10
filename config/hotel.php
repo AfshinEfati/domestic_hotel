@@ -1,16 +1,6 @@
 <?php
 
 return [
-    'pricing' => [
-        'default_percentage' => (float) env('HOTEL_DEFAULT_MARKUP_PERCENTAGE', 5),
-        'default_fixed_amount' => (int) env('HOTEL_DEFAULT_MARKUP_FIXED_AMOUNT', 0),
-    ],
-
-    'reservation' => [
-        'reference_prefix' => env('HOTEL_RESERVATION_REFERENCE_PREFIX', 'DH'),
-        'reference_random_length' => (int) env('HOTEL_RESERVATION_REFERENCE_RANDOM_LENGTH', 10),
-    ],
-
     'providers' => [
         'grs' => [
             'availability' => [
