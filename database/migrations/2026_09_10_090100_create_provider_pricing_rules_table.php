@@ -14,9 +14,9 @@ return new class extends Migration
                 ->unique()
                 ->constrained('providers')
                 ->cascadeOnDelete();
-            $table->decimal('percentage', 8, 4)->default(5);
-            $table->unsignedBigInteger('fixed_amount')->default(0);
-            $table->boolean('is_active')->default(true)->index();
+            $table->decimal('percentage', 8, 4);
+            $table->unsignedBigInteger('fixed_amount');
+            $table->boolean('is_active')->index();
             $table->timestamps();
         });
     }
