@@ -15,9 +15,10 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
     /** @var array<string, mixed> */
     private array $resolvedValues = [];
 
-    public function __construct(HotelSettingRepositoryInterface $repository)
-    {
-        parent::__construct($repository);
+    public function __construct(
+        private readonly HotelSettingRepositoryInterface $hotelSettingRepository
+    ) {
+        parent::__construct($hotelSettingRepository);
     }
 
     public function store(mixed $payload): HotelSetting
@@ -41,13 +42,17 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
             ? $payload->toArray()
             : $this->normalisePayload($payload);
 
+        $setting = $this->hotelSettingRepository->find($id);
+        if ($setting === null) {
+            return false;
+        }
+
         if (array_key_exists('value', $data) && !array_key_exists('value_type', $data)) {
-            /** @var HotelSetting|null $setting */
-            $setting = $this->repository->find($id);
-            if ($setting === null) {
-                return false;
-            }
             $data['value_type'] = $setting->value_type;
+        }
+
+        if (array_key_exists('value_type', $data) && !array_key_exists('value', $data)) {
+            $data['value'] = $setting->value;
         }
 
         $data = $this->prepareForStorage($data);
@@ -66,9 +71,7 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
             return $this->resolvedValues[$key];
         }
 
-        /** @var HotelSettingRepositoryInterface $repository */
-        $repository = $this->repository;
-        $setting = $repository->findActiveByKey($key);
+        $setting = $this->hotelSettingRepository->findActiveByKey($key);
 
         if ($setting === null) {
             throw new RuntimeException(sprintf('Required hotel setting [%s] was not found or is inactive.', $key));
