@@ -35,6 +35,13 @@
 - یک migration نباید چند جدول domain پروژه را ایجاد کند.
 - برای index/constraintهایی که نام خودکار Laravel ممکن است از محدودیت MySQL عبور کند، نام کوتاه و صریح تعیین شود.
 
+### قانون قطعی تست و مستندسازی API
+
+- در این پروژه PHPUnit/Test Suite مبنای acceptance و تست endpointهای جدید نیست؛ وضعیت فعلی تست‌های قدیمی به‌دلیل ناسازگاری با schema/routes فعلی قابل اتکا نیست.
+- هر endpoint جدید باید هم‌زمان در `app/Docs` با Swagger/OpenAPI مستند شود.
+- تست عملی endpointها توسط Swagger و Postman انجام می‌شود.
+- برای تست‌های API تا جای ممکن از داده DB استفاده شود و provider call غیرضروری، مخصوصاً GRS، انجام نشود.
+
 ---
 
 ## 2) مرز سیستم و نقش Domestic Hotel GDS
@@ -230,6 +237,8 @@ Endpoint `available-rooms` مستقل از Availability flow قدیمی طراح
 
 `final_rate` از Pricing Service روی response نرخ‌ها اضافه می‌شود.
 
+Swagger endpoint جدید در `app/Docs/AvailableRoomsDoc.php` نگهداری می‌شود.
+
 ---
 
 ## 10) GRS Availability Settings
@@ -240,7 +249,26 @@ Known issueهای rate-limit/global limiter همچنان checkpoint هستند �
 
 ---
 
-## 11) Pending Reservation Decisions
+## 11) Swagger / Admin API checkpoint
+
+Swagger docs برای endpointهای جدید فعلی:
+
+- `app/Docs/AvailableRoomsDoc.php`
+- `app/Docs/ProviderPricingRuleDoc.php`
+- `app/Docs/SystemSettingDoc.php`
+
+Admin APIهای جدید:
+
+```text
+/api/v1/admin/provider-pricing-rules
+/api/v1/admin/system-settings
+```
+
+هر دو API شامل index/store/show/update/delete هستند و `apiResource` همچنین PUT/PATCH را برای update پوشش می‌دهد.
+
+---
+
+## 12) Pending Reservation Decisions
 
 مواردی که هنوز باید از کاربر گرفته/نهایی شوند:
 
@@ -259,9 +287,9 @@ Known issueهای rate-limit/global limiter همچنان checkpoint هستند �
 
 ---
 
-## 12) Current Next Step
+## 13) Current Next Step
 
 1. تست migration/seed/runtime branch `feature/reservation-foundation`.
-2. تست Admin APIs برای `system-settings` و `provider-pricing-rules`.
-3. تست محاسبه `final_rate` بدون provider call غیرضروری.
+2. تست APIهای `system-settings` و `provider-pricing-rules` از Swagger/Postman.
+3. تست `available-rooms` و محاسبه `final_rate` از Swagger/Postman بدون provider call غیرضروری.
 4. ادامه طراحی Reservation بعد از دریافت fieldها و قوانین مالی/عملیاتی از کاربر.
