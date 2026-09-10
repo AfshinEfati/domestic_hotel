@@ -41,6 +41,7 @@
 - هر endpoint جدید باید هم‌زمان در `app/Docs` با Swagger/OpenAPI مستند شود.
 - تست عملی endpointها توسط Swagger و Postman انجام می‌شود.
 - برای تست‌های API تا جای ممکن از داده DB استفاده شود و provider call غیرضروری، مخصوصاً GRS، انجام نشود.
+- گروه‌بندی Swagger بر اساس endpoint/controller انجام شود، نه صرفاً بر اساس Model. Endpointهایی که یک Controller/flow مشترک دارند باید در Doc منطقی همان Controller/flow کنار هم قرار بگیرند؛ نمونه: `availability` و `available-rooms` هر دو متعلق به Accommodation/Availability flow هستند.
 
 ---
 
@@ -152,6 +153,16 @@ final_rate = base_rate + percentage(base_rate) + fixed_amount
 - اگر provider rule فعال داشته باشد همان استفاده می‌شود؛ در غیر این صورت fallback عمومی از `SystemSettingService` خوانده می‌شود.
 - تغییر rule نباید قیمت رزرو ثبت‌شده گذشته را تغییر دهد؛ قیمت Reservation باید snapshot فروش باشد.
 
+### قانون قطعی Pricing در Availability/Search
+
+- `availability` یک پاسخ **نرخ و ظرفیت / discovery** است، نه فاکتور نهایی و نه checkout calculation.
+- تعداد و سن مسافران در request برای پیدا کردن اتاق مناسب و composition پیش‌فرض search استفاده می‌شوند، اما response باید building blockهای قیمت را به شکلی برگرداند که Front بتواند تغییرات احتمالی مسافر را بدون round-trip جدید به Main/GDS مقایسه کند.
+- نرخ‌های Adult / Child / Infant / Extra باید مطابق policy همان هتل قابل مشاهده باشند؛ Child/Infant شدیداً وابسته به `childPolicy` هستند (`adult`, `half`, `percent`, `fixed`, `free` و قواعد سنی/پوشش).
+- `final_rate` در Availability فقط **نسخه‌ی دارای روکش همان rate پایه‌ای است که در response وجود دارد**؛ نباید به تعداد مسافر ضرب شود و نباید از آن total invoice ساخته شود.
+- واحد/سطح `final_rate` باید همان واحد/سطح base rate متناظر باقی بماند. اگر base rate یک room rate است، final_rate نیز room rate است؛ اگر base rate per-passenger است، final_rate نیز per-passenger است.
+- `AvailabilityRateDecoratorService` نباید passenger count را وارد فرمول markup کند.
+- محاسبه‌ی مبلغ قطعی قابل پرداخت / invoice مربوط به مرحله‌ی Booking/Reservation confirmation است و باید از search/discovery pricing جدا بماند.
+
 ---
 
 ## 7) System Settings
@@ -233,11 +244,11 @@ Front APIهای شناخته‌شده:
 - POST `/api/v1/front/accommodations/availability`
 - POST `/api/v1/front/accommodations/available-rooms`
 
-Endpoint `available-rooms` مستقل از Availability flow قدیمی طراحی شده است و داده RoomCalendar را از RoomCalendar Service/Repository می‌گیرد.
+`availability` و `available-rooms` هر دو در یک Accommodation/Availability flow و Controller قرار دارند و Swagger آنها باید در یک Doc منطقی کنار هم نگهداری شود.
 
-`final_rate` از Pricing Service روی response نرخ‌ها اضافه می‌شود.
+`available-rooms` داده RoomCalendar یک هتل مشخص را می‌دهد و `availability` برای search نرخ/ظرفیت استفاده می‌شود.
 
-Swagger endpoint جدید در `app/Docs/AvailableRoomsDoc.php` نگهداری می‌شود.
+`final_rate` از Pricing Service فقط به rateهای response روکش اضافه می‌کند و نباید search response را به invoice تبدیل کند.
 
 ---
 
@@ -256,6 +267,8 @@ Swagger docs برای endpointهای جدید فعلی:
 - `app/Docs/AvailableRoomsDoc.php`
 - `app/Docs/ProviderPricingRuleDoc.php`
 - `app/Docs/SystemSettingDoc.php`
+
+توجه: در ادامه Doc مربوط به `available-rooms` باید از نظر grouping با Doc مربوط به `availability` و Controller مشترک آنها هماهنگ نگه داشته شود؛ نام فایل به‌تنهایی مرز domain محسوب نمی‌شود.
 
 Admin APIهای جدید:
 
@@ -291,5 +304,5 @@ Admin APIهای جدید:
 
 1. تست migration/seed/runtime branch `feature/reservation-foundation`.
 2. تست APIهای `system-settings` و `provider-pricing-rules` از Swagger/Postman.
-3. تست `available-rooms` و محاسبه `final_rate` از Swagger/Postman بدون provider call غیرضروری.
+3. تست `availability` / `available-rooms` و محاسبه‌ی markup-only `final_rate` از Swagger/Postman بدون provider call غیرضروری.
 4. ادامه طراحی Reservation بعد از دریافت fieldها و قوانین مالی/عملیاتی از کاربر.
