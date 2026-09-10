@@ -27,6 +27,10 @@ class ReservationRoom extends Model
         'check_out' => 'date',
     ];
 
+    protected $attributes = [
+        'quantity' => 1,
+    ];
+
     public function reservationHotel(): BelongsTo
     {
         return $this->belongsTo(ReservationHotel::class);
