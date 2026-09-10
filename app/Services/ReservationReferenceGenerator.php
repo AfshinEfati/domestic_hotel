@@ -17,12 +17,16 @@ class ReservationReferenceGenerator implements ReservationReferenceGeneratorInte
 
     public function generate(): string
     {
+        $prefix = trim((string) config('hotel.reservation.reference_prefix', 'DH'));
+        $randomLength = max(6, (int) config('hotel.reservation.reference_random_length', 10));
+
         for ($attempt = 0; $attempt < self::MAX_ATTEMPTS; $attempt++) {
-            $reference = sprintf(
-                'DH-%s-%s',
-                now()->format('Ymd'),
-                Str::upper(Str::random(10))
-            );
+            $randomPart = Str::upper(Str::random($randomLength));
+            $datePart = now()->format('Ymd');
+
+            $reference = $prefix !== ''
+                ? sprintf('%s-%s-%s', $prefix, $datePart, $randomPart)
+                : sprintf('%s-%s', $datePart, $randomPart);
 
             if (!$this->reservationRepository->existsByReservationNumber($reference)) {
                 return $reference;
