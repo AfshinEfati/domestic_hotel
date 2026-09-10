@@ -4,7 +4,7 @@
 > در شروع هر ادامه‌ی کار روی این پروژه باید ابتدا این فایل و سپس کد فعلی پروژه بررسی شود.
 > این فایل جایگزین کد نیست؛ اگر بین این فایل و کد فعلی اختلافی وجود داشت، اختلاف باید مشخص شود و قبل از تغییر تصمیم گرفته شود.
 
-**آخرین بروزرسانی context:** 2026-09-09
+**آخرین بروزرسانی context:** 2026-09-10
 
 ---
 
@@ -19,6 +19,22 @@
 - این فایل (`PROJECT_CONTEXT.md`) تنها فایلی است که کاربر اجازه داده برای نگهداری context پروژه بدون گرفتن اجازه‌ی جداگانه بروزرسانی شود.
 - تغییر هر فایل دیگر همچنان نیازمند تأیید صریح است.
 - اطلاعات محرمانه مثل token/password/credential نباید داخل این فایل نوشته شود.
+
+### قانون قطعی Configuration / Runtime Settings
+
+- برای تنظیمات business/runtime پروژه، مقدار قابل تغییر داخل `config/*.php` قرار داده نشود.
+- برای تنظیمات business/runtime پروژه، متغیر جدید داخل `.env` یا `.env.example` قرار داده نشود.
+- فرض طراحی این است که بعد از تحویل نهایی پروژه، تمام رفتارها و مقادیر عملیاتی باید **بدون تغییر حتی یک خط کد** از طریق APIهای Admin قابل تنظیم باشند.
+- هر تنظیمی که باید در زمان اجرا تغییر کند باید در DB persistence مناسب خودش ذخیره شود و Service/Repository مستقل یا مناسب domain آن را مدیریت کند.
+- برای هر تنظیم لازم، API Admin جهت مشاهده/ویرایش/فعال‌سازی/غیرفعال‌سازی در نظر گرفته شود.
+- اگر مقدار پیش‌فرض لازم است، مقدار اولیه باید با Seeder ایجاد شود؛ نه hard-code در business logic و نه config/env.
+- Ruleهای قیمت‌گذاری، markup، fixed amount، provider-specific settings، reservation settings و موارد مشابه همگی مشمول این قانون هستند.
+- config/env فقط برای نیازهای پایه‌ی framework/infrastructure که خارج از business configuration هستند باقی می‌مانند؛ Domestic Hotel نباید business setting جدید به آن‌ها اضافه کند.
+- هر پیاده‌سازی جدیدی که business setting را از config/env بخواند، خلاف معماری مورد انتظار این پروژه است.
+
+### اثر این قانون روی branch فعلی
+
+در branch `feature/reservation-foundation` پیاده‌سازی اولیه pricing قبلاً default markup و reservation reference defaults را به `config/hotel.php` و `.env.example` اضافه کرده بود. این تصمیم طبق قانون جدید **منسوخ/اشتباه** است و باید در ادامه اصلاح شود: defaultها باید از DB/Seeder بیایند و Admin API قابلیت مدیریت آن‌ها را داشته باشد.
 
 ---
 
@@ -443,8 +459,6 @@ closed = 0
 
 ## 13) Reservation — نیازمندی‌های قطعی تا این لحظه
 
-**این بخش هنوز طراحی نهایی schema نیست.** کاربر قرار است statusها، fieldهای کامل و مالی را بعداً بدهد.
-
 ### Reservation اصلی
 
 نیاز به جدول/aggregate اصلی رزرو داریم که حداقل مفاهیم زیر را دارد:
@@ -460,6 +474,24 @@ closed = 0
 - reference رسمی رزرو توسط **Hotel GDS** صادر می‌شود.
 - White Label/Main بر اساس reference ما عملیات بعدی را انجام می‌دهند.
 - ما نباید به reference داخلی آن‌ها وابسته شویم.
+
+### Reservation statuses فعلی
+
+```text
+1   درخواست رزرو
+2   رزرو شده
+3   رزرو ناموفق
+4   در صف خرید
+5   در حال تکمیل خرید
+6   صدور ناقص
+7   صدور ناموفق
+8   نیازمند تکمیل پرداخت
+9   صدور موفق
+10  در دست بررسی
+11  استرداد شده
+```
+
+Transitionهای دقیق هنوز نهایی نشده‌اند و نباید حدسی hard-code شوند.
 
 ### سناریوی Hotel Replacement
 
@@ -484,12 +516,7 @@ closed = 0
 
 پس fulfillment/provider purchase باید قابلیت چند segment داشته باشد.
 
-موضوعی که باید در طراحی نهایی روشن شود:
-
-- split فقط بر اساس شب است؟
-- یا می‌تواند بر اساس Room + Night هم باشد؟
-
-مثلاً در یک شب، Room 1 از GRS و Room 2 از SnappTrip.
+همچنین ساختار باید امکان split بر اساس Room + Night را هم از نظر مدل داده تحمل کند؛ یعنی در یک شب، اتاق‌های یک رزرو بتوانند از providerهای متفاوت تهیه شوند.
 
 ### Online / Offline / Manual
 
@@ -512,14 +539,14 @@ Hotel fulfillment/purchase حتماً باید هر دو حالت را پشتی�
 
 بنابراین شروع آنلاین نباید reservation را در flow غیرقابل تغییر قفل کند.
 
-### تفکیک مفهومی پیشنهادی برای ادامه طراحی
-
-هنوز schema نهایی نشده، ولی باید سه مفهوم از هم جدا بمانند:
+### تفکیک مفهومی رزرو
 
 ```text
 GDS Reservation
     ↓
 Candidate / Fulfillment Hotel(s)
+    ↓
+Reservation Room(s)
     ↓
 Provider Purchase Segment(s)
 ```
@@ -530,32 +557,57 @@ Hotel candidates/final hotel = هتل‌هایی که در جریان fulfillmen
 
 Provider purchase segments = خریدهای واقعی از supplierها که می‌توانند چندتایی، online یا manual و بر اساس شب/اتاق تقسیم شوند.
 
+### Foundation branch
+
+توسعه‌ی پایه‌ی Reservation روی branch زیر انجام می‌شود و `main` نباید مستقیم برای این کار تغییر کند:
+
+```text
+feature/reservation-foundation
+```
+
 ---
 
-## 14) چیزهایی که برای Reservation هنوز باید از کاربر گرفته شود
+## 14) Pricing / Markup — تصمیم فعلی
 
-قبل از migration/schema نهایی Reservation باید منتظر این اطلاعات بمانیم:
+در زمان rate دادن، قیمت فروش باید از raw provider rate جدا باشد.
 
-- statusهای دقیق reservation
+نیاز فعلی:
+
+- روی `grs_rate` فعلاً 5 درصد markup اعمال شود.
+- امکان fixed amount نیز وجود داشته باشد.
+- `final_rate` کنار raw rateها در response اضافه شود.
+- این محاسبه برای adult، child، infant و extra bed قابل استفاده باشد.
+- فرمول و policy نباید داخل Adapter/Resource/Controller hard-code شود.
+- بعداً ممکن است هر provider درصد و مبلغ ثابت متفاوت داشته باشد.
+
+بنابراین pricing یک concern مستقل است و باید provider-aware باشد.
+
+**قانون جدید:** default percentage/fixed amount و سایر business settingهای pricing نباید در config/env باشند. آن‌ها باید در DB ذخیره شوند، با Seeder مقدار اولیه بگیرند و توسط Admin API قابل مدیریت باشند.
+
+همچنین `final_rate` نباید به عنوان raw provider data تلقی شود. هنگام صدور quote می‌تواند runtime محاسبه شود، اما قیمت ثبت‌شده‌ی Reservation باید snapshot خودش را حفظ کند تا تغییر policy آینده قیمت رزرو قبلی را تغییر ندهد.
+
+---
+
+## 15) چیزهایی که برای Reservation هنوز باید از کاربر گرفته شود
+
 - statusهای purchase/fulfillment/provider segment
-- تمام فیلدهای اصلی reservation
-- فیلدهای مالی
+- تمام فیلدهای اصلی reservation که هنوز اعلام نشده‌اند
+- فیلدهای مالی کامل
 - مفهوم و زمان ثبت payment
 - قوانین issue/voucher
 - اطلاعات passenger/guest که باید داخل GDS ذخیره شود
 - edit rules
 - cancel/refund rules
 - manual operator data
-- provider confirmation/reference fields
-- اینکه split fulfillment دقیقاً در سطح Night، Room یا Room+Night مجاز است
-- constraint دقیق «یک final hotel»
+- provider confirmation/reference fields دقیق‌تر
 - تاریخچه تغییر هتل/تأمین‌کننده و audit مورد نیاز
+- transitionهای دقیق statusهای reservation
 
-تا این موارد مشخص نشده‌اند نباید schema نهایی رزرو را با حدس پیاده‌سازی کرد.
+تا این موارد مشخص نشده‌اند نباید بخش‌های نامشخص schema را با حدس نهایی کرد.
 
 ---
 
-## 15) موارد شناخته‌شده‌ای که بعداً باید بررسی شوند
+## 16) موارد شناخته‌شده‌ای که بعداً باید بررسی شوند
 
 این‌ها checkpoint هستند، نه مجوز برای تغییر خودکار:
 
@@ -567,10 +619,11 @@ Provider purchase segments = خریدهای واقعی از supplierها که م
 - بعضی Swagger docs قدیمی response/request schemaهای auto-generated اشتباه دارند
 - Swagger generator برای nested Laravel validation نیاز به اصلاح ساختاری دارد
 - multi-provider pricing/availability باید قبل از production behavior نهایی شود؛ چون `RoomCalendar` provider-aware است
+- pricing/reference defaults اضافه‌شده به `config/hotel.php` و `.env.example` در feature branch باید طبق قانون جدید به DB + Seeder + Admin API منتقل شوند
 
 ---
 
-## 16) وضعیت کلی کارهای انجام‌شده
+## 17) وضعیت کلی کارهای انجام‌شده
 
 در نسخه فعلی پروژه، بخش‌های مهم زیر وجود دارند یا اخیراً اضافه شده‌اند:
 
@@ -591,10 +644,13 @@ Provider purchase segments = خریدهای واقعی از supplierها که م
 - Front accommodation/availability APIs
 - Swagger/OpenAPI docs پایه
 - Service/Repository structure برای domainهای اصلی از جمله RoomCalendar
+- endpoint جدید available rooms by hotel
+- reservation foundation روی feature branch
+- provider-aware pricing foundation روی feature branch
 
 ---
 
-## 17) روش نگهداری این فایل
+## 18) روش نگهداری این فایل
 
 بعد از هر تصمیم مهم پروژه، این فایل باید بروزرسانی شود، مخصوصاً وقتی یکی از این موارد تغییر می‌کند:
 
@@ -604,6 +660,7 @@ Provider purchase segments = خریدهای واقعی از supplierها که م
 - provider behavior
 - reservation state machine
 - finance/payment behavior داخل Hotel GDS
+- business configuration/admin settings
 - completed milestone
 - new known issue
 - current next step
@@ -618,17 +675,11 @@ Provider purchase segments = خریدهای واقعی از supplierها که م
 
 ---
 
-## 18) Current Next Step
+## 19) Current Next Step
 
-تمرکز بعدی مکالمه:
+تمرکز بعدی:
 
-1. ادامه طراحی Reservation بعد از دریافت statusها، fieldها و قوانین مالی/عملیاتی از کاربر.
-2. نهایی کردن مدل fulfillment با قابلیت:
-   - hotel replacement
-   - one final confirmed hotel
-   - multi-provider purchase
-   - online/offline/manual
-   - online failure → manual fallback
-3. مشخص کردن granularity خرید چندتأمین‌کننده (Night vs Room+Night).
-
-تا قبل از دریافت اطلاعات بعدی Reservation، طراحی migration نهایی نباید حدسی انجام شود.
+1. ادامه تکمیل Reservation foundation با فیلدها و statusهای عملیاتی/مالی بعدی که کاربر اعلام می‌کند.
+2. اصلاح pricing/reference configuration در feature branch طبق قانون جدید: DB-backed settings + Seeder + Admin API؛ بدون business setting در config/env.
+3. نهایی کردن fulfillment با hotel replacement، one final hotel، multi-provider purchase و online/offline/manual fallback.
+4. تکمیل status transitionها فقط پس از اعلام rules دقیق توسط کاربر.
