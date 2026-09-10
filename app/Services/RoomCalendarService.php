@@ -5,12 +5,15 @@ namespace App\Services;
 use App\DTOs\RoomCalendarDTO;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
+use App\Services\Contracts\HotelRatePricingServiceInterface;
 use App\Services\Contracts\RoomCalendarServiceInterface;
 
 class RoomCalendarService extends BaseService implements RoomCalendarServiceInterface
 {
-    public function __construct(RoomCalendarRepositoryInterface $repository)
-    {
+    public function __construct(
+        RoomCalendarRepositoryInterface $repository,
+        private readonly HotelRatePricingServiceInterface $ratePricingService,
+    ) {
         parent::__construct($repository);
     }
 
@@ -106,18 +109,31 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                                 ->map(fn ($calendar) => [
                                     'day' => $calendar->day?->format('Y-m-d'),
                                     'inventory' => $calendar->inventory,
+                                    'provider_id' => $calendar->provider_id,
 
                                     'rack_rate' => $calendar->rack_rate,
                                     'daily_rate' => $calendar->daily_rate,
                                     'grs_rate' => $calendar->grs_rate,
+                                    'final_rate' => $this->ratePricingService->calculateFinalRate(
+                                        $calendar->grs_rate,
+                                        $calendar->provider_id
+                                    ),
 
                                     'baby_cot_rack_rate' => $calendar->baby_cot_rack_rate,
                                     'baby_cot_daily_rate' => $calendar->baby_cot_daily_rate,
                                     'baby_cot_grs_rate' => $calendar->baby_cot_grs_rate,
+                                    'baby_cot_final_rate' => $this->ratePricingService->calculateFinalRate(
+                                        $calendar->baby_cot_grs_rate,
+                                        $calendar->provider_id
+                                    ),
 
                                     'extend_bed_rack_rate' => $calendar->extend_bed_rack_rate,
                                     'extend_bed_daily_rate' => $calendar->extend_bed_daily_rate,
                                     'extend_bed_grs_rate' => $calendar->extend_bed_grs_rate,
+                                    'extend_bed_final_rate' => $this->ratePricingService->calculateFinalRate(
+                                        $calendar->extend_bed_grs_rate,
+                                        $calendar->provider_id
+                                    ),
 
                                     'min_stay' => $calendar->min_stay,
                                     'max_stay' => $calendar->max_stay,
