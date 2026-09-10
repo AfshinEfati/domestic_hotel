@@ -54,4 +54,18 @@ class RoomCalendarRepository extends BaseRepository implements RoomCalendarRepos
             ->orderBy('day')
             ->get();
     }
+
+    public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection
+    {
+        if ($roomTypeIds === [] || $days === []) {
+            return $this->model->newCollection();
+        }
+
+        return $this->model
+            ->newQuery()
+            ->whereIn('room_type_id', array_values(array_unique($roomTypeIds)))
+            ->whereIn('day', array_values(array_unique($days)))
+            ->orderBy('id')
+            ->get();
+    }
 }
