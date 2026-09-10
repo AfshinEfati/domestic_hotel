@@ -5,7 +5,6 @@ namespace App\Repositories\Contracts;
 use App\Models\RoomCalendar;
 use Illuminate\Support\Collection;
 
-
 interface RoomCalendarRepositoryInterface extends BaseRepositoryInterface
 {
     /**
@@ -20,5 +19,8 @@ interface RoomCalendarRepositoryInterface extends BaseRepositoryInterface
     public function update(int|string $id, array $data): bool;
 
     public function delete(int|string $id): bool;
+
     public function getAvailableByAccommodationId(int $accommodationId): Collection;
+
+    public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection;
 }
