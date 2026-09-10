@@ -4,6 +4,7 @@ namespace App\Services\Contracts;
 
 use App\DTOs\RoomCalendarDTO;
 use App\Models\RoomCalendar;
+use Illuminate\Support\Collection;
 
 interface RoomCalendarServiceInterface extends BaseServiceInterface
 {
@@ -27,5 +28,8 @@ interface RoomCalendarServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
+
     public function getAvailableRoomsByAccommodationId(int $accommodationId): array;
+
+    public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection;
 }
