@@ -50,7 +50,7 @@ class HotelSettingSeeder extends Seeder
         ];
 
         foreach ($settings as $setting) {
-            HotelSetting::query()->updateOrCreate(
+            HotelSetting::query()->firstOrCreate(
                 ['key' => $setting['key']],
                 $setting
             );
