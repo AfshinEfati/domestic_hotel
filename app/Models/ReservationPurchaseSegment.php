@@ -12,6 +12,7 @@ class ReservationPurchaseSegment extends Model
         'reservation_room_id',
         'provider_id',
         'purchase_method',
+        'quantity',
         'from_date',
         'to_date',
         'provider_reference',
@@ -27,6 +28,7 @@ class ReservationPurchaseSegment extends Model
         'reservation_room_id' => 'integer',
         'provider_id' => 'integer',
         'purchase_method' => 'integer',
+        'quantity' => 'integer',
         'from_date' => 'date',
         'to_date' => 'date',
         'purchased_at' => 'datetime',
@@ -35,6 +37,7 @@ class ReservationPurchaseSegment extends Model
 
     protected $attributes = [
         'purchase_method' => PurchaseMethod::ONLINE,
+        'quantity' => 1,
     ];
 
     public function reservationRoom(): BelongsTo
