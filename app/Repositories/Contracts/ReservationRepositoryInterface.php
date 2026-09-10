@@ -12,5 +12,7 @@ interface ReservationRepositoryInterface extends BaseRepositoryInterface
 
     public function findByReservationNumber(string $reservationNumber): ?Reservation;
 
+    public function existsByReservationNumber(string $reservationNumber): bool;
+
     public function findForUpdate(int $id): ?Reservation;
 }
