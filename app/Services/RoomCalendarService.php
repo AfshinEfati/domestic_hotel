@@ -7,6 +7,7 @@ use App\Models\RoomCalendar;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Services\Contracts\HotelRatePricingServiceInterface;
 use App\Services\Contracts\RoomCalendarServiceInterface;
+use Illuminate\Support\Collection;
 
 class RoomCalendarService extends BaseService implements RoomCalendarServiceInterface
 {
@@ -172,5 +173,10 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
             'accommodation_id' => $accommodationId,
             'rooms' => $rooms,
         ];
+    }
+
+    public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection
+    {
+        return $this->repository->getByRoomTypeIdsAndDays($roomTypeIds, $days);
     }
 }
