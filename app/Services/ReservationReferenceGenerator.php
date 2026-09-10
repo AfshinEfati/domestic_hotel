@@ -24,7 +24,7 @@ class ReservationReferenceGenerator implements ReservationReferenceGeneratorInte
                 Str::upper(Str::random(10))
             );
 
-            if ($this->reservationRepository->findByReservationNumber($reference) === null) {
+            if (!$this->reservationRepository->existsByReservationNumber($reference)) {
                 return $reference;
             }
         }
