@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Services\Contracts\AccommodationServiceInterface;
+use App\Services\Contracts\AvailabilityRateDecoratorServiceInterface;
 use App\Services\BaseService;
 use App\Models\Accommodation;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
@@ -10,8 +11,10 @@ use App\DTOs\AccommodationDTO;
 
 class AccommodationService extends BaseService implements AccommodationServiceInterface
 {
-    public function __construct(AccommodationRepositoryInterface $repository)
-    {
+    public function __construct(
+        AccommodationRepositoryInterface $repository,
+        private readonly AvailabilityRateDecoratorServiceInterface $availabilityRateDecorator,
+    ) {
         parent::__construct($repository);
     }
 
@@ -65,7 +68,9 @@ class AccommodationService extends BaseService implements AccommodationServiceIn
 
     public function getAvailability(mixed $validated)
     {
-        return $this->repository->getAvailability($validated);
+        $availability = $this->repository->getAvailability($validated);
+
+        return $this->availabilityRateDecorator->decorate($availability);
     }
 
     protected function relations(): array
