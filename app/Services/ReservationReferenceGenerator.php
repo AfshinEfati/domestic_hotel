@@ -3,24 +3,40 @@
 namespace App\Services;
 
 use App\Repositories\Contracts\ReservationRepositoryInterface;
+use App\Services\Contracts\HotelSettingServiceInterface;
 use App\Services\Contracts\ReservationReferenceGeneratorInterface;
+use App\Support\Hotel\HotelSettingKey;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 class ReservationReferenceGenerator implements ReservationReferenceGeneratorInterface
 {
-    private const MAX_ATTEMPTS = 10;
-
     public function __construct(
-        private readonly ReservationRepositoryInterface $reservationRepository
+        private readonly ReservationRepositoryInterface $reservationRepository,
+        private readonly HotelSettingServiceInterface $settingService,
     ) {}
 
     public function generate(): string
     {
-        $prefix = trim((string) config('hotel.reservation.reference_prefix', 'DH'));
-        $randomLength = max(6, (int) config('hotel.reservation.reference_random_length', 10));
+        $prefix = trim((string) $this->settingService->getValue(
+            HotelSettingKey::RESERVATION_REFERENCE_PREFIX
+        ));
+        $randomLength = (int) $this->settingService->getValue(
+            HotelSettingKey::RESERVATION_REFERENCE_RANDOM_LENGTH
+        );
+        $maxAttempts = (int) $this->settingService->getValue(
+            HotelSettingKey::RESERVATION_REFERENCE_MAX_ATTEMPTS
+        );
 
-        for ($attempt = 0; $attempt < self::MAX_ATTEMPTS; $attempt++) {
+        if ($randomLength < 6 || $randomLength > 64) {
+            throw new RuntimeException('Reservation reference random length must be between 6 and 64.');
+        }
+
+        if ($maxAttempts < 1) {
+            throw new RuntimeException('Reservation reference max attempts must be greater than zero.');
+        }
+
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             $randomPart = Str::upper(Str::random($randomLength));
             $datePart = now()->format('Ymd');
 
