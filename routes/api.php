@@ -7,7 +7,6 @@ use App\Http\Controllers\Api\V1\Admin\CityController;
 use App\Http\Controllers\Api\V1\Admin\CountryController;
 use App\Http\Controllers\Api\V1\Admin\FacilityController;
 use App\Http\Controllers\Api\V1\Admin\FacilityGroupController;
-use App\Http\Controllers\Api\V1\Admin\HotelSettingController;
 use App\Http\Controllers\Api\V1\Admin\ProviderCityMapController;
 use App\Http\Controllers\Api\V1\Admin\ProviderController;
 use App\Http\Controllers\Api\V1\Admin\ProviderPricingRuleController;
@@ -20,6 +19,7 @@ use App\Http\Controllers\Api\V1\Admin\RoomTypeNameController;
 use App\Http\Controllers\Api\V1\Admin\RoomTypeProviderMapController;
 use App\Http\Controllers\Api\V1\Admin\RuleController;
 use App\Http\Controllers\Api\V1\Admin\StateController;
+use App\Http\Controllers\Api\V1\Admin\SystemSettingController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'v1'], function () {
@@ -32,7 +32,7 @@ Route::group(['prefix' => 'v1'], function () {
         Route::apiResource('cities', CityController::class);
         Route::apiResource('providers', ProviderController::class);
         Route::apiResource('provider-pricing-rules', ProviderPricingRuleController::class);
-        Route::apiResource('hotel-settings', HotelSettingController::class);
+        Route::apiResource('system-settings', SystemSettingController::class);
         Route::apiResource('facility-groups', FacilityGroupController::class);
         Route::apiResource('facilities', FacilityController::class);
         Route::apiResource('rate-plans', RatePlanController::class);

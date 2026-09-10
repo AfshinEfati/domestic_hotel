@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use App\Helpers\StatusHelper;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class HotelSettingResource extends JsonResource
+class SystemSettingResource extends JsonResource
 {
     public function toArray($request): array
     {

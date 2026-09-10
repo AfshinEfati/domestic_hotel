@@ -2,34 +2,34 @@
 
 namespace App\Services;
 
-use App\DTOs\HotelSettingDTO;
-use App\Models\HotelSetting;
-use App\Repositories\Contracts\HotelSettingRepositoryInterface;
-use App\Services\Contracts\HotelSettingServiceInterface;
-use App\Support\Hotel\HotelSettingValueType;
+use App\DTOs\SystemSettingDTO;
+use App\Models\SystemSetting;
+use App\Repositories\Contracts\SystemSettingRepositoryInterface;
+use App\Services\Contracts\SystemSettingServiceInterface;
+use App\Support\System\SystemSettingValueType;
 use JsonException;
 use RuntimeException;
 
-class HotelSettingService extends BaseService implements HotelSettingServiceInterface
+class SystemSettingService extends BaseService implements SystemSettingServiceInterface
 {
     /** @var array<string, mixed> */
     private array $resolvedValues = [];
 
     public function __construct(
-        private readonly HotelSettingRepositoryInterface $hotelSettingRepository
+        private readonly SystemSettingRepositoryInterface $systemSettingRepository
     ) {
-        parent::__construct($hotelSettingRepository);
+        parent::__construct($systemSettingRepository);
     }
 
-    public function store(mixed $payload): HotelSetting
+    public function store(mixed $payload): SystemSetting
     {
-        $data = $payload instanceof HotelSettingDTO
+        $data = $payload instanceof SystemSettingDTO
             ? $payload->toArray()
             : $this->normalisePayload($payload);
 
         $data = $this->prepareForStorage($data);
 
-        /** @var HotelSetting $setting */
+        /** @var SystemSetting $setting */
         $setting = parent::store($data);
         $this->resolvedValues = [];
 
@@ -38,11 +38,11 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
 
     public function update(int|string $id, mixed $payload): bool
     {
-        $data = $payload instanceof HotelSettingDTO
+        $data = $payload instanceof SystemSettingDTO
             ? $payload->toArray()
             : $this->normalisePayload($payload);
 
-        $setting = $this->hotelSettingRepository->find($id);
+        $setting = $this->systemSettingRepository->find($id);
         if ($setting === null) {
             return false;
         }
@@ -71,10 +71,10 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
             return $this->resolvedValues[$key];
         }
 
-        $setting = $this->hotelSettingRepository->findActiveByKey($key);
+        $setting = $this->systemSettingRepository->findActiveByKey($key);
 
         if ($setting === null) {
-            throw new RuntimeException(sprintf('Required hotel setting [%s] was not found or is inactive.', $key));
+            throw new RuntimeException(sprintf('Required system setting [%s] was not found or is inactive.', $key));
         }
 
         return $this->resolvedValues[$key] = $this->castValue(
@@ -91,8 +91,8 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
 
         $valueType = (string) ($data['value_type'] ?? '');
 
-        if (!HotelSettingValueType::isValid($valueType)) {
-            throw new RuntimeException('Invalid hotel setting value type.');
+        if (!SystemSettingValueType::isValid($valueType)) {
+            throw new RuntimeException('Invalid system setting value type.');
         }
 
         $data['value'] = $this->serializeValue($data['value'], $valueType);
@@ -103,24 +103,24 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
     private function serializeValue(mixed $value, string $valueType): string
     {
         return match ($valueType) {
-            HotelSettingValueType::STRING => (string) $value,
-            HotelSettingValueType::INTEGER => (string) (int) $value,
-            HotelSettingValueType::FLOAT => (string) (float) $value,
-            HotelSettingValueType::BOOLEAN => filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0',
-            HotelSettingValueType::JSON => $this->encodeJson($value),
-            default => throw new RuntimeException('Unsupported hotel setting value type.'),
+            SystemSettingValueType::STRING => (string) $value,
+            SystemSettingValueType::INTEGER => (string) (int) $value,
+            SystemSettingValueType::FLOAT => (string) (float) $value,
+            SystemSettingValueType::BOOLEAN => filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0',
+            SystemSettingValueType::JSON => $this->encodeJson($value),
+            default => throw new RuntimeException('Unsupported system setting value type.'),
         };
     }
 
     private function castValue(string $value, string $valueType): mixed
     {
         return match ($valueType) {
-            HotelSettingValueType::STRING => $value,
-            HotelSettingValueType::INTEGER => (int) $value,
-            HotelSettingValueType::FLOAT => (float) $value,
-            HotelSettingValueType::BOOLEAN => in_array(strtolower($value), ['1', 'true'], true),
-            HotelSettingValueType::JSON => $this->decodeJson($value),
-            default => throw new RuntimeException('Unsupported hotel setting value type.'),
+            SystemSettingValueType::STRING => $value,
+            SystemSettingValueType::INTEGER => (int) $value,
+            SystemSettingValueType::FLOAT => (float) $value,
+            SystemSettingValueType::BOOLEAN => in_array(strtolower($value), ['1', 'true'], true),
+            SystemSettingValueType::JSON => $this->decodeJson($value),
+            default => throw new RuntimeException('Unsupported system setting value type.'),
         };
     }
 
@@ -129,7 +129,7 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
         try {
             return json_encode($value, JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
-            throw new RuntimeException('Invalid JSON hotel setting value.', 0, $exception);
+            throw new RuntimeException('Invalid JSON system setting value.', 0, $exception);
         }
     }
 
@@ -138,7 +138,7 @@ class HotelSettingService extends BaseService implements HotelSettingServiceInte
         try {
             return json_decode($value, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
-            throw new RuntimeException('Invalid JSON stored in hotel setting.', 0, $exception);
+            throw new RuntimeException('Invalid JSON stored in system setting.', 0, $exception);
         }
     }
 }

@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Support\Hotel;
+namespace App\Support\System;
 
-final class HotelSettingValueType
+final class SystemSettingValueType
 {
     public const STRING = 'string';
     public const INTEGER = 'integer';

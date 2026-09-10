@@ -2,12 +2,12 @@
 
 namespace App\Http\Requests;
 
-use App\Models\HotelSetting;
-use App\Support\Hotel\HotelSettingValueType;
+use App\Models\SystemSetting;
+use App\Support\System\SystemSettingValueType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateHotelSettingRequest extends FormRequest
+class UpdateSystemSettingRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -16,8 +16,8 @@ class UpdateHotelSettingRequest extends FormRequest
 
     public function rules(): array
     {
-        /** @var HotelSetting|null $setting */
-        $setting = $this->route('hotel_setting');
+        /** @var SystemSetting|null $setting */
+        $setting = $this->route('system_setting');
 
         return [
             'key' => [
@@ -25,11 +25,11 @@ class UpdateHotelSettingRequest extends FormRequest
                 'required',
                 'string',
                 'max:150',
-                Rule::unique('hotel_settings', 'key')->ignore($setting?->id),
+                Rule::unique('system_settings', 'key')->ignore($setting?->id),
             ],
             'group' => ['sometimes', 'required', 'string', 'max:100'],
             'value' => ['sometimes', 'required'],
-            'value_type' => ['sometimes', 'required', 'string', Rule::in(HotelSettingValueType::values())],
+            'value_type' => ['sometimes', 'required', 'string', Rule::in(SystemSettingValueType::values())],
             'is_active' => ['sometimes', 'required', 'boolean'],
         ];
     }

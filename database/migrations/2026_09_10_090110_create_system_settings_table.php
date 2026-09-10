@@ -8,12 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('hotel_settings', function (Blueprint $table) {
+        Schema::create('system_settings', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();
             $table->string('group')->index();
             $table->text('value');
-            $table->string('value_type', 20);
+            $table->string('value_type');
             $table->boolean('is_active')->index();
             $table->timestamps();
         });
@@ -21,6 +21,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('hotel_settings');
+        Schema::dropIfExists('system_settings');
     }
 };

@@ -10,7 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             ProviderSeeder::class,
-            HotelSettingSeeder::class,
+            SystemSettingSeeder::class,
             ProviderPricingRuleSeeder::class,
         ]);
     }

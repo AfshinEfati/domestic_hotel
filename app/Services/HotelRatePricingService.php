@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Repositories\Contracts\ProviderPricingRuleRepositoryInterface;
 use App\Services\Contracts\HotelRatePricingServiceInterface;
-use App\Services\Contracts\HotelSettingServiceInterface;
-use App\Support\Hotel\HotelSettingKey;
+use App\Services\Contracts\SystemSettingServiceInterface;
+use App\Support\System\SystemSettingKey;
 
 class HotelRatePricingService implements HotelRatePricingServiceInterface
 {
@@ -17,7 +17,7 @@ class HotelRatePricingService implements HotelRatePricingServiceInterface
 
     public function __construct(
         private readonly ProviderPricingRuleRepositoryInterface $pricingRuleRepository,
-        private readonly HotelSettingServiceInterface $settingService,
+        private readonly SystemSettingServiceInterface $systemSettingService,
     ) {}
 
     public function calculateFinalRate(int|float|null $baseRate, ?int $providerId = null): ?int
@@ -64,11 +64,11 @@ class HotelRatePricingService implements HotelRatePricingServiceInterface
         }
 
         return $this->resolvedDefaultRule = [
-            'percentage' => (float) $this->settingService->getValue(
-                HotelSettingKey::PRICING_DEFAULT_PERCENTAGE
+            'percentage' => (float) $this->systemSettingService->getValue(
+                SystemSettingKey::PRICING_DEFAULT_PERCENTAGE
             ),
-            'fixed_amount' => (int) $this->settingService->getValue(
-                HotelSettingKey::PRICING_DEFAULT_FIXED_AMOUNT
+            'fixed_amount' => (int) $this->systemSettingService->getValue(
+                SystemSettingKey::PRICING_DEFAULT_FIXED_AMOUNT
             ),
         ];
     }

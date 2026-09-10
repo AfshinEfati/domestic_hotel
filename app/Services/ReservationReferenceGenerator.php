@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Repositories\Contracts\ReservationRepositoryInterface;
-use App\Services\Contracts\HotelSettingServiceInterface;
 use App\Services\Contracts\ReservationReferenceGeneratorInterface;
-use App\Support\Hotel\HotelSettingKey;
+use App\Services\Contracts\SystemSettingServiceInterface;
+use App\Support\System\SystemSettingKey;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -13,19 +13,19 @@ class ReservationReferenceGenerator implements ReservationReferenceGeneratorInte
 {
     public function __construct(
         private readonly ReservationRepositoryInterface $reservationRepository,
-        private readonly HotelSettingServiceInterface $settingService,
+        private readonly SystemSettingServiceInterface $systemSettingService,
     ) {}
 
     public function generate(): string
     {
-        $prefix = trim((string) $this->settingService->getValue(
-            HotelSettingKey::RESERVATION_REFERENCE_PREFIX
+        $prefix = trim((string) $this->systemSettingService->getValue(
+            SystemSettingKey::RESERVATION_REFERENCE_PREFIX
         ));
-        $randomLength = (int) $this->settingService->getValue(
-            HotelSettingKey::RESERVATION_REFERENCE_RANDOM_LENGTH
+        $randomLength = (int) $this->systemSettingService->getValue(
+            SystemSettingKey::RESERVATION_REFERENCE_RANDOM_LENGTH
         );
-        $maxAttempts = (int) $this->settingService->getValue(
-            HotelSettingKey::RESERVATION_REFERENCE_MAX_ATTEMPTS
+        $maxAttempts = (int) $this->systemSettingService->getValue(
+            SystemSettingKey::RESERVATION_REFERENCE_MAX_ATTEMPTS
         );
 
         if ($randomLength < 6 || $randomLength > 64) {

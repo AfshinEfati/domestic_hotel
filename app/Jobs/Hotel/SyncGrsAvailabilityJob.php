@@ -3,9 +3,9 @@
 namespace App\Jobs\Hotel;
 
 use App\Models\Provider;
-use App\Services\Contracts\HotelSettingServiceInterface;
-use App\Support\Hotel\HotelSettingKey;
+use App\Services\Contracts\SystemSettingServiceInterface;
 use App\Support\Logging\SystemLogger;
+use App\Support\System\SystemSettingKey;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,7 +29,7 @@ class SyncGrsAvailabilityJob implements ShouldQueue
 
     public function handle(
         SystemLogger $logger,
-        HotelSettingServiceInterface $settingService
+        SystemSettingServiceInterface $systemSettingService
     ): void {
         $provider = Provider::where('code', 'grs')->first();
         if (!$provider) {
@@ -42,27 +42,27 @@ class SyncGrsAvailabilityJob implements ShouldQueue
 
         $days = $this->resolvePositiveInt(
             $this->days,
-            (int) $settingService->getValue(HotelSettingKey::GRS_AVAILABILITY_DAYS),
+            (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_DAYS),
             1
         );
         $chunkSize = $this->resolvePositiveInt(
             $this->chunkSize,
-            (int) $settingService->getValue(HotelSettingKey::GRS_AVAILABILITY_CHUNK_SIZE),
+            (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_CHUNK_SIZE),
             1
         );
         $throttleMs = max(
             0,
             (int) ($this->throttleMs
-                ?? $settingService->getValue(HotelSettingKey::GRS_AVAILABILITY_THROTTLE_MS))
+                ?? $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_THROTTLE_MS))
         );
         $maxAttempts = $this->resolvePositiveInt(
             $this->maxAttempts,
-            (int) $settingService->getValue(HotelSettingKey::GRS_AVAILABILITY_MAX_ATTEMPTS),
+            (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_MAX_ATTEMPTS),
             1
         );
         $requestsPerMinute = $this->resolvePositiveInt(
             $this->requestsPerMinute,
-            (int) $settingService->getValue(HotelSettingKey::GRS_AVAILABILITY_REQUESTS_PER_MINUTE),
+            (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_REQUESTS_PER_MINUTE),
             1
         );
 

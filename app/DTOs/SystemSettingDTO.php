@@ -4,7 +4,7 @@ namespace App\DTOs;
 
 use Illuminate\Http\Request;
 
-class HotelSettingDTO
+class SystemSettingDTO
 {
     public function __construct(
         public readonly mixed $key = null,

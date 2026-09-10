@@ -2,11 +2,11 @@
 
 namespace App\Http\Requests;
 
-use App\Support\Hotel\HotelSettingValueType;
+use App\Support\System\SystemSettingValueType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreHotelSettingRequest extends FormRequest
+class StoreSystemSettingRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -16,10 +16,10 @@ class StoreHotelSettingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'key' => ['required', 'string', 'max:150', 'unique:hotel_settings,key'],
+            'key' => ['required', 'string', 'max:150', 'unique:system_settings,key'],
             'group' => ['required', 'string', 'max:100'],
             'value' => ['required'],
-            'value_type' => ['required', 'string', Rule::in(HotelSettingValueType::values())],
+            'value_type' => ['required', 'string', Rule::in(SystemSettingValueType::values())],
             'is_active' => ['required', 'boolean'],
         ];
     }

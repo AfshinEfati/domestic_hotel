@@ -2,11 +2,11 @@
 
 namespace App\Services\Contracts;
 
-use App\Models\HotelSetting;
+use App\Models\SystemSetting;
 
-interface HotelSettingServiceInterface extends BaseServiceInterface
+interface SystemSettingServiceInterface extends BaseServiceInterface
 {
-    public function store(mixed $payload): HotelSetting;
+    public function store(mixed $payload): SystemSetting;
 
     public function update(int|string $id, mixed $payload): bool;
 
