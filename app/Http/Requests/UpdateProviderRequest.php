@@ -20,6 +20,7 @@ class UpdateProviderRequest extends FormRequest
             'code' => 'sometimes|nullable',
             'config' => 'sometimes|nullable|array',
             'is_active' => 'sometimes|nullable|boolean',
+            'is_online' => 'sometimes|nullable|boolean',
             'created_at' => 'sometimes|nullable|date',
             'updated_at' => 'sometimes|nullable|date',
             'auth_token' => 'sometimes|nullable',
