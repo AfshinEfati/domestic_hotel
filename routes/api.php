@@ -30,6 +30,7 @@ Route::group(['prefix' => 'v1'], function () {
         Route::apiResource('countries', CountryController::class);
         Route::apiResource('states', StateController::class);
         Route::apiResource('cities', CityController::class);
+        Route::post('providers/offline', [ProviderController::class, 'storeOffline']);
         Route::apiResource('providers', ProviderController::class);
         Route::apiResource('provider-pricing-rules', ProviderPricingRuleController::class);
         Route::apiResource('system-settings', SystemSettingController::class);
