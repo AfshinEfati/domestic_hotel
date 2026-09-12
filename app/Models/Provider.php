@@ -47,4 +47,14 @@ class Provider extends Model
     {
         return $this->hasMany(ProviderCityMap::class);
     }
+
+    public function reservationPurchases(): HasMany
+    {
+        return $this->hasMany(ReservationPurchase::class);
+    }
+
+    public function quotedReservationPurchases(): HasMany
+    {
+        return $this->hasMany(ReservationPurchase::class, 'quoted_provider_id');
+    }
 }
