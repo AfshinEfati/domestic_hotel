@@ -10,24 +10,37 @@ return new class extends Migration
     {
         Schema::create('reservation_rooms', function (Blueprint $table) {
             $table->id();
+
             $table->foreignId('reservation_hotel_id')
+                ->comment('Reservation hotel that this room belongs to')
                 ->constrained('reservation_hotels')
                 ->cascadeOnDelete();
+
+            $table->unsignedSmallInteger('room_number')
+                ->comment('Sequential room number within the reservation hotel');
+
             $table->foreignId('room_type_id')
                 ->nullable()
+                ->comment('Room type selected for the reservation')
                 ->constrained('room_types')
-                ->nullOnDelete();
+                ->restrictOnDelete();
+
             $table->foreignId('rate_plan_id')
                 ->nullable()
+                ->comment('Rate plan selected for the reservation room')
                 ->constrained('rate_plans')
-                ->nullOnDelete();
-            $table->string('room_name')->nullable();
-            $table->unsignedSmallInteger('quantity');
-            $table->date('check_in');
-            $table->date('check_out');
+                ->restrictOnDelete();
+
+            $table->string('room_name')
+                ->nullable()
+                ->comment('Manually entered room name when no room type is available');
+
             $table->timestamps();
 
-            $table->index(['reservation_hotel_id', 'check_in', 'check_out']);
+            $table->unique(
+                ['reservation_hotel_id', 'room_number'],
+                'reservation_rooms_hotel_number_unique'
+            );
         });
     }
 
