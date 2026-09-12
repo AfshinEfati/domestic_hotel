@@ -16,13 +16,17 @@ class HotelSyncRoomsCommand extends Command
         $providerCode = $this->argument('provider');
 
         if ($providerCode) {
-            $providers = $providerService->repository()->getByDynamic(['code' => $providerCode, 'is_active' => true]);
+            $providers = $providerService->repository()->getByDynamic([
+                'code' => $providerCode,
+                'is_active' => true,
+                'is_online' => true,
+            ]);
         } else {
             $providers = $providerService->getActiveProviders();
         }
 
         if ($providers->isEmpty()) {
-            $this->error("No active providers found.");
+            $this->error('No active online providers found.');
             return self::FAILURE;
         }
 
