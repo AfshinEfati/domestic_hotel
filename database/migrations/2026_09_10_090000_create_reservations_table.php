@@ -24,8 +24,19 @@ return new class extends Migration
             $table->unsignedBigInteger('sale_amount')
                 ->comment('Final amount sold to the end user in IRR');
 
-            $table->json('booker')
-                ->comment('Snapshot of the booker name and contact information');
+            $table->string('booker_first_name', 100)
+                ->comment('Booker first name');
+
+            $table->string('booker_last_name', 100)
+                ->comment('Booker last name');
+
+            $table->string('booker_mobile', 32)
+                ->index()
+                ->comment('Booker mobile number');
+
+            $table->string('booker_email')
+                ->nullable()
+                ->comment('Booker email address');
 
             $table->string('acc_code', 64)
                 ->nullable()
