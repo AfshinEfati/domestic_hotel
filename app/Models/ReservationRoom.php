@@ -6,29 +6,24 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Represents a single physical room assigned to a reservation hotel.
+ */
 class ReservationRoom extends Model
 {
     protected $fillable = [
         'reservation_hotel_id',
+        'room_number',
         'room_type_id',
         'rate_plan_id',
         'room_name',
-        'quantity',
-        'check_in',
-        'check_out',
     ];
 
     protected $casts = [
         'reservation_hotel_id' => 'integer',
+        'room_number' => 'integer',
         'room_type_id' => 'integer',
         'rate_plan_id' => 'integer',
-        'quantity' => 'integer',
-        'check_in' => 'date',
-        'check_out' => 'date',
-    ];
-
-    protected $attributes = [
-        'quantity' => 1,
     ];
 
     public function reservationHotel(): BelongsTo
@@ -44,6 +39,11 @@ class ReservationRoom extends Model
     public function ratePlan(): BelongsTo
     {
         return $this->belongsTo(RatePlan::class);
+    }
+
+    public function guests(): HasMany
+    {
+        return $this->hasMany(ReservationGuest::class);
     }
 
     public function purchaseSegments(): HasMany
