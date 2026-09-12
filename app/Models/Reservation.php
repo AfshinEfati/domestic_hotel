@@ -17,7 +17,10 @@ class Reservation extends Model
         'check_in',
         'check_out',
         'sale_amount',
-        'booker',
+        'booker_first_name',
+        'booker_last_name',
+        'booker_mobile',
+        'booker_email',
         'acc_code',
     ];
 
@@ -26,7 +29,6 @@ class Reservation extends Model
         'check_in' => 'date:Y-m-d',
         'check_out' => 'date:Y-m-d',
         'sale_amount' => 'integer',
-        'booker' => 'array',
     ];
 
     protected $attributes = [
