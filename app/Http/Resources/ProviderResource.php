@@ -16,6 +16,7 @@ class ProviderResource extends JsonResource
             'code' => $this->code,
             'config' => $this->config,
             'is_active' => $this->is_active === null ? null : StatusHelper::getStatus((bool) $this->is_active),
+            'is_online' => $this->is_online === null ? null : StatusHelper::getStatus((bool) $this->is_online),
             'auth_token' => $this->auth_token,
             'expire_at' => StatusHelper::formatDates($this->expire_at),
             'created_at' => StatusHelper::formatDates($this->created_at),
