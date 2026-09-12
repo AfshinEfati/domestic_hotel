@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\DTOs\ProviderDTO;
 use App\Helpers\StatusHelper;
+use App\Http\Requests\StoreOfflineProviderRequest;
 use App\Http\Requests\StoreProviderRequest;
 use App\Http\Requests\UpdateProviderRequest;
 use App\Http\Resources\ProviderResource;
@@ -21,12 +22,22 @@ class ProviderController
 
         return StatusHelper::successResponse(ProviderResource::collection($data));
     }
+
     public function store(StoreProviderRequest $request): JsonResponse
     {
         $dto = ProviderDTO::fromRequest($request);
         $model = $this->service->store($dto);
 
         return StatusHelper::successResponse(new ProviderResource($model), 'created', 201);
+    }
+
+    public function storeOffline(StoreOfflineProviderRequest $request): JsonResponse
+    {
+        $provider = $this->service->storeOfflineByAccommodationId(
+            $request->integer('accommodation_id')
+        );
+
+        return StatusHelper::successResponse(new ProviderResource($provider), 'created', 201);
     }
 
     public function show(Provider $provider): JsonResponse
@@ -46,6 +57,7 @@ class ProviderController
         $provider->refresh();
         return StatusHelper::successResponse(new ProviderResource($provider), 'updated');
     }
+
     public function destroy(Provider $provider): JsonResponse
     {
         $deleted = $this->service->destroy($provider->id);
