@@ -12,6 +12,7 @@ class ProviderDTO
     public mixed $code;
     public mixed $config;
     public mixed $is_active;
+    public mixed $is_online;
     public mixed $created_at;
     public mixed $updated_at;
     public mixed $auth_token;
@@ -24,6 +25,7 @@ class ProviderDTO
         mixed $code = null,
         mixed $config = null,
         mixed $is_active = null,
+        mixed $is_online = null,
         mixed $created_at = null,
         mixed $updated_at = null,
         mixed $auth_token = null,
@@ -35,6 +37,7 @@ class ProviderDTO
         $this->code = $code;
         $this->config = $config;
         $this->is_active = $is_active;
+        $this->is_online = $is_online;
         $this->created_at = $created_at;
         $this->updated_at = $updated_at;
         $this->auth_token = $auth_token;
@@ -50,6 +53,7 @@ class ProviderDTO
         $dto->code = $request->input('code');
         $dto->config = $request->input('config');
         $dto->is_active = $request->input('is_active');
+        $dto->is_online = $request->input('is_online');
         $dto->created_at = $request->input('created_at');
         $dto->updated_at = $request->input('updated_at');
         $dto->auth_token = $request->input('auth_token');
@@ -67,6 +71,7 @@ class ProviderDTO
         if ($this->code !== null) { $out['code'] = $this->code; }
         if ($this->config !== null) { $out['config'] = $this->config; }
         if ($this->is_active !== null) { $out['is_active'] = $this->is_active; }
+        if ($this->is_online !== null) { $out['is_online'] = $this->is_online; }
         if ($this->created_at !== null) { $out['created_at'] = $this->created_at; }
         if ($this->updated_at !== null) { $out['updated_at'] = $this->updated_at; }
         if ($this->auth_token !== null) { $out['auth_token'] = $this->auth_token; }
