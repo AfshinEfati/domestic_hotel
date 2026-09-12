@@ -20,6 +20,7 @@ class StoreProviderRequest extends FormRequest
             'code' => 'nullable',
             'config' => 'nullable|array',
             'is_active' => 'nullable|boolean',
+            'is_online' => 'nullable|boolean',
             'created_at' => 'nullable|date',
             'updated_at' => 'nullable|date',
             'auth_token' => 'nullable',
