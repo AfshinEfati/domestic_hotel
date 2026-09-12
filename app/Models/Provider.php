@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Represents a hotel inventory and reservation provider.
+ */
 class Provider extends Model
 {
     protected $fillable = [
@@ -14,6 +17,7 @@ class Provider extends Model
         'code',
         'config',
         'is_active',
+        'is_online',
         'created_at',
         'updated_at',
         'auth_token',
@@ -27,9 +31,11 @@ class Provider extends Model
         'code' => 'string',
         'config' => 'array',
         'is_active' => 'boolean',
+        'is_online' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
     /**
      * Get the city mappings for the provider.
      *
