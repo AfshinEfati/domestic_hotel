@@ -7,19 +7,26 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * Represents the core reservation record managed by the domestic hotel service.
+ */
 class Reservation extends Model
 {
     protected $fillable = [
-        'reservation_number',
         'status',
-        'total_price',
-        'email',
-        'mobile',
+        'check_in',
+        'check_out',
+        'sale_amount',
+        'booker',
+        'acc_code',
     ];
 
     protected $casts = [
         'status' => 'integer',
-        'total_price' => 'integer',
+        'check_in' => 'date:Y-m-d',
+        'check_out' => 'date:Y-m-d',
+        'sale_amount' => 'integer',
+        'booker' => 'array',
     ];
 
     protected $attributes = [
