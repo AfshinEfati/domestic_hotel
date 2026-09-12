@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Represents an accommodation associated with a reservation, including requested and alternative hotels.
+ */
 class ReservationHotel extends Model
 {
     protected $fillable = [
@@ -25,7 +28,7 @@ class ReservationHotel extends Model
 
     protected $attributes = [
         'type' => ReservationHotelType::REQUESTED,
-        'is_final' => false,
+        'is_final' => true,
     ];
 
     public function reservation(): BelongsTo
