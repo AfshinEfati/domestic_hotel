@@ -4,13 +4,16 @@ namespace App\Services;
 
 use App\DTOs\ProviderDTO;
 use App\Models\Provider;
+use App\Repositories\Contracts\AccommodationRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Services\Contracts\ProviderServiceInterface;
 
 class ProviderService extends BaseService implements ProviderServiceInterface
 {
-    public function __construct(ProviderRepositoryInterface $repository)
-    {
+    public function __construct(
+        ProviderRepositoryInterface $repository,
+        private readonly AccommodationRepositoryInterface $accommodationRepository,
+    ) {
         parent::__construct($repository);
     }
 
@@ -61,9 +64,35 @@ class ProviderService extends BaseService implements ProviderServiceInterface
         return parent::destroy($id);
     }
 
+    public function storeOfflineByAccommodationId(int $accommodationId): Provider
+    {
+        $accommodation = $this->accommodationRepository->find($accommodationId);
+
+        if ($accommodation === null) {
+            throw new \InvalidArgumentException('Accommodation not found.');
+        }
+
+        /** @var Provider $provider */
+        $provider = $this->repository->updateOrCreate(
+            ['code' => 'hotel-'.$accommodation->id],
+            [
+                'fa_name' => $accommodation->fa_name,
+                'en_name' => $accommodation->en_name,
+                'config' => null,
+                'is_active' => true,
+                'is_online' => false,
+            ]
+        );
+
+        return $provider;
+    }
+
     public function getActiveProviders(): iterable
     {
-        return $this->repository->getByDynamic(['is_active' => true]);
+        return $this->repository->getByDynamic([
+            'is_active' => true,
+            'is_online' => true,
+        ]);
     }
 
     protected function relations(): array
