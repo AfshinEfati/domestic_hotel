@@ -28,6 +28,8 @@ interface ProviderServiceInterface extends BaseServiceInterface
 
     public function destroy(int|string $id): bool;
 
+    public function storeOfflineByAccommodationId(int $accommodationId): Provider;
+
     /**
      * @return iterable<Provider>
      */
