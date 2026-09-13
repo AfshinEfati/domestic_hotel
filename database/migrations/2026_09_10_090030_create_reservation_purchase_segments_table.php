@@ -10,33 +10,42 @@ return new class extends Migration
     {
         Schema::create('reservation_purchase_segments', function (Blueprint $table) {
             $table->id();
+
+            $table->foreignId('reservation_purchase_id')
+                ->comment('Reservation purchase that fulfills this room segment')
+                ->constrained('reservation_purchases')
+                ->cascadeOnDelete();
+
             $table->foreignId('reservation_room_id')
+                ->comment('Reservation room fulfilled by this purchase segment')
                 ->constrained('reservation_rooms')
                 ->cascadeOnDelete();
-            $table->foreignId('provider_id')
+
+            $table->date('from_date')
+                ->comment('First stay date covered by this purchase segment');
+
+            $table->date('to_date')
+                ->comment('End-exclusive stay date covered by this purchase segment');
+
+            $table->unsignedBigInteger('nightly_purchase_amount')
                 ->nullable()
-                ->constrained('providers')
-                ->nullOnDelete();
-            $table->unsignedTinyInteger('purchase_method');
-            $table->unsignedSmallInteger('quantity');
-            $table->date('from_date');
-            $table->date('to_date');
-            $table->string('provider_reference')->nullable();
-            $table->string('provider_property_id')->nullable();
-            $table->string('provider_room_type_id')->nullable();
-            $table->string('provider_rate_plan_id')->nullable();
-            $table->timestamp('purchased_at')->nullable();
-            $table->timestamp('issued_at')->nullable();
-            $table->text('notes')->nullable();
+                ->comment('Procurement amount per night for this room segment in IRR');
+
             $table->timestamps();
+
+            $table->unique(
+                [
+                    'reservation_purchase_id',
+                    'reservation_room_id',
+                    'from_date',
+                    'to_date',
+                ],
+                'reservation_purchase_segments_unique'
+            );
 
             $table->index(
                 ['reservation_room_id', 'from_date', 'to_date'],
-                'rps_room_dates_idx'
-            );
-            $table->index(
-                ['provider_id', 'purchase_method'],
-                'rps_provider_method_idx'
+                'reservation_purchase_segments_room_dates_idx'
             );
         });
     }
