@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Reservation\ReservationStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Represents a procurement purchase used to fulfill a reservation hotel.
@@ -52,5 +53,10 @@ class ReservationPurchase extends Model
     public function quotedProvider(): BelongsTo
     {
         return $this->belongsTo(Provider::class, 'quoted_provider_id');
+    }
+
+    public function segments(): HasMany
+    {
+        return $this->hasMany(ReservationPurchaseSegment::class);
     }
 }
