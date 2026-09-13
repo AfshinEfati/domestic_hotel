@@ -2,51 +2,37 @@
 
 namespace App\Models;
 
-use App\Support\Reservation\PurchaseMethod;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Represents the portion of a reservation room fulfilled by a purchase.
+ */
 class ReservationPurchaseSegment extends Model
 {
     protected $fillable = [
+        'reservation_purchase_id',
         'reservation_room_id',
-        'provider_id',
-        'purchase_method',
-        'quantity',
         'from_date',
         'to_date',
-        'provider_reference',
-        'provider_property_id',
-        'provider_room_type_id',
-        'provider_rate_plan_id',
-        'purchased_at',
-        'issued_at',
-        'notes',
+        'nightly_purchase_amount',
     ];
 
     protected $casts = [
+        'reservation_purchase_id' => 'integer',
         'reservation_room_id' => 'integer',
-        'provider_id' => 'integer',
-        'purchase_method' => 'integer',
-        'quantity' => 'integer',
-        'from_date' => 'date',
-        'to_date' => 'date',
-        'purchased_at' => 'datetime',
-        'issued_at' => 'datetime',
+        'from_date' => 'date:Y-m-d',
+        'to_date' => 'date:Y-m-d',
+        'nightly_purchase_amount' => 'integer',
     ];
 
-    protected $attributes = [
-        'purchase_method' => PurchaseMethod::ONLINE,
-        'quantity' => 1,
-    ];
+    public function purchase(): BelongsTo
+    {
+        return $this->belongsTo(ReservationPurchase::class, 'reservation_purchase_id');
+    }
 
     public function reservationRoom(): BelongsTo
     {
         return $this->belongsTo(ReservationRoom::class);
-    }
-
-    public function provider(): BelongsTo
-    {
-        return $this->belongsTo(Provider::class);
     }
 }
