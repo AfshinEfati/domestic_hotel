@@ -17,7 +17,15 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->unsignedSmallInteger('room_number')
-                ->comment('Sequential room number within the reservation hotel');
+                ->comment('Sequential room slot number within the reservation hotel');
+
+            $table->unsignedTinyInteger('type')
+                ->comment('Room candidate role within its slot, such as requested or alternative');
+
+            $table->boolean('is_final')
+                ->default(true)
+                ->index()
+                ->comment('Indicates whether this candidate is the final room for its slot');
 
             $table->foreignId('room_type_id')
                 ->nullable()
@@ -38,8 +46,13 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(
-                ['reservation_hotel_id', 'room_number'],
-                'reservation_rooms_hotel_number_unique'
+                ['reservation_hotel_id', 'room_number', 'type'],
+                'reservation_rooms_hotel_number_type_unique'
+            );
+
+            $table->index(
+                ['reservation_hotel_id', 'room_number', 'is_final'],
+                'reservation_rooms_slot_final_idx'
             );
         });
     }

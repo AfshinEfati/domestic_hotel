@@ -10,7 +10,7 @@ class PurchaseManualRule extends Model
     protected $fillable = [
         'name',
         'provider_id',
-        'hotel_id',
+        'accommodation_id',
         'minimum_amount',
         'maximum_amount',
         'start_time',
@@ -31,8 +31,8 @@ class PurchaseManualRule extends Model
         return $this->belongsTo(Provider::class);
     }
 
-    public function hotel(): BelongsTo
+    public function accommodation(): BelongsTo
     {
-        return $this->belongsTo(Hotel::class);
+        return $this->belongsTo(Accommodation::class);
     }
 }

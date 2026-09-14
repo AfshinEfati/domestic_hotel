@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Represents an accommodation associated with a reservation, including requested and alternative hotels.
+ * Represents accommodation associated with a reservation, including requested and alternative hotels.
  */
 class ReservationHotel extends Model
 {
@@ -44,6 +44,11 @@ class ReservationHotel extends Model
     public function rooms(): HasMany
     {
         return $this->hasMany(ReservationRoom::class);
+    }
+
+    public function finalRooms(): HasMany
+    {
+        return $this->hasMany(ReservationRoom::class)->where('is_final', true);
     }
 
     public function purchases(): HasMany

@@ -20,10 +20,10 @@ return new class extends Migration
                 ->constrained('providers')
                 ->nullOnDelete();
 
-            $table->foreignId('hotel_id')
+            $table->foreignId('accommodation_id')
                 ->nullable()
-                ->comment('Hotel identifier for this manual purchase rule')
-                ->constrained('hotels')
+                ->comment('Accommodation identifier for this manual purchase rule')
+                ->constrained('accommodations')
                 ->nullOnDelete();
 
             $table->unsignedBigInteger('minimum_amount')
@@ -49,7 +49,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['provider_id', 'is_active'], 'purchase_manual_rules_provider_active_idx');
-            $table->index(['hotel_id', 'is_active'], 'purchase_manual_rules_hotel_active_idx');
+            $table->index(['accommodation_id', 'is_active'], 'purchase_manual_rules_accommodation_active_idx');
         });
     }
 

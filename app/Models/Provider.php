@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Represents a hotel inventory and reservation provider.
@@ -56,5 +57,10 @@ class Provider extends Model
     public function quotedReservationPurchases(): HasMany
     {
         return $this->hasMany(ReservationPurchase::class, 'quoted_provider_id');
+    }
+
+    public function creditBalance(): HasOne
+    {
+        return $this->hasOne(ProviderCreditBalance::class);
     }
 }
