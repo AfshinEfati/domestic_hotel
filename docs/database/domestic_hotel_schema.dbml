@@ -1,0 +1,359 @@
+Table providers {
+  id bigint [pk, increment]
+  code varchar
+  fa_name varchar
+  en_name varchar
+  class varchar
+  config varchar
+  is_active varchar
+  is_online varchar
+}
+
+Table countries {
+  id bigint [pk, increment]
+  fa_name varchar
+  en_name varchar
+  iso2 varchar
+  iso3 varchar
+}
+
+Table states {
+  id bigint [pk, increment]
+  country_id bigint
+  fa_name varchar
+  en_name varchar
+}
+
+Table cities {
+  id bigint [pk, increment]
+  country_id bigint
+  state_id bigint
+  fa_name varchar
+  en_name varchar
+  lat varchar
+  is_active varchar
+}
+
+Table provider_city_maps {
+  id bigint [pk, increment]
+  city_id bigint
+  provider_id bigint
+  provider_city_id varchar
+}
+
+Table accommodation_types {
+  id bigint [pk, increment]
+  fa_name varchar
+  en_name varchar
+}
+
+Table accommodations {
+  id bigint [pk, increment]
+  city_id bigint
+  accommodation_type_id bigint
+  fa_name varchar
+  en_name varchar
+  star varchar
+  grade varchar
+  is_active varchar
+}
+
+Table accommodation_provider_maps {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  provider_id bigint
+  provider_property_id varchar
+}
+
+Table room_type_names {
+  id bigint [pk, increment]
+  fa_name varchar
+  en_name varchar
+}
+
+Table room_types {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  room_type_name_id bigint
+  fa_name varchar
+  capacity varchar
+  extra_capacity varchar
+  out_of_service varchar
+}
+
+Table room_type_provider_maps {
+  id bigint [pk, increment]
+  room_type_id bigint
+  provider_id bigint
+  provider_room_type_id varchar
+}
+
+Table rate_plans {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  fa_name varchar
+  meal_type varchar
+  food_board_type varchar
+  cancelable varchar
+  min_stay varchar
+}
+
+Table rate_plan_provider_maps {
+  id bigint [pk, increment]
+  rate_plan_id bigint
+  provider_id bigint
+  provider_rate_plan_id varchar
+}
+
+Table room_calendars {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  room_type_id bigint
+  rate_plan_id bigint
+  provider_id bigint
+  day varchar
+  rack_daily_grs varchar
+  inventory varchar
+  min_max varchar
+  cta varchar
+}
+
+Table room_calendar_snapshots {
+  id bigint [pk, increment]
+  room_calendar_id bigint
+  provider_id bigint
+  day varchar
+  payload varchar
+}
+
+Table facility_groups {
+  id bigint [pk, increment]
+  fa_name varchar
+  en_name varchar
+}
+
+Table facilities {
+  id bigint [pk, increment]
+  facility_group_id bigint
+  fa_name varchar
+  en_name varchar
+}
+
+Table accommodation_facility {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  facility_id bigint
+  description varchar
+}
+
+Table rule_categories {
+  id bigint [pk, increment]
+  code varchar
+  name varchar
+  name_en varchar
+  name_ar varchar
+}
+
+Table rules {
+  id bigint [pk, increment]
+  hotel_id bigint
+  rule_category_id bigint
+  provider_rule_id varchar
+  type varchar
+  conditions varchar
+  status varchar
+}
+
+Table hotel_child_policy {
+  id bigint [pk, increment]
+  accommodation_id bigint
+  max_infant_age varchar
+  max_child_age varchar
+  infant_pricing_type varchar
+  child_pricing_type varchar
+  status varchar
+}
+
+Table provider_pricing_rules {
+  id bigint [pk, increment]
+  provider_id bigint
+  percentage varchar
+  fixed_amount varchar
+  is_active varchar
+}
+
+Table system_settings {
+  id bigint [pk, increment]
+  key varchar
+  group varchar
+  value varchar
+  value_type varchar
+  is_active varchar
+}
+
+Table reservations {
+  id bigint [pk, increment]
+  status varchar
+  check_in varchar
+  sale_amount varchar
+  booker_ varchar
+  acc_code varchar
+}
+
+Table reservation_hotels {
+  id bigint [pk, increment]
+  reservation_id bigint
+  accommodation_id bigint
+  type varchar
+  is_final varchar
+}
+
+Table reservation_rooms {
+  id bigint [pk, increment]
+  reservation_hotel_id bigint
+  room_type_id bigint
+  rate_plan_id bigint
+  room_number varchar
+  type varchar
+  is_final varchar
+  room_name varchar
+}
+
+Table reservation_guests {
+  id bigint [pk, increment]
+  reservation_room_id bigint
+  country_id bigint
+  type varchar
+  first_name varchar
+  birth_date varchar
+  national_id varchar
+  passport_number varchar
+}
+
+Table purchase_manual_rules {
+  id bigint [pk, increment]
+  provider_id bigint
+  accommodation_id bigint
+  name varchar
+  minimum_maximum_amount varchar
+  start_end_time varchar
+  is_active varchar
+}
+
+Table reservation_purchases {
+  id bigint [pk, increment]
+  reservation_hotel_id bigint
+  provider_id bigint
+  quoted_provider_id bigint
+  manual_rule_id bigint
+  status varchar
+  purchase_mode varchar
+  manual_reason varchar
+  provider_quoted_amount varchar
+  purchase_amount varchar
+  confirmation_code varchar
+  expires_at varchar
+  issued_at varchar
+}
+
+Table reservation_purchase_segments {
+  id bigint [pk, increment]
+  reservation_purchase_id bigint
+  reservation_room_id bigint
+  from_date varchar
+  nightly_purchase_amount varchar
+}
+
+Table reservation_purchase_payments {
+  id bigint [pk, increment]
+  reservation_purchase_id bigint
+  amount varchar
+  source varchar
+  bank_account_id varchar
+  card_id varchar
+  paid_at varchar
+  reference varchar
+  receipt_document_id varchar
+  status varchar
+}
+
+Table reservation_manual_purchases {
+  id bigint [pk, increment]
+  reservation_purchase_id bigint
+  acc_code varchar
+  purchased_at varchar
+  description varchar
+}
+
+Table reservation_provider_operations {
+  id bigint [pk, increment]
+  reservation_purchase_id bigint
+  operation varchar
+  status varchar
+  attempt varchar
+  handler_ varchar
+  url varchar
+  HTTP varchar
+  idempotency_key varchar
+  error_ varchar
+  started_finished_at varchar
+  duration_ms varchar
+}
+
+Table provider_credit_balances {
+  id bigint [pk, increment]
+  provider_id bigint
+  balance varchar
+  low_balance_threshold varchar
+  low_balance_notified_at varchar
+  synced_at varchar
+}
+
+Ref: states.country_id > countries.id
+Ref: cities.country_id > countries.id
+Ref: cities.state_id > states.id
+Ref: provider_city_maps.city_id > cities.id
+Ref: provider_city_maps.provider_id > providers.id
+Ref: accommodations.city_id > cities.id
+Ref: accommodations.accommodation_type_id > accommodation_types.id
+Ref: accommodation_provider_maps.accommodation_id > accommodations.id
+Ref: accommodation_provider_maps.provider_id > providers.id
+Ref: room_types.accommodation_id > accommodations.id
+Ref: room_types.room_type_name_id > room_type_names.id
+Ref: room_type_provider_maps.room_type_id > room_types.id
+Ref: room_type_provider_maps.provider_id > providers.id
+Ref: rate_plans.accommodation_id > accommodations.id
+Ref: rate_plan_provider_maps.rate_plan_id > rate_plans.id
+Ref: rate_plan_provider_maps.provider_id > providers.id
+Ref: room_calendars.accommodation_id > accommodations.id
+Ref: room_calendars.room_type_id > room_types.id
+Ref: room_calendars.rate_plan_id > rate_plans.id
+Ref: room_calendars.provider_id > providers.id
+Ref: room_calendar_snapshots.room_calendar_id > room_calendars.id
+Ref: room_calendar_snapshots.provider_id > providers.id
+Ref: facilities.facility_group_id > facility_groups.id
+Ref: accommodation_facility.accommodation_id > accommodations.id
+Ref: accommodation_facility.facility_id > facilities.id
+Ref: rules.hotel_id > accommodations.id
+Ref: rules.rule_category_id > rule_categories.id
+Ref: hotel_child_policy.accommodation_id > accommodations.id
+Ref: provider_pricing_rules.provider_id > providers.id
+Ref: reservation_hotels.reservation_id > reservations.id
+Ref: reservation_hotels.accommodation_id > accommodations.id
+Ref: reservation_rooms.reservation_hotel_id > reservation_hotels.id
+Ref: reservation_rooms.room_type_id > room_types.id
+Ref: reservation_rooms.rate_plan_id > rate_plans.id
+Ref: reservation_guests.reservation_room_id > reservation_rooms.id
+Ref: reservation_guests.country_id > countries.id
+Ref: purchase_manual_rules.provider_id > providers.id
+Ref: purchase_manual_rules.accommodation_id > accommodations.id
+Ref: reservation_purchases.reservation_hotel_id > reservation_hotels.id
+Ref: reservation_purchases.provider_id > providers.id
+Ref: reservation_purchases.quoted_provider_id > providers.id
+Ref: reservation_purchases.manual_rule_id > purchase_manual_rules.id
+Ref: reservation_purchase_segments.reservation_purchase_id > reservation_purchases.id
+Ref: reservation_purchase_segments.reservation_room_id > reservation_rooms.id
+Ref: reservation_purchase_payments.reservation_purchase_id > reservation_purchases.id
+Ref: reservation_manual_purchases.reservation_purchase_id > reservation_purchases.id
+Ref: reservation_provider_operations.reservation_purchase_id > reservation_purchases.id
+Ref: provider_credit_balances.provider_id > providers.id
