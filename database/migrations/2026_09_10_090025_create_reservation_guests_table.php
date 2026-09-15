@@ -47,6 +47,16 @@ return new class extends Migration
                 ->nullable()
                 ->comment('Guest passport number');
 
+            $table->foreignId('passport_issuer_country_id')
+                ->nullable()
+                ->comment('Country that issued the guest passport')
+                ->constrained('countries')
+                ->restrictOnDelete();
+
+            $table->date('passport_expiry_date')
+                ->nullable()
+                ->comment('Guest passport expiration date');
+
             $table->timestamps();
         });
     }
