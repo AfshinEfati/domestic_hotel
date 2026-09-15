@@ -20,6 +20,8 @@ class ReservationGuest extends Model
         'country_id',
         'national_id',
         'passport_number',
+        'passport_issuer_country_id',
+        'passport_expiry_date',
     ];
 
     protected $casts = [
@@ -28,6 +30,8 @@ class ReservationGuest extends Model
         'gender' => 'integer',
         'birth_date' => 'date:Y-m-d',
         'country_id' => 'integer',
+        'passport_issuer_country_id' => 'integer',
+        'passport_expiry_date' => 'date:Y-m-d',
     ];
 
     public function room(): BelongsTo
@@ -38,5 +42,10 @@ class ReservationGuest extends Model
     public function country(): BelongsTo
     {
         return $this->belongsTo(Country::class);
+    }
+
+    public function passportIssuerCountry(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'passport_issuer_country_id');
     }
 }

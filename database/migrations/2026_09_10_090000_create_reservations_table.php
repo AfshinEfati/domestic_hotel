@@ -11,6 +11,10 @@ return new class extends Migration
         Schema::create('reservations', function (Blueprint $table) {
             $table->id();
 
+            $table->unsignedBigInteger('agency_id')
+                ->index()
+                ->comment('Required agency identifier supplied by the upstream system');
+
             $table->unsignedTinyInteger('status')
                 ->index()
                 ->comment('Current reservation status');
@@ -23,6 +27,14 @@ return new class extends Migration
 
             $table->unsignedBigInteger('sale_amount')
                 ->comment('Final amount sold to the end user in IRR');
+
+            $table->unsignedBigInteger('tax_amount')
+                ->default(0)
+                ->comment('Reservation tax amount in IRR; currently defaults to zero');
+
+            $table->bigInteger('commission_amount')
+                ->nullable()
+                ->comment('Sale amount minus actual purchase amount in IRR; may be negative');
 
             $table->string('booker_first_name', 100)
                 ->comment('Booker first name');

@@ -15,6 +15,7 @@ final class ReservationStatus
     public const int ISSUED = 9;
     public const int UNDER_REVIEW = 10;
     public const int REFUNDED = 11;
+    public const int PURCHASE_REFUND = 12;
 
     public static function all(): array
     {
@@ -30,6 +31,7 @@ final class ReservationStatus
             self::ISSUED,
             self::UNDER_REVIEW,
             self::REFUNDED,
+            self::PURCHASE_REFUND,
         ];
     }
 
@@ -52,6 +54,7 @@ final class ReservationStatus
             self::ISSUED => ['name' => 'issued', 'fa_name' => 'صدور موفق'],
             self::UNDER_REVIEW => ['name' => 'under_review', 'fa_name' => 'در دست بررسی'],
             self::REFUNDED => ['name' => 'refunded', 'fa_name' => 'استرداد شده'],
+            self::PURCHASE_REFUND => ['name' => 'purchase_refund', 'fa_name' => 'استرداد خرید'],
         ];
     }
 
