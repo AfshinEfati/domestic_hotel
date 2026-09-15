@@ -18,6 +18,7 @@ class ReservationPurchaseSegment extends Model
         'nightly_purchase_amount',
         'nightly_extra_bed_purchase_amount',
         'nightly_child_purchase_amount',
+        'nightly_infant_purchase_amount',
     ];
 
     protected $casts = [
@@ -28,6 +29,7 @@ class ReservationPurchaseSegment extends Model
         'nightly_purchase_amount' => 'integer',
         'nightly_extra_bed_purchase_amount' => 'integer',
         'nightly_child_purchase_amount' => 'integer',
+        'nightly_infant_purchase_amount' => 'integer',
     ];
 
     public function purchase(): BelongsTo
