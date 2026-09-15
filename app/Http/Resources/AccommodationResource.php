@@ -29,7 +29,7 @@ class AccommodationResource extends JsonResource
             'type' => AccommodationTypeResource::make(
                 $this->whenLoaded('type', fn ($type) => $type->withoutRelations())
             ),
-            'rate_plan' => RatePlanResource::make($this->rate_plan),
+            'rate_plans' => RatePlanResource::collection($this->rate_plans),
             'rules' => RuleResource::collection($this->whenLoaded('rules')),
             'childPolicy'=> HotelChildPolicyResource::make($this->whenLoaded('childPolicy')),
             'rooms' => RoomTypeResource::collection($this->whenLoaded('rooms')),

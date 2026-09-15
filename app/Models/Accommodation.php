@@ -70,4 +70,10 @@ class Accommodation extends Model
     {
         return $this->hasMany(RoomType::class);
     }
+    public function rate_plans(): HasMany
+    {
+        return $this->hasMany(RatePlan::class);
+    }
+
 }
+
