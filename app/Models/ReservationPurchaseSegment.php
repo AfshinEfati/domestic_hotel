@@ -16,6 +16,8 @@ class ReservationPurchaseSegment extends Model
         'from_date',
         'to_date',
         'nightly_purchase_amount',
+        'nightly_extra_bed_purchase_amount',
+        'nightly_child_purchase_amount',
     ];
 
     protected $casts = [
@@ -24,6 +26,8 @@ class ReservationPurchaseSegment extends Model
         'from_date' => 'date:Y-m-d',
         'to_date' => 'date:Y-m-d',
         'nightly_purchase_amount' => 'integer',
+        'nightly_extra_bed_purchase_amount' => 'integer',
+        'nightly_child_purchase_amount' => 'integer',
     ];
 
     public function purchase(): BelongsTo
