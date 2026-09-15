@@ -13,10 +13,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Reservation extends Model
 {
     protected $fillable = [
+        'agency_id',
         'status',
         'check_in',
         'check_out',
         'sale_amount',
+        'tax_amount',
+        'commission_amount',
         'booker_first_name',
         'booker_last_name',
         'booker_mobile',
@@ -25,14 +28,18 @@ class Reservation extends Model
     ];
 
     protected $casts = [
+        'agency_id' => 'integer',
         'status' => 'integer',
         'check_in' => 'date:Y-m-d',
         'check_out' => 'date:Y-m-d',
         'sale_amount' => 'integer',
+        'tax_amount' => 'integer',
+        'commission_amount' => 'integer',
     ];
 
     protected $attributes = [
         'status' => ReservationStatus::REQUESTED,
+        'tax_amount' => 0,
     ];
 
     public function hotels(): HasMany
