@@ -39,6 +39,10 @@ return new class extends Migration
                 ->nullable()
                 ->comment('Procurement amount per night for a child in IRR');
 
+            $table->unsignedBigInteger('nightly_infant_purchase_amount')
+                ->nullable()
+                ->comment('Procurement amount per night for an infant in IRR');
+
             $table->timestamps();
 
             $table->unique(
