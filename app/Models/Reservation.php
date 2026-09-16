@@ -52,4 +52,9 @@ class Reservation extends Model
     {
         return $this->hasOne(ReservationHotel::class)->where('is_final', true);
     }
+
+    public function manualReasons(): HasMany
+    {
+        return $this->hasMany(ReservationManualReason::class, 'reservation_number', 'reservation_number');
+    }
 }
