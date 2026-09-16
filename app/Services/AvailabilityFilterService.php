@@ -39,22 +39,10 @@ class AvailabilityFilterService
         $accommodations = Accommodation::query()
             ->whereHas('city', function (Builder $query) use ($city) {
                 $query
-                    ->where(
-                        'en_name',
-                        'like',
-                        '%' . strtolower($city) . '%'
-                    )
-                    ->orWhere(
-                        'fa_name',
-                        'like',
-                        '%' . $city . '%'
-                    );
+                    ->where('en_name', 'like', '%' . strtolower($city) . '%')
+                    ->orWhere('fa_name', 'like', '%' . $city . '%');
             })
-            ->with([
-                'childPolicy',
-                'rooms.roomTypeName',
-                'rules',
-            ])
+            ->with(['childPolicy', 'rooms.roomTypeName', 'rules'])
             ->where('is_active', true)
             ->get();
 
@@ -71,10 +59,7 @@ class AvailabilityFilterService
         $result = collect();
 
         foreach ($accommodations as $accommodation) {
-            $hotelCalendars = $calendars->get(
-                $accommodation->id,
-                collect()
-            );
+            $hotelCalendars = $calendars->get($accommodation->id, collect());
 
             $rooms = $this->findCheapestAvailableCombination(
                 $accommodation,
@@ -83,13 +68,12 @@ class AvailabilityFilterService
                 $hotelCalendars
             );
 
-            // A hotel must satisfy the entire requested room combination.
+            // Every requested room must be available in the same hotel.
             if ($rooms->count() !== count($data['rooms'])) {
                 continue;
             }
 
             $accommodation->setAttribute('available_rooms', $rooms);
-
             $result->push($accommodation);
         }
 
@@ -104,7 +88,6 @@ class AvailabilityFilterService
     ): Collection {
         $policy = $accommodation->childPolicy;
 
-        // Inactive child policies are not applied.
         if ($policy !== null && !$policy->status) {
             $policy = null;
         }
@@ -121,18 +104,12 @@ class AvailabilityFilterService
                 return collect();
             }
 
-            $counts = [
-                'adult' => 0,
-                'child' => 0,
-                'infant' => 0,
-            ];
+            $counts = ['adult' => 0, 'child' => 0, 'infant' => 0];
 
             foreach ($passengers as $passenger) {
                 $counts[$passenger['type']]++;
             }
 
-            // Equal compositions need the same room option and sufficient
-            // inventory for the entire group.
             $signature = implode(':', [
                 $counts['adult'],
                 $counts['child'],
@@ -161,12 +138,9 @@ class AvailabilityFilterService
                     continue;
                 }
 
-                $roomCalendars = $calendarsByRoom->get(
-                    $room->id,
-                    collect()
-                );
+                $roomCalendars = $calendarsByRoom->get($room->id, collect());
 
-                // Do not mix providers or rate plans across nights.
+                // A single offer must have the same provider and rate plan for every night.
                 $offers = $roomCalendars->groupBy(
                     fn (RoomCalendar $calendar) =>
                         $calendar->provider_id . ':' . $calendar->rate_plan_id
@@ -175,7 +149,7 @@ class AvailabilityFilterService
                 foreach ($offers as $offerCalendars) {
                     $byDay = $offerCalendars->keyBy(
                         fn (RoomCalendar $calendar) =>
-                        $calendar->day->format('Y-m-d')
+                            $calendar->day->format('Y-m-d')
                     );
 
                     if ($byDay->count() !== count($dates)) {
@@ -238,41 +212,26 @@ class AvailabilityFilterService
             usort(
                 $group['options'],
                 static function (array $a, array $b): int {
-                    return (
-                        $a['price']['total_price']
-                        <=> $b['price']['total_price']
-                    ) ?: (
-                        $a['room']->id <=> $b['room']->id
-                    ) ?: (
-                        $a['provider_id'] <=> $b['provider_id']
-                    );
+                    return ($a['price']['total_price'] <=> $b['price']['total_price'])
+                        ?: ($a['room']->id <=> $b['room']->id)
+                        ?: ($a['provider_id'] <=> $b['provider_id']);
                 }
             );
         }
 
         unset($group);
 
-        // Search the most constrained room group first.
         usort(
             $groups,
             static fn (array $a, array $b): int =>
                 count($a['options']) <=> count($b['options'])
         );
 
-        // Minimum remaining cost, used to prune expensive combinations.
-        $minimumRemaining = array_fill(
-            0,
-            count($groups) + 1,
-            0
-        );
+        $minimumRemaining = array_fill(0, count($groups) + 1, 0);
 
         for ($i = count($groups) - 1; $i >= 0; $i--) {
-            $minimumRemaining[$i] =
-                $minimumRemaining[$i + 1]
-                + (
-                    $groups[$i]['options'][0]['price']['total_price']
-                    * $groups[$i]['quantity']
-                );
+            $minimumRemaining[$i] = $minimumRemaining[$i + 1]
+                + $groups[$i]['options'][0]['price']['total_price'] * $groups[$i]['quantity'];
         }
 
         $bestCost = PHP_INT_MAX;
@@ -292,10 +251,7 @@ class AvailabilityFilterService
             $dates,
             $minimumRemaining
         ): void {
-            if (
-                $cost + $minimumRemaining[$depth]
-                >= $bestCost
-            ) {
+            if ($cost + $minimumRemaining[$depth] >= $bestCost) {
                 return;
             }
 
@@ -310,14 +266,12 @@ class AvailabilityFilterService
 
             foreach ($group['options'] as $option) {
                 $roomId = (int) $option['room']->id;
-
                 $newUsed = ($used[$roomId] ?? 0) + $quantity;
                 $newLimits = $limits;
                 $valid = true;
 
                 foreach ($dates as $day) {
-                    // Different offers of one room type must not
-                    // independently spend the same physical inventory.
+                    // Different offers share the same physical room-type inventory.
                     $limit = min(
                         $limits[$roomId][$day] ?? PHP_INT_MAX,
                         $option['inventory_by_day'][$day]
@@ -337,16 +291,12 @@ class AvailabilityFilterService
 
                 $newUsedByRoom = $used;
                 $newUsedByRoom[$roomId] = $newUsed;
-
                 $newSelection = $selection;
                 $newSelection[$depth] = $option;
 
-                $newCost = $cost
-                    + $option['price']['total_price'] * $quantity;
-
                 $search(
                     $depth + 1,
-                    $newCost,
+                    $cost + $option['price']['total_price'] * $quantity,
                     $newUsedByRoom,
                     $newLimits,
                     $newSelection
@@ -366,55 +316,17 @@ class AvailabilityFilterService
             $option = $bestSelection[$groupIndex];
 
             foreach ($group['indexes'] as $requestIndex) {
-                // Clone: the same room type can appear in multiple
-                // requested rooms without overwriting its attributes.
+                // Clone so one room type can be used for multiple requested rooms.
                 $room = clone $option['room'];
-
-                $room->setAttribute(
-                    'pricing',
-                    $option['price']['pricing']
-                );
-
-                $room->setAttribute(
-                    'total_price',
-                    $option['price']['total_price']
-                );
-
-                $room->setAttribute(
-                    'nightly_prices',
-                    $option['price']['nightly_prices']
-                );
-
-                $room->setAttribute(
-                    'ratePlan',
-                    $option['rate_plan']
-                );
-
-                $room->setAttribute(
-                    'provider_id',
-                    $option['provider_id']
-                );
-
-                $room->setAttribute(
-                    'available_inventory',
-                    $option['min_inventory']
-                );
-
-                $room->setAttribute(
-                    'required_inventory',
-                    $group['quantity']
-                );
-
-                $room->setAttribute(
-                    'requested_room_index',
-                    $requestIndex
-                );
-
-                $room->setAttribute(
-                    'extra_bed_count',
-                    $option['price']['extra_bed_count']
-                );
-
+                $room->setAttribute('pricing', $option['price']['pricing']);
+                $room->setAttribute('total_price', $option['price']['total_price']);
+                $room->setAttribute('nightly_prices', $option['price']['nightly_prices']);
+                $room->setAttribute('ratePlan', $option['rate_plan']);
+                $room->setAttribute('provider_id', $option['provider_id']);
+                $room->setAttribute('available_inventory', $option['min_inventory']);
+                $room->setAttribute('required_inventory', $group['quantity']);
+                $room->setAttribute('requested_room_index', $requestIndex);
+                $room->setAttribute('extra_bed_count', $option['price']['extra_bed_count']);
                 $selectedRooms[$requestIndex] = $room;
             }
         }
@@ -424,6 +336,11 @@ class AvailabilityFilterService
         return collect(array_values($selectedRooms));
     }
 
+    /**
+     * max_children_covered is the shared number of children/infants entitled
+     * to a child-policy rate; max_infants_covered is a further infant-only cap.
+     * A null cap means that cap itself is absent, not that other caps are ignored.
+     */
     private function normalizePassengers(
         array $passengers,
         ?HotelChildPolicy $policy
@@ -433,85 +350,126 @@ class AvailabilityFilterService
         }
 
         $normalized = [];
-        $coveredChildren = 0;
-        $coveredInfants = 0;
+        $candidates = [];
 
-        foreach ($passengers as $passenger) {
-            $inputType = match ($passenger['type'] ?? null) {
+        foreach ($passengers as $index => $passenger) {
+            $type = match ($passenger['type'] ?? null) {
                 'adl', 'adult' => 'adult',
                 'chd', 'child' => 'child',
                 'inf', 'infant' => 'infant',
                 default => null,
             };
 
-            if ($inputType === null) {
+            if ($type === null) {
                 return [];
             }
 
-            // Explicit adults stay adults. Their age does not
-            // accidentally turn them into infants.
-            if ($inputType === 'adult') {
-                $normalized[] = ['type' => 'adult'];
+            // An explicitly declared adult must never become an infant based on age.
+            if ($type === 'adult') {
+                $normalized[$index] = ['type' => 'adult'];
                 continue;
             }
 
-            // Child/infant ages are validated by AvailabilityRequest.
             if (!isset($passenger['age'])) {
                 return [];
             }
 
             $age = (int) $passenger['age'];
+            $normalized[$index] = ['type' => 'adult'];
 
             if ($policy === null) {
-                $normalized[] = ['type' => 'adult'];
                 continue;
             }
 
-            $isInfantAge =
-                $policy->max_infant_age > 0
-                && $age < $policy->max_infant_age;
+            $infantEligible = (int) $policy->max_infant_age > 0
+                && $age < (int) $policy->max_infant_age;
+            $childEligible = (int) $policy->max_child_age > 0
+                && $age <= (int) $policy->max_child_age;
 
-            if ($isInfantAge) {
-                $infantLimit = $policy->max_infants_covered;
-
-                if (
-                    $infantLimit === null
-                    || $coveredInfants < $infantLimit
-                ) {
-                    $normalized[] = ['type' => 'infant'];
-                    $coveredInfants++;
-                    continue;
-                }
-
-                if ($policy->infant_when_disabled === 'as_adult') {
-                    $normalized[] = ['type' => 'adult'];
-                    continue;
-                }
-
-                // Otherwise the infant is evaluated as a child.
+            if (!$infantEligible && !$childEligible) {
+                continue;
             }
 
-            $isChildAge =
-                $policy->max_child_age > 0
-                && $age <= $policy->max_child_age;
+            $pricingType = $infantEligible
+                ? $policy->infant_pricing_type
+                : $policy->child_pricing_type;
+            $pricingValue = $infantEligible
+                ? $policy->infant_pricing_value
+                : $policy->child_pricing_value;
 
-            if ($isChildAge) {
-                $childLimit = $policy->max_children_covered;
-
-                if (
-                    $childLimit === null
-                    || $coveredChildren < $childLimit
-                ) {
-                    $normalized[] = ['type' => 'child'];
-                    $coveredChildren++;
-                    continue;
-                }
-            }
-
-            $normalized[] = ['type' => 'adult'];
+            $candidates[] = [
+                'index' => $index,
+                'age' => $age,
+                'infant_eligible' => $infantEligible,
+                'child_eligible' => $childEligible,
+                'discount' => $this->policyDiscountPriority($pricingType, $pricingValue),
+            ];
         }
 
-        return $normalized;
+        // For a shared cap, prioritize the larger known discount so that
+        // request passenger ordering cannot make a free infant lose to a half-rate child.
+        usort($candidates, static function (array $a, array $b): int {
+            return ($b['discount'] <=> $a['discount'])
+                ?: ($a['age'] <=> $b['age'])
+                ?: ($a['index'] <=> $b['index']);
+        });
+
+        $coveredTotal = 0;
+        $coveredInfants = 0;
+
+        foreach ($candidates as $candidate) {
+            $index = $candidate['index'];
+
+            // Exhausting the shared allowance always means adult pricing.
+            // Never cascade a second infant into a half-rate child here.
+            if (
+                $policy->max_children_covered !== null
+                && $coveredTotal >= (int) $policy->max_children_covered
+            ) {
+                continue;
+            }
+
+            if ($candidate['infant_eligible']) {
+                $infantLimitAvailable = $policy->max_infants_covered === null
+                    || $coveredInfants < (int) $policy->max_infants_covered;
+
+                if ($infantLimitAvailable) {
+                    $normalized[$index] = ['type' => 'infant'];
+                    $coveredInfants++;
+                    $coveredTotal++;
+                    continue;
+                }
+
+                // The infant-only cap is full, but the shared child cap may
+                // still have room for this infant to use the child policy.
+                if ($policy->infant_when_disabled !== 'as_child') {
+                    continue;
+                }
+            }
+
+            if ($candidate['child_eligible']) {
+                $normalized[$index] = ['type' => 'child'];
+                $coveredTotal++;
+            }
+        }
+
+        ksort($normalized);
+
+        return array_values($normalized);
+    }
+
+    /**
+     * Only relative-rate discounts can be ordered without knowing the room rate.
+     * Fixed child amounts have no universal discount ordering: they use stable age/order.
+     */
+    private function policyDiscountPriority(?string $type, ?int $value): float
+    {
+        return match ($type) {
+            'free' => 1.0,
+            'half' => 0.5,
+            'percent' => $value === null ? 0.0 : 1.0 - $value / 100.0,
+            default => 0.0,
+        };
     }
 
     private function priceOption(
@@ -532,13 +490,9 @@ class AvailabilityFilterService
         $childCount = $counts['child'];
         $infantCount = $counts['infant'];
 
-        // A child/infant without service does not occupy a bed.
-        $childNeedsBed =
-            $policy !== null
+        $childNeedsBed = $policy !== null
             && $policy->child_service_condition === 'with_service';
-
-        $infantNeedsBed =
-            $policy !== null
+        $infantNeedsBed = $policy !== null
             && $policy->infant_service_condition === 'with_service';
 
         $requiredBeds = $adultCount
@@ -550,24 +504,19 @@ class AvailabilityFilterService
         }
 
         $extraBedCount = max(0, $requiredBeds - $capacity);
-
-        // Adults use the base beds first.
         $baseAdultCount = min($adultCount, $capacity);
 
         $roomBaseTotal = 0;
         $childTotal = 0;
         $infantTotal = 0;
         $extraTotal = 0;
-
         $adultUnitTotal = 0;
         $childUnitTotal = 0;
         $infantUnitTotal = 0;
         $extraUnitTotal = 0;
-
         $nightlyPrices = [];
 
         foreach ($dates as $day) {
-            /** @var RoomCalendar|null $calendar */
             $calendar = $calendars->get($day);
 
             if ($calendar === null || $calendar->daily_rate === null) {
@@ -590,8 +539,6 @@ class AvailabilityFilterService
                 $policy?->infant_pricing_value
             );
 
-            // A required but unpriceable child/infant makes this
-            // option invalid instead of silently charging zero.
             if (
                 ($childCount > 0 && $childDaily === null)
                 || ($infantCount > 0 && $infantDaily === null)
@@ -602,28 +549,18 @@ class AvailabilityFilterService
             $childDaily ??= 0;
             $infantDaily ??= 0;
 
-            // Preserve the previous fallback: if an extra bed has no
-            // separate daily rate, use one nominal capacity share.
             $extraUnit = $extraCapacity > 0
-                ? (int) (
-                    $calendar->extend_bed_daily_rate
-                    ?? round($basePrice / $capacity)
-                )
+                ? (int) ($calendar->extend_bed_daily_rate ?? round($basePrice / $capacity))
                 : 0;
 
             $nightChildTotal = $childDaily * $childCount;
             $nightInfantTotal = $infantDaily * $infantCount;
             $nightExtraTotal = $extraUnit * $extraBedCount;
-
-            $nightTotal = $basePrice
-                + $nightChildTotal
-                + $nightInfantTotal
-                + $nightExtraTotal;
+            $nightTotal = $basePrice + $nightChildTotal + $nightInfantTotal + $nightExtraTotal;
 
             $adultShare = $baseAdultCount > 0
                 ? intdiv($basePrice, $baseAdultCount)
                 : 0;
-
             $adultShareRemainder = $baseAdultCount > 0
                 ? $basePrice % $baseAdultCount
                 : 0;
@@ -633,7 +570,6 @@ class AvailabilityFilterService
                 'calendar_id' => $calendar->id,
                 'provider_id' => $calendar->provider_id,
                 'rate_plan_id' => $calendar->rate_plan_id,
-
                 'room_base_price' => $basePrice,
                 'extra_price' => $extraUnit,
                 'extra_count' => $extraBedCount,
@@ -641,7 +577,6 @@ class AvailabilityFilterService
                 'child_total' => $nightChildTotal,
                 'infant_total' => $nightInfantTotal,
                 'total_price' => $nightTotal,
-
                 'adult' => [
                     'rack_rate' => $calendar->rack_rate,
                     'daily_rate' => $calendar->daily_rate,
@@ -650,7 +585,6 @@ class AvailabilityFilterService
                     'base_adult_count' => $baseAdultCount,
                     'base_share_remainder' => $adultShareRemainder,
                 ],
-
                 'child' => [
                     'rack_rate' => $this->policyRate(
                         $calendar->rack_rate,
@@ -668,7 +602,6 @@ class AvailabilityFilterService
                     'child_price' => $childDaily,
                     'count' => $childCount,
                 ],
-
                 'infant' => [
                     'rack_rate' => $this->policyRate(
                         $calendar->rack_rate,
@@ -692,30 +625,22 @@ class AvailabilityFilterService
             $childTotal += $nightChildTotal;
             $infantTotal += $nightInfantTotal;
             $extraTotal += $nightExtraTotal;
-
             $adultUnitTotal += $adultShare;
             $childUnitTotal += $childDaily;
             $infantUnitTotal += $infantDaily;
             $extraUnitTotal += $extraUnit;
         }
 
-        $totalPrice = $roomBaseTotal
-            + $childTotal
-            + $infantTotal
-            + $extraTotal;
+        $totalPrice = $roomBaseTotal + $childTotal + $infantTotal + $extraTotal;
 
         return [
             'total_price' => $totalPrice,
             'extra_bed_count' => $extraBedCount,
-
             'pricing' => [
-                // Unit amounts over the entire stay.
                 'adult' => $adultUnitTotal,
                 'child' => $childUnitTotal,
                 'infant' => $infantUnitTotal,
                 'extra_price' => $extraUnitTotal,
-
-                // Actual composition totals over the entire stay.
                 'room_base_price' => $roomBaseTotal,
                 'child_total' => $childTotal,
                 'infant_total' => $infantTotal,
@@ -724,7 +649,6 @@ class AvailabilityFilterService
                 'base_adult_count' => $baseAdultCount,
                 'total_price' => $totalPrice,
             ],
-
             'nightly_prices' => $nightlyPrices,
         ];
     }
@@ -745,15 +669,10 @@ class AvailabilityFilterService
             'adult' => (int) round($nominalPersonRate),
             'free' => 0,
             'half' => (int) round($nominalPersonRate / 2),
-
             'percent' => $pricingValue === null
                 ? null
-                : (int) round(
-                    $nominalPersonRate * $pricingValue / 100
-                ),
-
+                : (int) round($nominalPersonRate * $pricingValue / 100),
             'fixed' => $pricingValue,
-
             default => null,
         };
     }
