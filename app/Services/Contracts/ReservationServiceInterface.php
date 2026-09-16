@@ -9,6 +9,8 @@ use App\Models\ReservationRoom;
 
 interface ReservationServiceInterface extends BaseServiceInterface
 {
+    public function createRequest(array $data): Reservation;
+
     public function store(mixed $payload): Reservation;
 
     public function findByReservationNumber(string $reservationNumber): ?Reservation;
