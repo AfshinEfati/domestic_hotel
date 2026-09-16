@@ -41,6 +41,15 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->count();
     }
 
+    public function existsForAccommodationAndProvider(int $accommodationId, int $providerId): bool
+    {
+        return $this->model->newQuery()
+            ->where('accommodation_id', $accommodationId)
+            ->where('provider_id', $providerId)
+            ->whereNotNull('provider_property_id')
+            ->exists();
+    }
+
     public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void
     {
         $this->model
