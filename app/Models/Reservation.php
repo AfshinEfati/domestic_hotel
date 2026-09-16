@@ -55,6 +55,6 @@ class Reservation extends Model
 
     public function manualReasons(): HasMany
     {
-        return $this->hasMany(ReservationManualReason::class, 'reservation_number', 'reservation_number');
+        return $this->hasMany(ReservationManualReason::class);
     }
 }
