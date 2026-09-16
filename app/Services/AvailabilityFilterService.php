@@ -6,395 +6,755 @@ use App\Models\Accommodation;
 use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Models\RoomType;
+use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
 class AvailabilityFilterService
 {
-    /**
-     * فیلتر کردن هتل‌ها و اتاق‌های موجود
-     * بر اساس شرایط رزرو: شهر، تاریخ، تعداد و نوع مسافران
-     *
-     * @param array $data
-     *   - state: string (نام استان)
-     *   - city: string (نام شهر)
-     *   - check_in: string (Y-m-d)
-     *   - check_out: string (Y-m-d)
-     *   - rooms: array (آرایه‌ای از اتاق‌ها با مسافران)
-     * @return Collection
-     */
+    public function __construct(
+        private readonly RoomCalendarRepositoryInterface $roomCalendarRepository,
+    ) {}
+
     public function filterAvailability(array $data): Collection
     {
         $checkIn = Carbon::createFromFormat('Y-m-d', $data['check_in']);
         $checkOut = Carbon::createFromFormat('Y-m-d', $data['check_out']);
-        $city = $data['city'];
-        $rooms = $data['rooms'];
 
-        // گام 1: دریافت هتل‌های موجود در شهر
-        // شهر ممکن است انگلیسی یا فارسی باشد، بنابراین جستجو به صورت case-insensitive انجام می‌دهیم
+        $dates = [];
+        $cursor = $checkIn->copy();
+
+        while ($cursor->lt($checkOut)) {
+            $dates[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+
+        if ($dates === []) {
+            return collect();
+        }
+
+        $city = $data['city'];
+
         $accommodations = Accommodation::query()
             ->whereHas('city', function (Builder $query) use ($city) {
-                $query->where('en_name', 'like', '%' . strtolower($city) . '%')
-                    ->orWhere('fa_name', 'like', '%' . $city . '%');
+                $query
+                    ->where(
+                        'en_name',
+                        'like',
+                        '%' . strtolower($city) . '%'
+                    )
+                    ->orWhere(
+                        'fa_name',
+                        'like',
+                        '%' . $city . '%'
+                    );
             })
-            ->with(['childPolicy', 'rooms', 'rules'])
+            ->with([
+                'childPolicy',
+                'rooms.roomTypeName',
+                'rules',
+            ])
             ->where('is_active', true)
             ->get();
 
-        $availableAccommodations = collect();
+        if ($accommodations->isEmpty()) {
+            return collect();
+        }
+
+        $calendars = $this->roomCalendarRepository->getForAvailability(
+            $accommodations->modelKeys(),
+            $checkIn->toDateString(),
+            $checkOut->toDateString()
+        )->groupBy('accommodation_id');
+
+        $result = collect();
 
         foreach ($accommodations as $accommodation) {
-            $availableRooms = $this->filterRoomsForAccommodation(
-                $accommodation,
-                $rooms,
-                $checkIn,
-                $checkOut
+            $hotelCalendars = $calendars->get(
+                $accommodation->id,
+                collect()
             );
 
-            if ($availableRooms->isNotEmpty()) {
-                $accommodation->setAttribute('available_rooms', $availableRooms);
-                $availableAccommodations->push($accommodation);
-            }
-        }
-        return $availableAccommodations;
-    }
+            $rooms = $this->findCheapestAvailableCombination(
+                $accommodation,
+                $data['rooms'],
+                $dates,
+                $hotelCalendars
+            );
 
-    /**
-     * فیلتر کردن اتاق‌های یک هتل مشخص
-     *
-     * @param Accommodation $accommodation
-     * @param array $requestedRooms
-     * @param Carbon $checkIn
-     * @param Carbon $checkOut
-     * @return Collection
-     */
-    private function filterRoomsForAccommodation(
-        Accommodation $accommodation,
-        array         $requestedRooms,
-        Carbon        $checkIn,
-        Carbon        $checkOut
-    ): Collection
-    {
-        $availableRooms = collect();
-        $childPolicy = $accommodation->childPolicy;
-
-        foreach ($requestedRooms as $requestedRoom) {
-            $passengers = $requestedRoom['passengers'] ?? [];
-
-            // نرمال‌سازی نوع مسافران
-            $passengers = $this->normalizePassengerTypes($passengers, $childPolicy);
-//            dd($passengers);
-            // بررسی صحت و سالمت مسافران برای این هتل
-            if (!$this->isValidPassengersForAccommodation($passengers, $childPolicy)) {
+            // A hotel must satisfy the entire requested room combination.
+            if ($rooms->count() !== count($data['rooms'])) {
                 continue;
             }
 
-            // تقسیم مسافران بر اساس نوع
-            $adultCount = collect($passengers)->where('type', 'adult')->count();
-            $childCount = collect($passengers)->where('type', 'child')->count();
-            $infantCount = collect($passengers)->where('type', 'infant')->count();
+            $accommodation->setAttribute('available_rooms', $rooms);
 
-            // جستجوی اتاق‌های مناسب
-            $suitableRoom = $this->findSuitableRoom(
-                $accommodation,
-                $adultCount,
-                $childCount,
-                $infantCount,
-                $checkIn,
-                $checkOut,
-                $childPolicy
+            $result->push($accommodation);
+        }
+
+        return $result;
+    }
+
+    private function findCheapestAvailableCombination(
+        Accommodation $accommodation,
+        array $requestedRooms,
+        array $dates,
+        Collection $hotelCalendars
+    ): Collection {
+        $policy = $accommodation->childPolicy;
+
+        // Inactive child policies are not applied.
+        if ($policy !== null && !$policy->status) {
+            $policy = null;
+        }
+
+        $groups = [];
+
+        foreach ($requestedRooms as $requestIndex => $requestedRoom) {
+            $passengers = $this->normalizePassengers(
+                $requestedRoom['passengers'] ?? [],
+                $policy
             );
 
-            if ($suitableRoom) {
-                $availableRooms->push($suitableRoom);
+            if ($passengers === []) {
+                return collect();
             }
-        }
 
-        return $availableRooms;
-    }
-
-    /**
-     * نرمال‌سازی نوع مسافران
-     * تبدیل ابخصار‌ها به نام کامل
-     * adl -> adult, chd -> child, inf -> infant
-     */
-    private function normalizePassengerTypes(array $passengers, $childPolicy): array
-    {
-        return collect($passengers)->map(function ($passenger) use ($childPolicy) {
-            $typeMap = [
-                'adl' => 'adult',
-                'adult' => 'adult',
-                'chd' => 'child',
-                'child' => 'child',
-                'inf' => 'infant',
-                'infant' => 'infant',
+            $counts = [
+                'adult' => 0,
+                'child' => 0,
+                'infant' => 0,
             ];
-            $passenger['type'] = $typeMap[$passenger['type']] ?? 'adult';
-            if (!$childPolicy) {
-                $passenger['type'] = 'adult';
-            } elseif ($childPolicy->max_infant_age >= $passenger['age']) {
-                $passenger['type'] = 'infant';
-            } elseif ($childPolicy->max_child_age <= $passenger['age']) {
-                $passenger['type'] = 'adult';
-            }
-            return $passenger;
-        })->toArray();
-    }
 
-    /**
-     * بررسی اینکه آیا مسافران برای سیاست کودک/نوزاد هتل مناسب هستند
-     *
-     * @param array $passengers
-     * @param mixed $childPolicy
-     * @return bool
-     */
-    private function isValidPassengersForAccommodation(array $passengers, mixed $childPolicy): bool
-    {
-        if (!$childPolicy) {
-            // اگر هتل سیاست کودک/نوزاد تعریف نکرده، فقط بزرگسالان را قبول کن
-            return collect($passengers)->every(function ($p) {
-                return $p['type'] === 'adult';
-            });
+            foreach ($passengers as $passenger) {
+                $counts[$passenger['type']]++;
+            }
+
+            // Equal compositions need the same room option and sufficient
+            // inventory for the entire group.
+            $signature = implode(':', [
+                $counts['adult'],
+                $counts['child'],
+                $counts['infant'],
+            ]);
+
+            if (!isset($groups[$signature])) {
+                $groups[$signature] = [
+                    'counts' => $counts,
+                    'indexes' => [],
+                    'quantity' => 0,
+                    'options' => [],
+                ];
+            }
+
+            $groups[$signature]['indexes'][] = $requestIndex;
+            $groups[$signature]['quantity']++;
         }
 
-        $childCount = 0;
-        $infantCount = 0;
+        $calendarsByRoom = $hotelCalendars->groupBy('room_type_id');
+        $groups = array_values($groups);
+
+        foreach ($groups as &$group) {
+            foreach ($accommodation->rooms as $room) {
+                if ($room->out_of_service || $room->capacity <= 0) {
+                    continue;
+                }
+
+                $roomCalendars = $calendarsByRoom->get(
+                    $room->id,
+                    collect()
+                );
+
+                // Do not mix providers or rate plans across nights.
+                $offers = $roomCalendars->groupBy(
+                    fn (RoomCalendar $calendar) =>
+                        $calendar->provider_id . ':' . $calendar->rate_plan_id
+                );
+
+                foreach ($offers as $offerCalendars) {
+                    $byDay = $offerCalendars->keyBy(
+                        fn (RoomCalendar $calendar) =>
+                        $calendar->day->format('Y-m-d')
+                    );
+
+                    if ($byDay->count() !== count($dates)) {
+                        continue;
+                    }
+
+                    $inventoryByDay = [];
+                    $valid = true;
+
+                    foreach ($dates as $day) {
+                        $calendar = $byDay->get($day);
+
+                        if (
+                            $calendar === null
+                            || $calendar->closed
+                            || $calendar->inventory === null
+                            || $calendar->inventory < $group['quantity']
+                            || $calendar->daily_rate === null
+                        ) {
+                            $valid = false;
+                            break;
+                        }
+
+                        $inventoryByDay[$day] = (int) $calendar->inventory;
+                    }
+
+                    if (!$valid) {
+                        continue;
+                    }
+
+                    $priceData = $this->priceOption(
+                        $room,
+                        $group['counts'],
+                        $policy,
+                        $dates,
+                        $byDay
+                    );
+
+                    if ($priceData === null) {
+                        continue;
+                    }
+
+                    $firstCalendar = $byDay->get($dates[0]);
+
+                    $group['options'][] = [
+                        'room' => $room,
+                        'price' => $priceData,
+                        'provider_id' => (int) $firstCalendar->provider_id,
+                        'rate_plan' => $firstCalendar->ratePlan,
+                        'inventory_by_day' => $inventoryByDay,
+                        'min_inventory' => min($inventoryByDay),
+                    ];
+                }
+            }
+
+            if ($group['options'] === []) {
+                return collect();
+            }
+
+            usort(
+                $group['options'],
+                static function (array $a, array $b): int {
+                    return (
+                        $a['price']['total_price']
+                        <=> $b['price']['total_price']
+                    ) ?: (
+                        $a['room']->id <=> $b['room']->id
+                    ) ?: (
+                        $a['provider_id'] <=> $b['provider_id']
+                    );
+                }
+            );
+        }
+
+        unset($group);
+
+        // Search the most constrained room group first.
+        usort(
+            $groups,
+            static fn (array $a, array $b): int =>
+                count($a['options']) <=> count($b['options'])
+        );
+
+        // Minimum remaining cost, used to prune expensive combinations.
+        $minimumRemaining = array_fill(
+            0,
+            count($groups) + 1,
+            0
+        );
+
+        for ($i = count($groups) - 1; $i >= 0; $i--) {
+            $minimumRemaining[$i] =
+                $minimumRemaining[$i + 1]
+                + (
+                    $groups[$i]['options'][0]['price']['total_price']
+                    * $groups[$i]['quantity']
+                );
+        }
+
+        $bestCost = PHP_INT_MAX;
+        $bestSelection = [];
+
+        $search = function (
+            int $depth,
+            int $cost,
+            array $used,
+            array $limits,
+            array $selection
+        ) use (
+            &$search,
+            &$bestCost,
+            &$bestSelection,
+            $groups,
+            $dates,
+            $minimumRemaining
+        ): void {
+            if (
+                $cost + $minimumRemaining[$depth]
+                >= $bestCost
+            ) {
+                return;
+            }
+
+            if ($depth === count($groups)) {
+                $bestCost = $cost;
+                $bestSelection = $selection;
+                return;
+            }
+
+            $group = $groups[$depth];
+            $quantity = $group['quantity'];
+
+            foreach ($group['options'] as $option) {
+                $roomId = (int) $option['room']->id;
+
+                $newUsed = ($used[$roomId] ?? 0) + $quantity;
+                $newLimits = $limits;
+                $valid = true;
+
+                foreach ($dates as $day) {
+                    // Different offers of one room type must not
+                    // independently spend the same physical inventory.
+                    $limit = min(
+                        $limits[$roomId][$day] ?? PHP_INT_MAX,
+                        $option['inventory_by_day'][$day]
+                    );
+
+                    if ($newUsed > $limit) {
+                        $valid = false;
+                        break;
+                    }
+
+                    $newLimits[$roomId][$day] = $limit;
+                }
+
+                if (!$valid) {
+                    continue;
+                }
+
+                $newUsedByRoom = $used;
+                $newUsedByRoom[$roomId] = $newUsed;
+
+                $newSelection = $selection;
+                $newSelection[$depth] = $option;
+
+                $newCost = $cost
+                    + $option['price']['total_price'] * $quantity;
+
+                $search(
+                    $depth + 1,
+                    $newCost,
+                    $newUsedByRoom,
+                    $newLimits,
+                    $newSelection
+                );
+            }
+        };
+
+        $search(0, 0, [], [], []);
+
+        if ($bestSelection === []) {
+            return collect();
+        }
+
+        $selectedRooms = [];
+
+        foreach ($groups as $groupIndex => $group) {
+            $option = $bestSelection[$groupIndex];
+
+            foreach ($group['indexes'] as $requestIndex) {
+                // Clone: the same room type can appear in multiple
+                // requested rooms without overwriting its attributes.
+                $room = clone $option['room'];
+
+                $room->setAttribute(
+                    'pricing',
+                    $option['price']['pricing']
+                );
+
+                $room->setAttribute(
+                    'total_price',
+                    $option['price']['total_price']
+                );
+
+                $room->setAttribute(
+                    'nightly_prices',
+                    $option['price']['nightly_prices']
+                );
+
+                $room->setAttribute(
+                    'ratePlan',
+                    $option['rate_plan']
+                );
+
+                $room->setAttribute(
+                    'provider_id',
+                    $option['provider_id']
+                );
+
+                $room->setAttribute(
+                    'available_inventory',
+                    $option['min_inventory']
+                );
+
+                $room->setAttribute(
+                    'required_inventory',
+                    $group['quantity']
+                );
+
+                $room->setAttribute(
+                    'requested_room_index',
+                    $requestIndex
+                );
+
+                $room->setAttribute(
+                    'extra_bed_count',
+                    $option['price']['extra_bed_count']
+                );
+
+                $selectedRooms[$requestIndex] = $room;
+            }
+        }
+
+        ksort($selectedRooms);
+
+        return collect(array_values($selectedRooms));
+    }
+
+    private function normalizePassengers(
+        array $passengers,
+        ?HotelChildPolicy $policy
+    ): array {
+        if ($passengers === []) {
+            return [];
+        }
+
+        $normalized = [];
+        $coveredChildren = 0;
+        $coveredInfants = 0;
 
         foreach ($passengers as $passenger) {
-            if ($passenger['type'] === 'child') {
-                $age = $passenger['age'] ?? 0;
-                // بررسی سن کودک با سیاست
-                if ($age > $childPolicy->max_child_age) {
-                    return false;
-                }
-                $childCount++;
-            } elseif ($passenger['type'] === 'infant') {
-                $age = $passenger['age'] ?? 0;
-                // بررسی سن نوزاد با سیاست
-                if ($age > $childPolicy->max_infant_age) {
-                    return false;
-                }
-                $infantCount++;
+            $inputType = match ($passenger['type'] ?? null) {
+                'adl', 'adult' => 'adult',
+                'chd', 'child' => 'child',
+                'inf', 'infant' => 'infant',
+                default => null,
+            };
+
+            if ($inputType === null) {
+                return [];
             }
+
+            // Explicit adults stay adults. Their age does not
+            // accidentally turn them into infants.
+            if ($inputType === 'adult') {
+                $normalized[] = ['type' => 'adult'];
+                continue;
+            }
+
+            // Child/infant ages are validated by AvailabilityRequest.
+            if (!isset($passenger['age'])) {
+                return [];
+            }
+
+            $age = (int) $passenger['age'];
+
+            if ($policy === null) {
+                $normalized[] = ['type' => 'adult'];
+                continue;
+            }
+
+            $isInfantAge =
+                $policy->max_infant_age > 0
+                && $age < $policy->max_infant_age;
+
+            if ($isInfantAge) {
+                $infantLimit = $policy->max_infants_covered;
+
+                if (
+                    $infantLimit === null
+                    || $coveredInfants < $infantLimit
+                ) {
+                    $normalized[] = ['type' => 'infant'];
+                    $coveredInfants++;
+                    continue;
+                }
+
+                if ($policy->infant_when_disabled === 'as_adult') {
+                    $normalized[] = ['type' => 'adult'];
+                    continue;
+                }
+
+                // Otherwise the infant is evaluated as a child.
+            }
+
+            $isChildAge =
+                $policy->max_child_age > 0
+                && $age <= $policy->max_child_age;
+
+            if ($isChildAge) {
+                $childLimit = $policy->max_children_covered;
+
+                if (
+                    $childLimit === null
+                    || $coveredChildren < $childLimit
+                ) {
+                    $normalized[] = ['type' => 'child'];
+                    $coveredChildren++;
+                    continue;
+                }
+            }
+
+            $normalized[] = ['type' => 'adult'];
         }
 
-        // بررسی حداکثر تعداد کودکان و نوزادان
-        if ($childCount > ($childPolicy->max_children_covered ?? PHP_INT_MAX)) {
-            return false;
-        }
-
-        if ($infantCount > ($childPolicy->max_infants_covered ?? PHP_INT_MAX)) {
-            return false;
-        }
-
-        return true;
+        return $normalized;
     }
 
-    /**
-     * جستجوی اتاق مناسب برای مسافران
-     *
-     * @param Accommodation $accommodation
-     * @param int $adultCount
-     * @param int $childCount
-     * @param int $infantCount
-     * @param Carbon $checkIn
-     * @param Carbon $checkOut
-     * @return RoomType|Model|null
-     */
-    private function findSuitableRoom(
-        Accommodation         $accommodation,
-        int                   $adultCount,
-        int                   $childCount,
-        int                   $infantCount,
-        Carbon                $checkIn,
-        Carbon                $checkOut,
-        HotelChildPolicy|null $childPolicy
-    ): RoomType|null|Model
-    {
-        $totalPeople = $adultCount + $childCount;
+    private function priceOption(
+        RoomType $room,
+        array $counts,
+        ?HotelChildPolicy $policy,
+        array $dates,
+        Collection $calendars
+    ): ?array {
+        $capacity = (int) $room->capacity;
+        $extraCapacity = (int) $room->extra_capacity;
 
-        $roomType = $accommodation->rooms()
-            ->where('out_of_service', false)
-            ->orderBy('capacity', 'asc')
-            ->get()
-            ->first(function (RoomType $room) use ($totalPeople) {
-                // بررسی اینکه آیا اتاق می‌تواند مسافران را تحمل کند
-                return $room->capacity >= $totalPeople ||
-                    ($room->capacity + $room->extra_capacity) >= $totalPeople;
-            });
-
-        if (!$roomType) {
+        if ($capacity <= 0) {
             return null;
         }
 
-        // بررسی موجودی و دریافت قیمت‌ها برای تمام روزهای سفر
-        $priceData = $this->getRoomPricesForDateRange($roomType, $checkIn, $checkOut, $childCount, $infantCount, $childPolicy);
+        $adultCount = $counts['adult'];
+        $childCount = $counts['child'];
+        $infantCount = $counts['infant'];
 
-        if (!$priceData) {
+        // A child/infant without service does not occupy a bed.
+        $childNeedsBed =
+            $policy !== null
+            && $policy->child_service_condition === 'with_service';
+
+        $infantNeedsBed =
+            $policy !== null
+            && $policy->infant_service_condition === 'with_service';
+
+        $requiredBeds = $adultCount
+            + ($childNeedsBed ? $childCount : 0)
+            + ($infantNeedsBed ? $infantCount : 0);
+
+        if ($requiredBeds > $capacity + $extraCapacity) {
             return null;
         }
 
-        // اضافه کردن اطلاعات قیمت به اتاق
-        $roomType->setAttribute('pricing', $priceData['pricing']);
-        $roomType->setAttribute('total_price', $priceData['total_price']);
-        $roomType->setAttribute('nightly_prices', $priceData['nightly_prices']);
-        $roomType->setAttribute('ratePlan', $priceData['ratePlan']);
+        $extraBedCount = max(0, $requiredBeds - $capacity);
 
-        return $roomType;
-    }
+        // Adults use the base beds first.
+        $baseAdultCount = min($adultCount, $capacity);
 
-    /**
-     * دریافت قیمت‌ها برای محدوده تاریخی
-     * محاسبه‌ی قیمت برای بزرگسالان و کودکان/نوزادان
-     *
-     * @param RoomType $roomType
-     * @param Carbon $checkIn
-     * @param Carbon $checkOut
-     * @param int $childCount
-     * @param int $infantCount
-     * @return array|null
-     */
-    private function getRoomPricesForDateRange(
-        RoomType              $roomType,
-        Carbon                $checkIn,
-        Carbon                $checkOut,
-        int                   $childCount,
-        int                   $infantCount,
-        HotelChildPolicy|null $childPolicy
-    ): ?array
-    {
-        $currentDate = $checkIn->copy();
-        $nightly_prices = [];
-        $totalAdultPrice = 0;
-        $totalChildPrice = 0;
-        $totalInfantPrice = 0;
-        $totalExtraPrice = 0;
-        $ratePlan = null;
-        $extraPrice = 0;
+        $roomBaseTotal = 0;
+        $childTotal = 0;
+        $infantTotal = 0;
+        $extraTotal = 0;
 
+        $adultUnitTotal = 0;
+        $childUnitTotal = 0;
+        $infantUnitTotal = 0;
+        $extraUnitTotal = 0;
 
-        while ($currentDate < $checkOut) {
-            $calendar = RoomCalendar::query()->with(['roomType', 'ratePlan'])->where('room_type_id', $roomType->id)
-                ->where('day', $currentDate->toDateString())
-                ->first();
-            // اگر روز بسته است یا موجودی کافی نیست
-            if (!$calendar || $calendar->closed || $calendar->inventory <= 0) {
+        $nightlyPrices = [];
+
+        foreach ($dates as $day) {
+            /** @var RoomCalendar|null $calendar */
+            $calendar = $calendars->get($day);
+
+            if ($calendar === null || $calendar->daily_rate === null) {
                 return null;
             }
-            if (!$ratePlan)
-                $ratePlan = $calendar->ratePlan;
-            // محاسبه نرخ هر نفر
-            $adlPrice = $calendar->daily_rate / $calendar->roomType->capacity;
-            // محاسبه نرخ تخت اضافه . در صورتی که قیمت مجزا ثبت نشده باشه به قیمت یک نفر محاسبه میشه
-            if ($roomType->extra_capacity)
-                $extraPrice = $calendar->extend_bed_daily_rate ?? $adlPrice;
 
-            $nightlyPrice = [
-                'date' => $currentDate->toDateString(),
-                'extra_price' => $extraPrice,
+            $basePrice = (int) $calendar->daily_rate;
+
+            $childDaily = $this->policyRate(
+                $basePrice,
+                $capacity,
+                $policy?->child_pricing_type ?? 'adult',
+                $policy?->child_pricing_value
+            );
+
+            $infantDaily = $this->policyRate(
+                $basePrice,
+                $capacity,
+                $policy?->infant_pricing_type ?? 'adult',
+                $policy?->infant_pricing_value
+            );
+
+            // A required but unpriceable child/infant makes this
+            // option invalid instead of silently charging zero.
+            if (
+                ($childCount > 0 && $childDaily === null)
+                || ($infantCount > 0 && $infantDaily === null)
+            ) {
+                return null;
+            }
+
+            $childDaily ??= 0;
+            $infantDaily ??= 0;
+
+            // Preserve the previous fallback: if an extra bed has no
+            // separate daily rate, use one nominal capacity share.
+            $extraUnit = $extraCapacity > 0
+                ? (int) (
+                    $calendar->extend_bed_daily_rate
+                    ?? round($basePrice / $capacity)
+                )
+                : 0;
+
+            $nightChildTotal = $childDaily * $childCount;
+            $nightInfantTotal = $infantDaily * $infantCount;
+            $nightExtraTotal = $extraUnit * $extraBedCount;
+
+            $nightTotal = $basePrice
+                + $nightChildTotal
+                + $nightInfantTotal
+                + $nightExtraTotal;
+
+            $adultShare = $baseAdultCount > 0
+                ? intdiv($basePrice, $baseAdultCount)
+                : 0;
+
+            $adultShareRemainder = $baseAdultCount > 0
+                ? $basePrice % $baseAdultCount
+                : 0;
+
+            $nightlyPrices[] = [
+                'date' => $day,
+                'calendar_id' => $calendar->id,
+                'provider_id' => $calendar->provider_id,
+                'rate_plan_id' => $calendar->rate_plan_id,
+
+                'room_base_price' => $basePrice,
+                'extra_price' => $extraUnit,
+                'extra_count' => $extraBedCount,
+                'extra_total' => $nightExtraTotal,
+                'child_total' => $nightChildTotal,
+                'infant_total' => $nightInfantTotal,
+                'total_price' => $nightTotal,
+
                 'adult' => [
                     'rack_rate' => $calendar->rack_rate,
                     'daily_rate' => $calendar->daily_rate,
                     'grs_rate' => $calendar->grs_rate,
-                    'adult_price' => $adlPrice,
+                    'adult_price' => $adultShare,
+                    'base_adult_count' => $baseAdultCount,
+                    'base_share_remainder' => $adultShareRemainder,
+                ],
+
+                'child' => [
+                    'rack_rate' => $this->policyRate(
+                        $calendar->rack_rate,
+                        $capacity,
+                        $policy?->child_pricing_type ?? 'adult',
+                        $policy?->child_pricing_value
+                    ),
+                    'daily_rate' => $childDaily,
+                    'grs_rate' => $this->policyRate(
+                        $calendar->grs_rate,
+                        $capacity,
+                        $policy?->child_pricing_type ?? 'adult',
+                        $policy?->child_pricing_value
+                    ),
+                    'child_price' => $childDaily,
+                    'count' => $childCount,
+                ],
+
+                'infant' => [
+                    'rack_rate' => $this->policyRate(
+                        $calendar->rack_rate,
+                        $capacity,
+                        $policy?->infant_pricing_type ?? 'adult',
+                        $policy?->infant_pricing_value
+                    ),
+                    'daily_rate' => $infantDaily,
+                    'grs_rate' => $this->policyRate(
+                        $calendar->grs_rate,
+                        $capacity,
+                        $policy?->infant_pricing_type ?? 'adult',
+                        $policy?->infant_pricing_value
+                    ),
+                    'infant_price' => $infantDaily,
+                    'count' => $infantCount,
                 ],
             ];
 
-            // اگر کودک یا نوزاد داریم، قیمت مختص آن‌ها را اضافه کنیم
-//            if ($childCount > 0) {
-            $nightlyPrice['child'] = [
-                'rack_rate' => $calendar->baby_cot_rack_rate,
-                'daily_rate' => $calendar->baby_cot_daily_rate,
-                'grs_rate' => $calendar->baby_cot_grs_rate,
-            ];
-//            }
+            $roomBaseTotal += $basePrice;
+            $childTotal += $nightChildTotal;
+            $infantTotal += $nightInfantTotal;
+            $extraTotal += $nightExtraTotal;
 
-//            if ($infantCount > 0) {
-            $nightlyPrice['infant'] = [
-                'rack_rate' => $calendar->baby_cot_rack_rate,
-                'daily_rate' => $calendar->baby_cot_daily_rate,
-                'grs_rate' => $calendar->baby_cot_grs_rate,
-            ];
-//            }
-            // اگر هتل نرخ کودک نداشت و قوانین هتل هم نداشت
-            if (!$childPolicy && !$calendar->baby_cot_daily_rate) {
-                $nightlyPrice['child'] = [
-                    'rack_rate' => $calendar->rack_rate,
-                    'daily_rate' => $calendar->daily_rate,
-                    'grs_rate' => $calendar->grs_rate,
-                    'child_price' => $adlPrice,
-                ];
-                $nightlyPrice['infant'] = [
-                    'rack_rate' => $calendar->baby_cot_rack_rate,
-                    'daily_rate' => $calendar->baby_cot_daily_rate,
-                    'grs_rate' => $calendar->baby_cot_grs_rate,
-                    'infant_price' => $adlPrice,
-                ];
-            }
-            if (!$calendar->baby_cot_daily_rate && $childPolicy) {
-                $childPrice = 0;
-                $infantPrice = 0;
-                if ($childPolicy->child_pricing_type === 'adult')
-                    $childPrice = $adlPrice;
-                if ($childPolicy->child_pricing_type === 'half')
-                    $childPrice = $adlPrice / 2;
-                if ($childPolicy->child_pricing_type === 'percent')
-                    $childPrice = ($adlPrice / 100) * $childPolicy->child_pricing_value;
-                if ($childPolicy->child_pricing_type === 'fixed')
-                    $childPrice = $childPolicy->child_pricing_value;
-
-                if ($childPolicy->infant_pricing_type === 'adult')
-                    $infantPrice = $adlPrice;
-                if ($childPolicy->infant_pricing_type === 'half')
-                    $infantPrice = $adlPrice / 2;
-                if ($childPolicy->infant_pricing_type === 'percent')
-                    $infantPrice = ($adlPrice / 100) * $childPolicy->infant_pricing_value;
-                if ($childPolicy->infant_pricing_type === 'fixed')
-                    $infantPrice = $childPolicy->child_pricing_value;
-                $nightlyPrice['child'] = [
-                    'rack_rate' => $childPrice,
-                    'daily_rate' => $childPrice,
-                    'grs_rate' => $childPrice,
-                    'child_price' => $childPrice,
-                ];
-                $nightlyPrice['infant'] = [
-                    'rack_rate' => $infantPrice,
-                    'daily_rate' => $infantPrice,
-                    'grs_rate' => $infantPrice,
-                    'infant_price' => $infantPrice,
-                ];
-            }
-            $nightly_prices[] = $nightlyPrice;
-
-            // محاسبه‌ی قیمت کل - استفاده از daily_rate
-//            $totalAdultPrice += $calendar->daily_rate;
-//            if ($childCount > 0) {
-//                $totalChildPrice += $calendar->baby_cot_daily_rate;
-//            }
-//            if ($infantCount > 0) {
-//                $totalInfantPrice += $calendar->baby_cot_daily_rate;
-//            }
-
-            $currentDate->addDay();
+            $adultUnitTotal += $adultShare;
+            $childUnitTotal += $childDaily;
+            $infantUnitTotal += $infantDaily;
+            $extraUnitTotal += $extraUnit;
         }
-        foreach ($nightly_prices as $nightlyPrice) {
-            $totalAdultPrice += $nightlyPrice['adult']['adult_price'];
-            $totalInfantPrice += $nightlyPrice['infant']['infant_price'];
-            $totalChildPrice += $nightlyPrice['child']['child_price'];
-            $totalExtraPrice += $nightlyPrice['extra_price'];
-        }
+
+        $totalPrice = $roomBaseTotal
+            + $childTotal
+            + $infantTotal
+            + $extraTotal;
+
         return [
+            'total_price' => $totalPrice,
+            'extra_bed_count' => $extraBedCount,
+
             'pricing' => [
-                'adult' => $totalAdultPrice,
-                'child' => $totalChildPrice,
-                'infant' => $totalInfantPrice,
-                'extra_price' => $totalExtraPrice,
+                // Unit amounts over the entire stay.
+                'adult' => $adultUnitTotal,
+                'child' => $childUnitTotal,
+                'infant' => $infantUnitTotal,
+                'extra_price' => $extraUnitTotal,
+
+                // Actual composition totals over the entire stay.
+                'room_base_price' => $roomBaseTotal,
+                'child_total' => $childTotal,
+                'infant_total' => $infantTotal,
+                'extra_total' => $extraTotal,
+                'extra_bed_count' => $extraBedCount,
+                'base_adult_count' => $baseAdultCount,
+                'total_price' => $totalPrice,
             ],
-            'ratePlan' => $ratePlan,
-            'total_price' => $totalAdultPrice + $totalChildPrice + $totalInfantPrice,
-            'nightly_prices' => $nightly_prices,
+
+            'nightly_prices' => $nightlyPrices,
         ];
+    }
+
+    private function policyRate(
+        ?int $roomRate,
+        int $capacity,
+        string $pricingType,
+        ?int $pricingValue
+    ): ?int {
+        if ($roomRate === null || $capacity <= 0) {
+            return null;
+        }
+
+        $nominalPersonRate = $roomRate / $capacity;
+
+        return match ($pricingType) {
+            'adult' => (int) round($nominalPersonRate),
+            'free' => 0,
+            'half' => (int) round($nominalPersonRate / 2),
+
+            'percent' => $pricingValue === null
+                ? null
+                : (int) round(
+                    $nominalPersonRate * $pricingValue / 100
+                ),
+
+            'fixed' => $pricingValue,
+
+            default => null,
+        };
     }
 }

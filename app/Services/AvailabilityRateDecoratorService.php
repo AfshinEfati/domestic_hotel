@@ -22,9 +22,9 @@ class AvailabilityRateDecoratorService implements AvailabilityRateDecoratorServi
             foreach ($accommodation->getAttribute('available_rooms') ?? [] as $room) {
                 $roomTypeIds[] = (int) $room->id;
 
-                foreach ($room->getAttribute('nightly_prices') ?? [] as $nightlyPrice) {
-                    if (!empty($nightlyPrice['date'])) {
-                        $days[] = $nightlyPrice['date'];
+                foreach ($room->getAttribute('nightly_prices') ?? [] as $night) {
+                    if (!empty($night['date'])) {
+                        $days[] = $night['date'];
                     }
                 }
             }
@@ -32,47 +32,41 @@ class AvailabilityRateDecoratorService implements AvailabilityRateDecoratorServi
 
         $calendars = $this->roomCalendarService->getByRoomTypeIdsAndDays(
             array_values(array_unique($roomTypeIds)),
-            array_values(array_unique($days)),
+            array_values(array_unique($days))
         );
 
-        $calendarMap = [];
-
-        foreach ($calendars as $calendar) {
-            $key = $calendar->room_type_id . '|' . $calendar->day?->format('Y-m-d');
-            $calendarMap[$key] ??= $calendar;
-        }
+        // The selected calendar is identified by its primary key.
+        $calendarMap = $calendars->keyBy('id');
 
         foreach ($accommodations as $accommodation) {
             foreach ($accommodation->getAttribute('available_rooms') ?? [] as $room) {
                 $nightlyPrices = $room->getAttribute('nightly_prices') ?? [];
 
-                foreach ($nightlyPrices as $index => $nightlyPrice) {
-                    $day = $nightlyPrice['date'] ?? null;
-                    $calendar = $day !== null
-                        ? ($calendarMap[$room->id . '|' . $day] ?? null)
+                foreach ($nightlyPrices as $index => $night) {
+                    $calendarId = $night['calendar_id'] ?? null;
+
+                    $calendar = $calendarId !== null
+                        ? $calendarMap->get($calendarId)
                         : null;
 
-                    $providerId = $calendar?->provider_id;
+                    $providerId = $calendar?->provider_id
+                        ?? $room->getAttribute('provider_id');
 
-                    if (isset($nightlyPrice['adult']) && is_array($nightlyPrice['adult'])) {
-                        $nightlyPrice['adult']['final_rate'] = $this->ratePricingService->calculateFinalRate(
-                            $nightlyPrice['adult']['grs_rate'] ?? null,
-                            $providerId
-                        );
-                    }
+                    foreach (['adult', 'child', 'infant'] as $type) {
+                        if (
+                            !isset($night[$type])
+                            || !is_array($night[$type])
+                        ) {
+                            continue;
+                        }
 
-                    if (isset($nightlyPrice['child']) && is_array($nightlyPrice['child'])) {
-                        $nightlyPrice['child']['final_rate'] = $this->ratePricingService->calculateFinalRate(
-                            $nightlyPrice['child']['grs_rate'] ?? null,
-                            $providerId
-                        );
-                    }
-
-                    if (isset($nightlyPrice['infant']) && is_array($nightlyPrice['infant'])) {
-                        $nightlyPrice['infant']['final_rate'] = $this->ratePricingService->calculateFinalRate(
-                            $nightlyPrice['infant']['grs_rate'] ?? null,
-                            $providerId
-                        );
+                        $night[$type]['final_rate'] =
+                            $this->ratePricingService->calculateFinalRate(
+                                $night[$type]['grs_rate'] ?? null,
+                                $providerId !== null
+                                    ? (int) $providerId
+                                    : null
+                            );
                     }
 
                     $extraGrsRate = $calendar?->extend_bed_grs_rate;
@@ -86,13 +80,17 @@ class AvailabilityRateDecoratorService implements AvailabilityRateDecoratorServi
                         $extraGrsRate = $calendar->grs_rate / $room->capacity;
                     }
 
-                    $nightlyPrice['extra_grs_rate'] = $extraGrsRate;
-                    $nightlyPrice['extra_final_rate'] = $this->ratePricingService->calculateFinalRate(
-                        $extraGrsRate,
-                        $providerId
-                    );
+                    $night['extra_grs_rate'] = $extraGrsRate;
 
-                    $nightlyPrices[$index] = $nightlyPrice;
+                    $night['extra_final_rate'] =
+                        $this->ratePricingService->calculateFinalRate(
+                            $extraGrsRate,
+                            $providerId !== null
+                                ? (int) $providerId
+                                : null
+                        );
+
+                    $nightlyPrices[$index] = $night;
                 }
 
                 $room->setAttribute('nightly_prices', $nightlyPrices);

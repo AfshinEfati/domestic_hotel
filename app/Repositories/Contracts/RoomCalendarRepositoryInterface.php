@@ -23,4 +23,17 @@ interface RoomCalendarRepositoryInterface extends BaseRepositoryInterface
     public function getAvailableByAccommodationId(int $accommodationId): Collection;
 
     public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection;
+
+    /**
+     * Fetch every calendar candidate for the requested hotels and stay.
+     * Check-out is excluded because it is not a paid night.
+     *
+     * @param int[] $accommodationIds
+     * @return Collection<int, RoomCalendar>
+     */
+    public function getForAvailability(
+        array $accommodationIds,
+        string $checkIn,
+        string $checkOut
+    ): Collection;
 }

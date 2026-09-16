@@ -20,36 +20,79 @@ class AvailabilityResource extends JsonResource
             'address' => $this->address,
             'lat' => $this->lat,
             'lng' => $this->lng,
-            'city' => CityResource::make($this->whenLoaded('city')),
-            'type' => AccommodationTypeResource::make($this->whenLoaded('type')),
-            'available_rooms' => $this->formatAvailableRooms($this->available_rooms ?? []),
-            'childPolicy' => HotelChildPolicyResource::make($this->whenLoaded('childPolicy')),
-            'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
+
+            'city' => CityResource::make(
+                $this->whenLoaded('city')
+            ),
+
+            'type' => AccommodationTypeResource::make(
+                $this->whenLoaded('type')
+            ),
+
+            'available_rooms' => $this->formatAvailableRooms(
+                $this->available_rooms ?? []
+            ),
+
+            'childPolicy' => HotelChildPolicyResource::make(
+                $this->whenLoaded('childPolicy')
+            ),
+
+            'facilities' => FacilityResource::collection(
+                $this->whenLoaded('facilities')
+            ),
         ];
     }
 
-    /**
-     * فرمت‌بندی اتاق‌های موجود با اطلاعات قیمت‌گذاری
-     */
     private function formatAvailableRooms($rooms)
     {
-        return collect($rooms)->map(function ($room) {
-            return [
-                'id' => $room->id,
-                'fa_name' => $room->fa_name,
-                'en_name' => $room->en_name,
-                'capacity' => $room->capacity,
-                'extra_capacity' => $room->extra_capacity,
-                'single_bed_count' => $room->single_bed_count,
-                'double_bed_count' => $room->double_bed_count,
-                'sofa_bed_count' => $room->sofa_bed_count,
-                'out_of_service' => $room->out_of_service,
-                'pricing' => $room->pricing ?? [],
-                'total_price' => $room->total_price ?? 0,
-                'nightly_prices' => $room->nightly_prices ?? [],
-                'roomTypeName' => $room->roomTypeName ? new RoomTypeNameResource($room->roomTypeName) : null,
-                'ratePlan'=> $room->ratePlan ? new RatePlanResource($room->ratePlan) : null,
-            ];
-        })->values();
+        return collect($rooms)
+            ->map(function ($room) {
+                return [
+                    'id' => $room->id,
+                    'fa_name' => $room->fa_name,
+                    'en_name' => $room->en_name,
+
+                    'capacity' => $room->capacity,
+                    'extra_capacity' => $room->extra_capacity,
+
+                    'single_bed_count' => $room->single_bed_count,
+                    'double_bed_count' => $room->double_bed_count,
+                    'sofa_bed_count' => $room->sofa_bed_count,
+
+                    'out_of_service' => $room->out_of_service,
+
+                    'requested_room_index' =>
+                        $room->requested_room_index,
+
+                    'provider_id' => $room->provider_id,
+
+                    'available_inventory' =>
+                        $room->available_inventory,
+
+                    'required_inventory' =>
+                        $room->required_inventory,
+
+                    'extra_bed_count' =>
+                        $room->extra_bed_count,
+
+                    'pricing' => $room->pricing ?? [],
+
+                    'total_price' => $room->total_price ?? 0,
+
+                    'nightly_prices' =>
+                        $room->nightly_prices ?? [],
+
+                    'roomTypeName' => $room->roomTypeName
+                        ? new RoomTypeNameResource(
+                            $room->roomTypeName
+                        )
+                        : null,
+
+                    'ratePlan' => $room->ratePlan
+                        ? new RatePlanResource($room->ratePlan)
+                        : null,
+                ];
+            })
+            ->values();
     }
 }
