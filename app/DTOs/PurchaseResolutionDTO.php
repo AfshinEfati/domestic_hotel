@@ -14,6 +14,7 @@ final readonly class PurchaseResolutionDTO
         public int $purchaseMode,
         public ?int $manualReason = null,
         public ?int $manualRuleId = null,
+        public ?string $manualReasonText = null,
     ) {}
 
     public function toArray(): array
@@ -27,6 +28,7 @@ final readonly class PurchaseResolutionDTO
                 ? null
                 : PurchaseManualReason::get($this->manualReason),
             'manual_rule_id' => $this->manualRuleId,
+            'manual_reason_text' => $this->manualReasonText,
         ];
     }
 }
