@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Reservation extends Model
 {
     protected $fillable = [
+        'reservation_number',
         'agency_id',
         'status',
         'check_in',
