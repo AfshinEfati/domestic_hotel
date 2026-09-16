@@ -8,6 +8,7 @@ use App\Support\Reservation\PurchaseMethod;
 final readonly class PurchaseResolutionDTO
 {
     public function __construct(
+        public int $reservationId,
         public string $reservationNumber,
         public int $reservationHotelId,
         public int $providerId,
@@ -20,6 +21,7 @@ final readonly class PurchaseResolutionDTO
     public function toArray(): array
     {
         return [
+            'reservation_id' => $this->reservationId,
             'reservation_number' => $this->reservationNumber,
             'reservation_hotel_id' => $this->reservationHotelId,
             'provider_id' => $this->providerId,
