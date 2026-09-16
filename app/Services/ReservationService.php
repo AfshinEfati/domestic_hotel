@@ -92,7 +92,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             }
 
             return $this->reservationRepository->findByReservationNumber($reservation->reservation_number)
-                ?? throw new RuntimeException('Created reservation could not be loaded.');
+                ?? $reservation;
         });
     }
 
