@@ -11,10 +11,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use InvalidArgumentException;
-use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
-use Throwable;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -32,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         App\Providers\HotelServiceProvider::class,
     ])
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->render(function (Throwable $exception, Request $request) {
+        $exceptions->render(function (\Throwable $exception, Request $request) {
             if (!$request->is('api/*')) {
                 return null;
             }
@@ -75,7 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return StatusHelper::errorResponse($message, $status);
             }
 
-            if ($exception instanceof InvalidArgumentException || $exception instanceof RuntimeException) {
+            if ($exception instanceof \InvalidArgumentException || $exception instanceof \RuntimeException) {
                 return StatusHelper::errorResponse($exception->getMessage(), 422);
             }
 
