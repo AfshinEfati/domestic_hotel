@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Front\AccommodationController;
+use App\Http\Controllers\Api\V1\Reservation\ReservationController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'front'], function () {
@@ -12,6 +13,11 @@ Route::group(['prefix' => 'front'], function () {
             'getAvailableRooms'
         ]);
     });
+
+    Route::group(['prefix' => 'reservations'], function () {
+        Route::post('create', [ReservationController::class, 'store']);
+    });
+
     Route::group(['prefix' => 'facility-groups'], function () {
         Route::post('list', [AccommodationController::class, 'getFacilityGroups']);
     });
