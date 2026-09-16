@@ -86,13 +86,18 @@ class AvailabilityFilterService
         array $dates,
         Collection $hotelCalendars
     ): Collection {
+        // AvailabilityRequest also rejects more than five rooms; defend direct callers.
+        if ($requestedRooms === [] || count($requestedRooms) > 5 || $dates === []) {
+            return collect();
+        }
+
         $policy = $accommodation->childPolicy;
 
         if ($policy !== null && !$policy->status) {
             $policy = null;
         }
 
-        $groups = [];
+        $requests = [];
 
         foreach ($requestedRooms as $requestIndex => $requestedRoom) {
             $passengers = $this->normalizePassengers(
@@ -110,29 +115,31 @@ class AvailabilityFilterService
                 $counts[$passenger['type']]++;
             }
 
-            $signature = implode(':', [
-                $counts['adult'],
-                $counts['child'],
-                $counts['infant'],
-            ]);
-
-            if (!isset($groups[$signature])) {
-                $groups[$signature] = [
-                    'counts' => $counts,
-                    'indexes' => [],
-                    'quantity' => 0,
-                    'options' => [],
-                ];
-            }
-
-            $groups[$signature]['indexes'][] = $requestIndex;
-            $groups[$signature]['quantity']++;
+            // Keep every requested room independent, even when compositions match.
+            // Identical compositions can reuse priced options, not a single assignment.
+            $requests[] = [
+                'index' => $requestIndex,
+                'counts' => $counts,
+                'signature' => implode(':', [
+                    $counts['adult'],
+                    $counts['child'],
+                    $counts['infant'],
+                ]),
+                'options' => [],
+            ];
         }
 
         $calendarsByRoom = $hotelCalendars->groupBy('room_type_id');
-        $groups = array_values($groups);
+        $optionsBySignature = [];
 
-        foreach ($groups as &$group) {
+        foreach ($requests as &$request) {
+            $signature = $request['signature'];
+
+            if (isset($optionsBySignature[$signature])) {
+                $request['options'] = $optionsBySignature[$signature];
+                continue;
+            }
+
             foreach ($accommodation->rooms as $room) {
                 if ($room->out_of_service || $room->capacity <= 0) {
                     continue;
@@ -140,7 +147,7 @@ class AvailabilityFilterService
 
                 $roomCalendars = $calendarsByRoom->get($room->id, collect());
 
-                // A single offer must have the same provider and rate plan for every night.
+                // An offer keeps the same provider and rate plan on every night.
                 $offers = $roomCalendars->groupBy(
                     fn (RoomCalendar $calendar) =>
                         $calendar->provider_id . ':' . $calendar->rate_plan_id
@@ -166,7 +173,7 @@ class AvailabilityFilterService
                             $calendar === null
                             || $calendar->closed
                             || $calendar->inventory === null
-                            || $calendar->inventory < $group['quantity']
+                            || $calendar->inventory < 1
                             || $calendar->daily_rate === null
                         ) {
                             $valid = false;
@@ -182,7 +189,7 @@ class AvailabilityFilterService
 
                     $priceData = $this->priceOption(
                         $room,
-                        $group['counts'],
+                        $request['counts'],
                         $policy,
                         $dates,
                         $byDay
@@ -194,10 +201,11 @@ class AvailabilityFilterService
 
                     $firstCalendar = $byDay->get($dates[0]);
 
-                    $group['options'][] = [
+                    $request['options'][] = [
                         'room' => $room,
                         'price' => $priceData,
                         'provider_id' => (int) $firstCalendar->provider_id,
+                        'rate_plan_id' => (int) $firstCalendar->rate_plan_id,
                         'rate_plan' => $firstCalendar->ratePlan,
                         'inventory_by_day' => $inventoryByDay,
                         'min_inventory' => min($inventoryByDay),
@@ -205,33 +213,40 @@ class AvailabilityFilterService
                 }
             }
 
-            if ($group['options'] === []) {
+            if ($request['options'] === []) {
                 return collect();
             }
 
+            // Try the lowest full-stay price first, not the lowest nightly share.
             usort(
-                $group['options'],
+                $request['options'],
                 static function (array $a, array $b): int {
                     return ($a['price']['total_price'] <=> $b['price']['total_price'])
                         ?: ($a['room']->id <=> $b['room']->id)
-                        ?: ($a['provider_id'] <=> $b['provider_id']);
+                        ?: ($a['provider_id'] <=> $b['provider_id'])
+                        ?: ($a['rate_plan_id'] <=> $b['rate_plan_id']);
                 }
             );
+
+            $optionsBySignature[$signature] = $request['options'];
         }
 
-        unset($group);
+        unset($request);
 
+        // Constrained compositions go first; request indexes are restored below.
         usort(
-            $groups,
+            $requests,
             static fn (array $a, array $b): int =>
-                count($a['options']) <=> count($b['options'])
+                (count($a['options']) <=> count($b['options']))
+                ?: ($a['index'] <=> $b['index'])
         );
 
-        $minimumRemaining = array_fill(0, count($groups) + 1, 0);
+        // Lower bound on the cost of the unassigned requests for pruning.
+        $minimumRemaining = array_fill(0, count($requests) + 1, 0);
 
-        for ($i = count($groups) - 1; $i >= 0; $i--) {
+        for ($i = count($requests) - 1; $i >= 0; $i--) {
             $minimumRemaining[$i] = $minimumRemaining[$i + 1]
-                + $groups[$i]['options'][0]['price']['total_price'] * $groups[$i]['quantity'];
+                + $requests[$i]['options'][0]['price']['total_price'];
         }
 
         $bestCost = PHP_INT_MAX;
@@ -247,31 +262,33 @@ class AvailabilityFilterService
             &$search,
             &$bestCost,
             &$bestSelection,
-            $groups,
+            $requests,
             $dates,
             $minimumRemaining
         ): void {
+            if ($depth === count($requests)) {
+                if ($cost < $bestCost) {
+                    $bestCost = $cost;
+                    $bestSelection = $selection;
+                }
+                return;
+            }
+
             if ($cost + $minimumRemaining[$depth] >= $bestCost) {
                 return;
             }
 
-            if ($depth === count($groups)) {
-                $bestCost = $cost;
-                $bestSelection = $selection;
-                return;
-            }
+            $request = $requests[$depth];
 
-            $group = $groups[$depth];
-            $quantity = $group['quantity'];
-
-            foreach ($group['options'] as $option) {
+            foreach ($request['options'] as $option) {
                 $roomId = (int) $option['room']->id;
-                $newUsed = ($used[$roomId] ?? 0) + $quantity;
+                $newUsed = ($used[$roomId] ?? 0) + 1;
                 $newLimits = $limits;
                 $valid = true;
 
                 foreach ($dates as $day) {
-                    // Different offers share the same physical room-type inventory.
+                    // Rate plans/providers cannot independently spend the same
+                    // physical room-type inventory on a given night.
                     $limit = min(
                         $limits[$roomId][$day] ?? PHP_INT_MAX,
                         $option['inventory_by_day'][$day]
@@ -292,11 +309,11 @@ class AvailabilityFilterService
                 $newUsedByRoom = $used;
                 $newUsedByRoom[$roomId] = $newUsed;
                 $newSelection = $selection;
-                $newSelection[$depth] = $option;
+                $newSelection[$request['index']] = $option;
 
                 $search(
                     $depth + 1,
-                    $cost + $option['price']['total_price'] * $quantity,
+                    $cost + $option['price']['total_price'],
                     $newUsedByRoom,
                     $newLimits,
                     $newSelection
@@ -306,29 +323,32 @@ class AvailabilityFilterService
 
         $search(0, 0, [], [], []);
 
-        if ($bestSelection === []) {
+        if (count($bestSelection) !== count($requestedRooms)) {
             return collect();
+        }
+
+        // Each returned row carries the actual total quantity selected for its
+        // room type, even when the request is fulfilled by mixed room types.
+        $requiredByRoomId = [];
+        foreach ($bestSelection as $option) {
+            $roomId = (int) $option['room']->id;
+            $requiredByRoomId[$roomId] = ($requiredByRoomId[$roomId] ?? 0) + 1;
         }
 
         $selectedRooms = [];
 
-        foreach ($groups as $groupIndex => $group) {
-            $option = $bestSelection[$groupIndex];
-
-            foreach ($group['indexes'] as $requestIndex) {
-                // Clone so one room type can be used for multiple requested rooms.
-                $room = clone $option['room'];
-                $room->setAttribute('pricing', $option['price']['pricing']);
-                $room->setAttribute('total_price', $option['price']['total_price']);
-                $room->setAttribute('nightly_prices', $option['price']['nightly_prices']);
-                $room->setAttribute('ratePlan', $option['rate_plan']);
-                $room->setAttribute('provider_id', $option['provider_id']);
-                $room->setAttribute('available_inventory', $option['min_inventory']);
-                $room->setAttribute('required_inventory', $group['quantity']);
-                $room->setAttribute('requested_room_index', $requestIndex);
-                $room->setAttribute('extra_bed_count', $option['price']['extra_bed_count']);
-                $selectedRooms[$requestIndex] = $room;
-            }
+        foreach ($bestSelection as $requestIndex => $option) {
+            $room = clone $option['room'];
+            $room->setAttribute('pricing', $option['price']['pricing']);
+            $room->setAttribute('total_price', $option['price']['total_price']);
+            $room->setAttribute('nightly_prices', $option['price']['nightly_prices']);
+            $room->setAttribute('ratePlan', $option['rate_plan']);
+            $room->setAttribute('provider_id', $option['provider_id']);
+            $room->setAttribute('available_inventory', $option['min_inventory']);
+            $room->setAttribute('required_inventory', $requiredByRoomId[(int) $room->id]);
+            $room->setAttribute('requested_room_index', $requestIndex);
+            $room->setAttribute('extra_bed_count', $option['price']['extra_bed_count']);
+            $selectedRooms[$requestIndex] = $room;
         }
 
         ksort($selectedRooms);
