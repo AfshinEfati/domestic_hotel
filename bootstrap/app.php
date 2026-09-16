@@ -57,10 +57,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 return StatusHelper::errorResponse('not found', 404);
             }
 
-            if ($exception instanceof InvalidArgumentException || $exception instanceof RuntimeException) {
-                return StatusHelper::errorResponse($exception->getMessage(), 422);
-            }
-
             if ($exception instanceof QueryException) {
                 return StatusHelper::errorResponse(
                     'database operation failed',
@@ -77,6 +73,10 @@ return Application::configure(basePath: dirname(__DIR__))
                     : 'request failed';
 
                 return StatusHelper::errorResponse($message, $status);
+            }
+
+            if ($exception instanceof InvalidArgumentException || $exception instanceof RuntimeException) {
+                return StatusHelper::errorResponse($exception->getMessage(), 422);
             }
 
             report($exception);
