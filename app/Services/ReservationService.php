@@ -9,6 +9,7 @@ use App\Models\Reservation;
 use App\Models\ReservationHotel;
 use App\Models\ReservationPurchaseSegment;
 use App\Models\ReservationRoom;
+use App\Repositories\Contracts\ReservationGuestRepositoryInterface;
 use App\Repositories\Contracts\ReservationHotelRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseSegmentRepositoryInterface;
 use App\Repositories\Contracts\ReservationRepositoryInterface;
@@ -17,6 +18,7 @@ use App\Services\Contracts\ReservationReferenceGeneratorInterface;
 use App\Services\Contracts\ReservationServiceInterface;
 use App\Support\Reservation\PurchaseMethod;
 use App\Support\Reservation\ReservationHotelType;
+use App\Support\Reservation\ReservationRoomType;
 use App\Support\Reservation\ReservationStatus;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -28,10 +30,70 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         private readonly ReservationRepositoryInterface $reservationRepository,
         private readonly ReservationHotelRepositoryInterface $reservationHotelRepository,
         private readonly ReservationRoomRepositoryInterface $reservationRoomRepository,
+        private readonly ReservationGuestRepositoryInterface $reservationGuestRepository,
         private readonly ReservationPurchaseSegmentRepositoryInterface $purchaseSegmentRepository,
         private readonly ReservationReferenceGeneratorInterface $referenceGenerator,
     ) {
         parent::__construct($reservationRepository);
+    }
+
+    public function createRequest(array $data): Reservation
+    {
+        return DB::transaction(function () use ($data): Reservation {
+            $reservation = $this->reservationRepository->store([
+                'reservation_number' => $this->referenceGenerator->generate(),
+                'agency_id' => $data['agency_id'],
+                'status' => ReservationStatus::REQUESTED,
+                'check_in' => $data['check_in'],
+                'check_out' => $data['check_out'],
+                'sale_amount' => $data['sale_amount'],
+                'tax_amount' => 0,
+                'commission_amount' => null,
+                'booker_first_name' => $data['booker']['first_name'],
+                'booker_last_name' => $data['booker']['last_name'],
+                'booker_mobile' => $data['booker']['mobile'],
+                'booker_email' => $data['booker']['email'] ?? null,
+                'acc_code' => $data['acc_code'] ?? null,
+            ]);
+
+            $hotel = $this->reservationHotelRepository->store([
+                'reservation_id' => $reservation->id,
+                'accommodation_id' => $data['hotel']['accommodation_id'],
+                'type' => ReservationHotelType::REQUESTED,
+                'is_final' => true,
+            ]);
+
+            foreach ($data['hotel']['rooms'] as $index => $roomData) {
+                $room = $this->reservationRoomRepository->store([
+                    'reservation_hotel_id' => $hotel->id,
+                    'room_number' => $index + 1,
+                    'type' => ReservationRoomType::REQUESTED,
+                    'is_final' => true,
+                    'room_type_id' => $roomData['room_type_id'] ?? null,
+                    'rate_plan_id' => $roomData['rate_plan_id'] ?? null,
+                    'room_name' => $roomData['room_name'] ?? null,
+                ]);
+
+                foreach ($roomData['guests'] as $guestData) {
+                    $this->reservationGuestRepository->store([
+                        'reservation_room_id' => $room->id,
+                        'type' => $guestData['type'],
+                        'first_name' => $guestData['first_name'],
+                        'last_name' => $guestData['last_name'],
+                        'gender' => $guestData['gender'] ?? null,
+                        'birth_date' => $guestData['birth_date'] ?? null,
+                        'country_id' => $guestData['country_id'] ?? null,
+                        'national_id' => $guestData['national_id'] ?? null,
+                        'passport_number' => $guestData['passport_number'] ?? null,
+                        'passport_issuer_country_id' => $guestData['passport_issuer_country_id'] ?? null,
+                        'passport_expiry_date' => $guestData['passport_expiry_date'] ?? null,
+                    ]);
+                }
+            }
+
+            return $this->reservationRepository->findByReservationNumber($reservation->reservation_number)
+                ?? throw new RuntimeException('Created reservation could not be loaded.');
+        });
     }
 
     public function store(mixed $payload): Reservation
