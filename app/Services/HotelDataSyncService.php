@@ -73,22 +73,18 @@ class HotelDataSyncService
         $providerName = $data['fa_name'];
         $providerEnName = $data['en_name'] ?? null;
 
-        // Normalize Name
         $normalizedName = trim(preg_replace('/\s+/', ' ', $providerName));
         $normalizedEnName = $providerEnName ? trim(preg_replace('/\s+/', ' ', $providerEnName)) : null;
 
-        // Find or Create RoomTypeName
         $roomTypeName = $this->roomTypeNameService->firstOrCreate(
             ['fa_name' => $normalizedName],
             ['en_name' => $normalizedEnName]
         );
 
-        // If exists, update en_name if null
         if (!$roomTypeName->en_name && $normalizedEnName) {
             $this->roomTypeNameService->update($roomTypeName->id, ['en_name' => $normalizedEnName]);
         }
 
-        // Process Mapping
         $mapping = $this->roomTypeProviderMapService->repository()->findDynamic([
             'provider_id' => $provider->id,
             'provider_room_type_id' => $providerRoomTypeId
@@ -99,14 +95,11 @@ class HotelDataSyncService
         if ($mapping) {
             $roomType = $this->roomTypeService->show($mapping->room_type_id);
             if ($roomType) {
-                // Update RoomType with room_type_name_id if missing or changed?
-                // Keeping it simple as per original logic
                 if ($roomType->room_type_name_id !== $roomTypeName->id) {
                     $this->roomTypeService->update($roomType->id, ['room_type_name_id' => $roomTypeName->id]);
                 }
             }
         } else {
-            // Try to find a RoomType by (Accommodation, Name)
             $roomType = $this->roomTypeService->repository()->findDynamic([
                 'accommodation_id' => $map->accommodation_id,
                 'fa_name' => $providerName
@@ -134,7 +127,6 @@ class HotelDataSyncService
             ]);
         }
 
-        // --- Process Rate Plans ---
         $ratePlans = $data['rate_plans'] ?? [];
         foreach ($ratePlans as $rpData) {
             $this->processRatePlan($map, $provider, $rpData);
@@ -143,13 +135,14 @@ class HotelDataSyncService
 
     protected function processRatePlan(AccommodationProviderMap $map, Provider $provider, array $rpData): void
     {
-        $providerRpId = (string)($rpData['id'] ?? '');
-        if (!$providerRpId) return;
+        $providerRpId = (string) ($rpData['id'] ?? '');
+        if (!$providerRpId) {
+            return;
+        }
 
         $rpName = $rpData['name'] ?? null;
         $rpEnName = $rpData['name_en'] ?? null;
 
-        // Check Mapping
         $rpMap = $this->ratePlanProviderMapService->repository()->findDynamic([
             'provider_id' => $provider->id,
             'provider_rate_plan_id' => $providerRpId
@@ -168,7 +161,7 @@ class HotelDataSyncService
                     'en_name' => $rpEnName,
                     'meal_type' => $rpData['meal_type_included'] ?? null,
                     'food_board_type' => null,
-                    'cancelable' => (bool)($rpData['cancelable'] ?? true),
+                    'cancelable' => (bool) ($rpData['cancelable'] ?? true),
                     'sleeps' => $rpData['sleeps'] ?? null,
                     'min_stay' => $rpData['min_stay'] ?? null,
                     'max_stay' => $rpData['max_stay'] ?? null,
@@ -190,7 +183,6 @@ class HotelDataSyncService
      */
     protected function syncFacilities(AccommodationProviderMap $map, array $facilities): void
     {
-        /** @var Accommodation|null $acc */
         $acc = $map->accommodation;
         if (!$acc) {
             return;
@@ -222,7 +214,7 @@ class HotelDataSyncService
             }
 
             $facilityIds[$facilityModel->id] = [
-                'description' => (string)($facility['description'] ?? ''),
+                'description' => (string) ($facility['description'] ?? ''),
             ];
         }
 
@@ -240,7 +232,7 @@ class HotelDataSyncService
      */
     protected function syncRules(AccommodationProviderMap $map, array $rules): void
     {
-        $accommodationId = (int)$map->accommodation_id;
+        $accommodationId = (int) $map->accommodation_id;
         if ($accommodationId <= 0) {
             return;
         }
@@ -282,7 +274,7 @@ class HotelDataSyncService
                 ],
                 [
                     'rule_category_id' => $categoryId,
-                    'rule_id' => is_numeric($rule['rule_id'] ?? null) ? (int)$rule['rule_id'] : null,
+                    'rule_id' => is_numeric($rule['rule_id'] ?? null) ? (int) $rule['rule_id'] : null,
                     'type' => $this->normalizeString($rule['type'] ?? null),
                     'name' => $this->normalizeString($rule['name'] ?? null),
                     'name_ar' => $this->normalizeString($rule['name_ar'] ?? null),
@@ -328,13 +320,25 @@ class HotelDataSyncService
             'max_infant_age' => $maxInfantAge,
             'max_child_age' => $maxChildAge,
             'description' => $description,
-            'status' =>true
+            'status' => true,
         ];
 
         foreach ($parsed as $key => $value) {
             if ($value !== null) {
                 $payload[$key] = $value;
             }
+        }
+
+        // When the provider specifies either coverage cap, synchronize BOTH.
+        // Otherwise an old infant cap can linger after the source changes to
+        // a shared limit (or vice versa). If the source mentions no limit,
+        // retain manually curated Admin values rather than clearing them.
+        if (
+            ($parsed['max_children_covered'] ?? null) !== null
+            || ($parsed['max_infants_covered'] ?? null) !== null
+        ) {
+            $payload['max_children_covered'] = $parsed['max_children_covered'];
+            $payload['max_infants_covered'] = $parsed['max_infants_covered'];
         }
 
         HotelChildPolicy::query()->updateOrCreate(
@@ -349,7 +353,7 @@ class HotelDataSyncService
             return null;
         }
 
-        $stringValue = trim((string)$value);
+        $stringValue = trim((string) $value);
 
         return $stringValue !== '' ? $stringValue : null;
     }
@@ -360,7 +364,7 @@ class HotelDataSyncService
             return null;
         }
 
-        $stringValue = trim((string)$value);
+        $stringValue = trim((string) $value);
 
         return $stringValue !== '' ? $stringValue : null;
     }
@@ -371,7 +375,7 @@ class HotelDataSyncService
             return 0;
         }
 
-        $intValue = (int)$value;
+        $intValue = (int) $value;
 
         if ($intValue < 0) {
             return 0;
