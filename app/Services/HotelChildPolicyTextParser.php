@@ -9,7 +9,7 @@ class HotelChildPolicyTextParser
         $text = $this->normalize($text);
 
         $maxInfantAge = $this->toInt($conditions['max_infant_age'] ?? null);
-        $maxChildAge  = $this->toInt($conditions['max_child_age'] ?? null);
+        $maxChildAge = $this->toInt($conditions['max_child_age'] ?? null);
 
         $result = [
             'infant_pricing_type' => null,
@@ -18,14 +18,16 @@ class HotelChildPolicyTextParser
             'child_pricing_value' => null,
             'infant_service_condition' => null,
             'child_service_condition' => null,
-            'max_children_covered' => null,
-            'max_infants_covered' => null,
+            // Shared limit across free infants and discounted children.
+            'max_children_covered' => $this->toNullableInt($conditions['max_children_covered'] ?? null),
+            // Additional infant-only limit, inside the shared limit.
+            'max_infants_covered' => $this->toNullableInt($conditions['max_infants_covered'] ?? null),
         ];
 
+        $sharedCoverage = $this->detectSharedCoverage($text);
         $blocks = $this->splitBlocks($text);
 
         foreach ($blocks as $block) {
-
             $group = $this->detectGroup($block, $maxInfantAge, $maxChildAge);
             if (!$group) {
                 continue;
@@ -33,7 +35,7 @@ class HotelChildPolicyTextParser
 
             $pricing = $this->detectPricing($block);
             if ($pricing) {
-                $result[$group . '_pricing_type']  ??= $pricing['type'];
+                $result[$group . '_pricing_type'] ??= $pricing['type'];
                 $result[$group . '_pricing_value'] ??= $pricing['value'];
             }
 
@@ -43,14 +45,27 @@ class HotelChildPolicyTextParser
             }
 
             $coverage = $this->detectCoverage($block);
-            if ($coverage !== null) {
-                if ($group === 'infant') {
-                    $result['max_infants_covered'] ??= $coverage;
-                } else {
-                    $result['max_children_covered'] ??= $coverage;
-                }
+            if ($coverage === null) {
+                continue;
+            }
+
+            // A statement about "one child" is not an infant-specific limit,
+            // even when this hotel defines only an infant age range.
+            if (str_contains($block, 'کودک')) {
+                $result['max_children_covered'] ??= $coverage;
+            } elseif ($group === 'infant') {
+                $result['max_infants_covered'] ??= $coverage;
+            } else {
+                $result['max_children_covered'] ??= $coverage;
             }
         }
+
+        // Explicit "free and half rate for only one child" wins over
+        // block-level guesses; it covers both infant and child discounts.
+        if ($sharedCoverage !== null) {
+            $result['max_children_covered'] = $sharedCoverage;
+        }
+
         $this->applyServiceFallback($result);
 
         return $result;
@@ -59,39 +74,63 @@ class HotelChildPolicyTextParser
     private function normalize(string $text): string
     {
         $text = strtr($text, [
-            '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4',
-            '۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
         ]);
 
-        $text = preg_replace('/\s+/', ' ', $text);
-
-        return trim($text);
+        return trim(preg_replace('/\s+/u', ' ', $text));
     }
 
     private function splitBlocks(string $text): array
     {
         $parts = preg_split('/[\.!\n،]+/u', $text) ?: [];
-
         $blocks = [];
 
         foreach ($parts as $part) {
             $sub = preg_split('/\s+و\s+/u', $part) ?: [];
-            foreach ($sub as $s) {
-                $blocks[] = trim($s);
+            foreach ($sub as $block) {
+                $blocks[] = trim($block);
             }
         }
 
         return array_values(array_filter($blocks));
     }
 
+    /**
+     * Detect a limit explicitly stated for free AND half-rate stays.
+     * Check entire sentences before splitting at "و" (and).
+     */
+    private function detectSharedCoverage(string $text): ?int
+    {
+        $sentences = preg_split('/[\.!؟\n]+/u', $text) ?: [];
+
+        foreach ($sentences as $sentence) {
+            if (
+                !str_contains($sentence, 'رایگان')
+                || !preg_match('/نیم[\s‌]?بها/u', $sentence)
+                || !preg_match('/(?:تنها|فقط|حداکثر)/u', $sentence)
+            ) {
+                continue;
+            }
+
+            $coverage = $this->detectCoverage($sentence);
+            if ($coverage !== null && str_contains($sentence, 'کودک')) {
+                return $coverage;
+            }
+        }
+
+        return null;
+    }
+
     private function detectGroup(string $text, int $maxInfantAge, int $maxChildAge): ?string
     {
         $hasInfant = $maxInfantAge > 0;
-        $hasChild  = $maxChildAge > 0;
+        $hasChild = $maxChildAge > 0;
 
-        // --- AGE BASED FIRST ---
-        if (preg_match('/زیر\s*(\d+)/u', $text, $m)) {
-            $age = (int)$m[1];
+        if (preg_match('/زیر\s*(\d+)/u', $text, $matches)) {
+            $age = (int) $matches[1];
 
             if ($hasInfant && !$hasChild) {
                 return $age <= $maxInfantAge ? 'infant' : null;
@@ -106,8 +145,8 @@ class HotelChildPolicyTextParser
             }
         }
 
-        if (preg_match('/بین\s*(\d+)\s*(?:الی|تا|-)\s*(\d+)/u', $text, $m)) {
-            $to = (int)$m[2];
+        if (preg_match('/بین\s*(\d+)\s*(?:الی|تا|-)\s*(\d+)/u', $text, $matches)) {
+            $to = (int) $matches[2];
 
             if ($hasInfant && !$hasChild) {
                 return $to <= $maxInfantAge ? 'infant' : null;
@@ -122,7 +161,6 @@ class HotelChildPolicyTextParser
             }
         }
 
-        // --- KEYWORD FALLBACK ---
         if ($hasInfant && !$hasChild) {
             return 'infant';
         }
@@ -137,6 +175,7 @@ class HotelChildPolicyTextParser
 
         return null;
     }
+
     private function applyServiceFallback(array &$result): void
     {
         $conditions = [];
@@ -153,16 +192,11 @@ class HotelChildPolicyTextParser
 
         if (count($conditions) === 1) {
             $single = $conditions[0];
-
-            if ($result['infant_service_condition'] === null) {
-                $result['infant_service_condition'] = $single;
-            }
-
-            if ($result['child_service_condition'] === null) {
-                $result['child_service_condition'] = $single;
-            }
+            $result['infant_service_condition'] ??= $single;
+            $result['child_service_condition'] ??= $single;
         }
     }
+
     private function detectPricing(string $text): ?array
     {
         if (preg_match('/رایگان/u', $text)) {
@@ -173,16 +207,16 @@ class HotelChildPolicyTextParser
             return ['type' => 'half', 'value' => null];
         }
 
-        if (preg_match('/(\d{1,3})\s*%/u', $text, $m)) {
-            return ['type' => 'percent', 'value' => (int)$m[1]];
+        if (preg_match('/(\d{1,3})\s*%/u', $text, $matches)) {
+            return ['type' => 'percent', 'value' => (int) $matches[1]];
         }
 
-        if (preg_match('/(\d{1,3})\s*درصد/u', $text, $m)) {
-            return ['type' => 'percent', 'value' => (int)$m[1]];
+        if (preg_match('/(\d{1,3})\s*درصد/u', $text, $matches)) {
+            return ['type' => 'percent', 'value' => (int) $matches[1]];
         }
 
-        if (preg_match('/(\d+)\s*(?:تومان|ریال)/u', $text, $m)) {
-            return ['type' => 'fixed', 'value' => (int)$m[1]];
+        if (preg_match('/(\d+)\s*(?:تومان|ریال)/u', $text, $matches)) {
+            return ['type' => 'fixed', 'value' => (int) $matches[1]];
         }
 
         return null;
@@ -216,6 +250,11 @@ class HotelChildPolicyTextParser
 
     private function toInt(mixed $value): int
     {
-        return is_numeric($value) ? (int)$value : 0;
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function toNullableInt(mixed $value): ?int
+    {
+        return is_numeric($value) ? max(0, (int) $value) : null;
     }
 }
