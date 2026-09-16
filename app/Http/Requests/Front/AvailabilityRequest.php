@@ -7,6 +7,8 @@ use Illuminate\Validation\Validator;
 
 class AvailabilityRequest extends FormRequest
 {
+    private const MAX_REQUESTED_ROOMS = 5;
+
     public function rules(): array
     {
         return [
@@ -36,7 +38,7 @@ class AvailabilityRequest extends FormRequest
                 'required',
                 'array',
                 'min:1',
-                'max:5',
+                'max:' . self::MAX_REQUESTED_ROOMS,
             ],
 
             'rooms.*.passengers' => [
@@ -62,6 +64,13 @@ class AvailabilityRequest extends FormRequest
                 'nullable',
                 'string',
             ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'rooms.max' => 'در هر درخواست جست‌وجو حداکثر ۵ اتاق مجاز است.',
         ];
     }
 
