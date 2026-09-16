@@ -64,6 +64,7 @@ class PurchaseResolver implements PurchaseResolverInterface
             $inactive = !$provider->is_active;
 
             return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
                 reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
@@ -85,6 +86,7 @@ class PurchaseResolver implements PurchaseResolverInterface
 
         if ($credit === null || $credit->synced_at === null) {
             return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
                 reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
@@ -96,6 +98,7 @@ class PurchaseResolver implements PurchaseResolverInterface
 
         if ((int) $credit->balance < $orderAmount) {
             return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
                 reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
@@ -118,6 +121,7 @@ class PurchaseResolver implements PurchaseResolverInterface
 
         if ($rule !== null) {
             return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
                 reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
@@ -130,6 +134,7 @@ class PurchaseResolver implements PurchaseResolverInterface
 
         // This is only eligibility: no reservation purchase or provider API call happens here.
         return new PurchaseResolutionDTO(
+            reservationId: (int) $reservation->id,
             reservationNumber: $reservation->reservation_number,
             reservationHotelId: $hotel->id,
             providerId: $providerId,
@@ -148,8 +153,7 @@ class PurchaseResolver implements PurchaseResolverInterface
 
         if ($resolution->purchaseMode === PurchaseMethod::OFFLINE) {
             $this->manualReasonRepository->store([
-                'reservation_number' => $resolution->reservationNumber,
-                'provider_id' => $resolution->providerId,
+                'reservation_id' => $resolution->reservationId,
                 'reason' => $resolution->manualReasonText ?? 'خرید آفلاین شد.',
             ]);
         }
