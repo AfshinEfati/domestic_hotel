@@ -40,19 +40,34 @@ class PurchaseResolver implements PurchaseResolverInterface
         $hotel = $finalHotels->first();
         $provider = $this->providerRepository->find($providerId);
 
-        if ($provider === null || !$provider->is_active) {
-            throw new InvalidArgumentException('Selected provider is missing or inactive.');
+        if ($provider === null) {
+            throw new InvalidArgumentException('Selected provider was not found.');
         }
 
-        if ($provider->is_online) {
-            if (!$this->accommodationProviderMapRepository->existsForAccommodationAndProvider(
-                $hotel->accommodation_id,
-                $providerId
-            )) {
-                throw new InvalidArgumentException('Selected provider is not mapped to the reservation hotel.');
-            }
-        } elseif ($provider->code !== 'hotel-'.$hotel->accommodation_id) {
+        // An offline provider represents exactly one accommodation.
+        if (!$provider->is_online && $provider->code !== 'hotel-'.$hotel->accommodation_id) {
             throw new InvalidArgumentException('Offline provider does not belong to the reservation hotel.');
+        }
+
+        // Provider flags are mandatory offline conditions and take precedence over manual rules.
+        if (!$provider->is_active || !$provider->is_online) {
+            return new PurchaseResolutionDTO(
+                reservationNumber: $reservation->reservation_number,
+                reservationHotelId: $hotel->id,
+                providerId: $providerId,
+                purchaseMode: PurchaseMethod::OFFLINE,
+                manualReason: !$provider->is_active
+                    ? PurchaseManualReason::INACTIVE_PROVIDER
+                    : PurchaseManualReason::OFFLINE_PROVIDER,
+            );
+        }
+
+        // Only an active, online provider may be considered for online fulfillment.
+        if (!$this->accommodationProviderMapRepository->existsForAccommodationAndProvider(
+            $hotel->accommodation_id,
+            $providerId
+        )) {
+            throw new InvalidArgumentException('Selected provider is not mapped to the reservation hotel.');
         }
 
         $rule = $this->manualRuleRepository->findMatching(
@@ -73,17 +88,7 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
-        if (!$provider->is_online) {
-            return new PurchaseResolutionDTO(
-                reservationNumber: $reservation->reservation_number,
-                reservationHotelId: $hotel->id,
-                providerId: $providerId,
-                purchaseMode: PurchaseMethod::OFFLINE,
-                manualReason: PurchaseManualReason::OFFLINE_PROVIDER,
-            );
-        }
-
-        // Online eligibility is not a booking call. Fulfillment is implemented separately.
+        // Resolving online eligibility never calls the provider or creates a purchase.
         return new PurchaseResolutionDTO(
             reservationNumber: $reservation->reservation_number,
             reservationHotelId: $hotel->id,
