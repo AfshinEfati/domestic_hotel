@@ -22,6 +22,8 @@ interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInte
 
     public function countMappedPropertiesByProvider(int $providerId): int;
 
+    public function existsForAccommodationAndProvider(int $accommodationId, int $providerId): bool;
+
     /**
      * @param callable(Collection<int, AccommodationProviderMap>): void $callback
      */
