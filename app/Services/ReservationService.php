@@ -23,6 +23,7 @@ use App\Support\Reservation\ReservationStatus;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 class ReservationService extends BaseService implements ReservationServiceInterface
 {
@@ -37,6 +38,9 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         parent::__construct($reservationRepository);
     }
 
+    /**
+     * @throws Throwable
+     */
     public function createRequest(array $data): Reservation
     {
         return DB::transaction(function () use ($data): Reservation {
@@ -158,6 +162,9 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         ]);
     }
 
+    /**
+     * @throws Throwable
+     */
     public function setFinalHotel(int $reservationId, int $reservationHotelId): ReservationHotel
     {
         return DB::transaction(function () use ($reservationId, $reservationHotelId): ReservationHotel {
