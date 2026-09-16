@@ -20,13 +20,10 @@ use App\Http\Controllers\Api\V1\Admin\RoomTypeProviderMapController;
 use App\Http\Controllers\Api\V1\Admin\RuleController;
 use App\Http\Controllers\Api\V1\Admin\StateController;
 use App\Http\Controllers\Api\V1\Admin\SystemSettingController;
-use App\Http\Controllers\Api\V1\ReservationController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'v1'], function () {
     Route::get('test-hotel', [\App\Http\Controllers\Api\V1\TestHotelController::class, 'test']);
-
-    Route::post('reservations', [ReservationController::class, 'store']);
 
     Route::group(['prefix' => 'admin'], function () {
         Route::apiResource('accommodation-types', AccommodationTypeController::class);
