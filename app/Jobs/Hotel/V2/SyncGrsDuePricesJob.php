@@ -5,6 +5,7 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -66,7 +67,9 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $db = DB::connection('shared_ssp');
-        $now = now();
+        // Compare and write TIMESTAMP using SSP's own database clock, regardless
+        // of PHP timezone or a differing timezone on the local GDS connection.
+        $now = CarbonImmutable::parse($db->selectOne('SELECT CURRENT_TIMESTAMP AS db_now')->db_now);
         $limit = max(1, min(100, (int) config('grs.availability.dispatch_limit', 10)));
         $claimMinutes = max(5, (int) config('grs.availability.claim_minutes', 15));
 
@@ -74,7 +77,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             ->where('is_active', true)
             ->whereNotNull('grs_id')
             ->where(function ($query) use ($now): void {
-                $query->whereNull('next_gds_run_at')->orWhere('next_gds_run_at', '<=', $now);
+                $query->whereNull('next_gds_run_at')->orWhere('next_gds_run_at', '<=', $now->toDateTimeString());
             })
             ->orderBy('next_gds_run_at', 'asc')
             ->orderBy('id', 'asc')
@@ -100,7 +103,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             } else {
                 $claim->where('next_gds_run_at', $schedule->next_gds_run_at);
             }
-            if ($claim->update(['next_gds_run_at' => now()->addMinutes($claimMinutes)]) !== 1) {
+            if ($claim->update(['next_gds_run_at' => $now->addMinutes($claimMinutes)->toDateTimeString()]) !== 1) {
                 continue;
             }
 
@@ -111,7 +114,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
                 $missing++;
                 $db->table('hotel_price_refresh_schedules')->where('id', $schedule->id)
                     ->where('grs_id', $schedule->grs_id)
-                    ->update(['next_gds_run_at' => now()->addHour()]);
+                    ->update(['next_gds_run_at' => $now->addHour()->toDateTimeString()]);
                 Log::warning('GRS due property missing local map; no API call', [
                     'schedule_id' => $schedule->id, 'grs_id' => $grsId,
                 ]);
