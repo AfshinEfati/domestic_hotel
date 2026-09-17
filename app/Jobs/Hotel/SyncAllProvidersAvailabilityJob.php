@@ -39,6 +39,16 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
         }
 
         foreach ($providers as $provider) {
+            if ($provider->code === 'grs') {
+                SyncGrsAvailabilityJob::dispatch(
+                    days: $this->days,
+                    chunkSize: $this->chunkSize,
+                    throttleMs: $this->throttleMs,
+                    maxAttempts: $this->maxAttempts,
+                );
+                continue;
+            }
+
             $this->syncProvider($provider, $mapService, $logger);
         }
     }
@@ -48,15 +58,15 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
         AccommodationProviderMapServiceInterface $mapService,
         SystemLogger $logger
     ): void {
-        $config =$provider->config ?? [];
+        $config = $provider->config ?? [];
 
-        $days = $this->resolvePositiveInt($this->days, (int)($config['days'] ?? 30), 1);
-        $chunkSize = $this->resolvePositiveInt($this->chunkSize, (int)($config['chunk_size'] ?? 20), 1);
-        $throttleMs = max(0, (int)($this->throttleMs ?? $config['throttle_ms'] ?? 500));
-        $maxAttempts = $this->resolvePositiveInt($this->maxAttempts, (int)($config['max_attempts'] ?? 3), 1);
+        $days = $this->resolvePositiveInt($this->days, (int) ($config['days'] ?? 30), 1);
+        $chunkSize = $this->resolvePositiveInt($this->chunkSize, (int) ($config['chunk_size'] ?? 20), 1);
+        $throttleMs = max(0, (int) ($this->throttleMs ?? $config['throttle_ms'] ?? 500));
+        $maxAttempts = $this->resolvePositiveInt($this->maxAttempts, (int) ($config['max_attempts'] ?? 3), 1);
         $requestsPerMinute = $this->resolvePositiveInt(
             $this->requestsPerMinute,
-            (int)($config['requests_per_minute'] ?? 20),
+            (int) ($config['requests_per_minute'] ?? 20),
             1
         );
 
@@ -67,8 +77,6 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
         if ($totalProperties === 0) {
             return;
         }
-        $queued = 0;
-        $skipped = 0;
 
         $mapService->chunkMappedPropertiesByProvider(
             $provider->id,
@@ -79,17 +87,14 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
                 $to,
                 $maxAttempts,
                 $throttleMs,
-                $requestsPerMinute,
-                &$queued,
-                &$skipped,
-                $logger
+                $requestsPerMinute
             ) {
                 foreach ($rows as $row) {
-                    $propertyKey = trim((string)($row->provider_property_id ?? ''));
+                    $propertyKey = trim((string) ($row->provider_property_id ?? ''));
                     if ($propertyKey === '') {
-                        $skipped++;
                         continue;
                     }
+
                     SyncProviderAvailabilityForPropertyJob::dispatch(
                         $provider->id,
                         $propertyKey,
@@ -99,7 +104,6 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
                         $throttleMs,
                         $requestsPerMinute
                     );
-                    $queued++;
                 }
             }
         );
@@ -111,10 +115,6 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
             return $value;
         }
 
-        if ($default < $min) {
-            return $min;
-        }
-
-        return $default;
+        return max($min, $default);
     }
 }

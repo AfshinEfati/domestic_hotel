@@ -56,6 +56,18 @@ class ProviderService extends BaseService implements ProviderServiceInterface
             $payload = $payload->toArray();
         }
 
+        if (array_key_exists('config', $payload) && is_array($payload['config'])) {
+            /** @var Provider|null $provider */
+            $provider = $this->repository->find($id);
+
+            if ($provider !== null) {
+                $payload['config'] = array_replace_recursive(
+                    $provider->config ?? [],
+                    $payload['config']
+                );
+            }
+        }
+
         return parent::update($id, $payload);
     }
 

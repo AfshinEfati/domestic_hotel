@@ -13,7 +13,6 @@ final class SystemSettingKey
     public const GRS_AVAILABILITY_CHUNK_SIZE = 'provider.grs.availability.chunk_size';
     public const GRS_AVAILABILITY_THROTTLE_MS = 'provider.grs.availability.throttle_ms';
     public const GRS_AVAILABILITY_MAX_ATTEMPTS = 'provider.grs.availability.max_attempts';
-    public const GRS_AVAILABILITY_REQUESTS_PER_MINUTE = 'provider.grs.availability.requests_per_minute';
 
     private function __construct()
     {
