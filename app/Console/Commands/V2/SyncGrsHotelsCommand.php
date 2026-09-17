@@ -13,7 +13,7 @@ class SyncGrsHotelsCommand extends Command
 
     public function handle(): int
     {
-        SyncGrsHotelCatalogJob::dispatch();
+        SyncGrsHotelCatalogJob::dispatch()->onQueue('grs-hotels');
         $this->info('GRS hotel catalog sync queued. Start a queue worker to process it.');
 
         return self::SUCCESS;
