@@ -3,6 +3,7 @@
 namespace App\Actions\HotelChildPolicy;
 
 use App\Actions\BaseAction;
+use App\Models\HotelChildPolicy;
 use App\Services\HotelChildPolicyService;
 use App\DTOs\HotelChildPolicyDTO;
 use Psr\Log\LoggerInterface;

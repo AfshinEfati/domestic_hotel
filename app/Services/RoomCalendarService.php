@@ -7,6 +7,7 @@ use App\Models\RoomCalendar;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Services\Contracts\HotelRatePricingServiceInterface;
 use App\Services\Contracts\RoomCalendarServiceInterface;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 class RoomCalendarService extends BaseService implements RoomCalendarServiceInterface
