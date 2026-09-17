@@ -78,12 +78,12 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS returned no domestic hotels; refusing an empty import.');
         }
 
-        // Initialize the shared facility dictionary sequentially, before parallel DB-only batches.
+        // Initialize the shared facility dictionary sequentially, before parallel database-only batches.
         // This avoids duplicate facility/group creation when several queue workers are running.
         $this->prepareFacilities($domestic);
 
         foreach (array_chunk($domestic, self::BATCH_SIZE) as $batch) {
-            ProcessGrsHotelBatchJob::dispatch($provider->id, $batch);
+            ProcessGrsHotelBatchJob::dispatch($provider->id, $batch)->onQueue('grs-hotels');
         }
 
         Log::info('GRS hotel catalog queued for mapping', [
