@@ -31,6 +31,14 @@ class HotelSyncCommand extends Command
             return self::FAILURE;
         }
 
+        // GRS cities and properties have separate commands. Never fetch either here:
+        // doing so bypasses the availability rate limiter and can trigger HTTP 429s.
+        if ($providerCode === 'grs') {
+            SyncGrsAvailabilityJob::dispatch(days: $days);
+            $this->info('GRS availability sync queued only; no city or property sync was started.');
+            return self::SUCCESS;
+        }
+
         try {
             /** @var ProviderAdapterInterface $adapter */
             $adapter = app()->makeWith(ProviderAdapterInterface::class, [
@@ -73,12 +81,6 @@ class HotelSyncCommand extends Command
         } catch (Throwable $e) {
             $this->error("Error during properties sync: {$e->getMessage()}");
             return self::FAILURE;
-        }
-
-        if ($providerCode === 'grs') {
-            SyncGrsAvailabilityJob::dispatch(days: $days);
-            $this->info('GRS availability sync queued with provider-configured rate limiting.');
-            return self::SUCCESS;
         }
 
         try {
