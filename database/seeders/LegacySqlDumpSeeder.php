@@ -23,11 +23,14 @@ class LegacySqlDumpSeeder extends Seeder
         $files = [
             'countries.sql',
             'states.sql',
-            'cities.sql',
+            ...array_map(
+                static fn (int $part): string => sprintf('cities-%02d.sql', $part),
+                range(1, 4),
+            ),
             'accommodation_types.sql',
             ...array_map(
                 static fn (int $part): string => sprintf('accommodations-%02d.sql', $part),
-                range(1, 8),
+                range(1, 17),
             ),
         ];
 
