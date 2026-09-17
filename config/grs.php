@@ -23,5 +23,7 @@ return [
         'dispatch_limit' => 10,
         'claim_minutes' => 15,
         'failure_backoff_minutes' => 15,
+        // Disabled by default: opt in AFTER the shared migration and tests succeed.
+        'scheduler_enabled' => (bool) env('GRS_PRICES_SCHEDULER_ENABLED', false),
     ],
 ];
