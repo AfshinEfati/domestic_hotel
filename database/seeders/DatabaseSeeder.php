@@ -10,6 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             AccommodationTypeSeeder::class,
+            CsvHotelDataSeeder::class,
             ProviderSeeder::class,
             SystemSettingSeeder::class,
             ProviderPricingRuleSeeder::class,
