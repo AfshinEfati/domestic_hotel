@@ -52,7 +52,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(HotelSyncService $service): void
     {
-        $adapter = null;
         try {
             $provider = Provider::query()->findOrFail($this->providerId);
             if ($provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
@@ -88,8 +87,9 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             $count = $this->verifyPersistedAvailability($provider->id, (int) $map->accommodation_id,
                 $adapter, $started, $from, $to);
-            $minutes = max(1, (int) $schedule->refresh_interval_minutes);
-            $this->reschedule(now()->addMinutes($minutes));
+            // Re-read from SSP at execution time; the owner may have changed the interval.
+            $minutes = max(1, (int) ($schedule->refresh_interval_minutes ?? $this->intervalMinutes));
+            $this->rescheduleAfterSeconds($minutes * 60);
             Log::info('GRS scheduled availability successfully persisted', [
                 'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
                 'days' => $this->days, 'calendar_rows' => $count, 'next_in_minutes' => $minutes,
@@ -100,11 +100,12 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         } catch (RequestException $e) {
             if ($e->response?->status() === 429) {
                 $seconds = max(900, RateLimitedGrsAdapter::cooldownSeconds());
-                $this->reschedule(now()->addSeconds($seconds));
+                $this->rescheduleAfterSeconds($seconds);
                 Log::error('GRS returned 429: stopped this property; API cooldown enabled', [
                     'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
                     'cooldown_seconds' => $seconds,
                 ]);
+                $this->fail($e); // A real HTTP 429 must never appear as a successful DONE job.
                 return;
             }
             $this->recordFailure($e);
@@ -188,17 +189,20 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         return count($rows);
     }
 
-    private function reschedule(\DateTimeInterface $when): void
+    private function rescheduleAfterSeconds(int $seconds): void
     {
-        DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')
+        $db = DB::connection('shared_ssp');
+        $dbNow = CarbonImmutable::parse($db->selectOne('SELECT CURRENT_TIMESTAMP AS db_now')->db_now);
+        $db->table('hotel_price_refresh_schedules')
             ->where('id', $this->scheduleId)->where('grs_id', $this->grsId)
-            ->where('is_active', true)->update(['next_gds_run_at' => $when]);
+            ->where('is_active', true)
+            ->update(['next_gds_run_at' => $dbNow->addSeconds(max(1, $seconds))->toDateTimeString()]);
     }
 
     private function recordFailure(Throwable $e): void
     {
         $minutes = max(1, (int) config('grs.availability.failure_backoff_minutes', 15));
-        $this->reschedule(now()->addMinutes($minutes));
+        $this->rescheduleAfterSeconds($minutes * 60);
         Log::error('GRS scheduled price refresh failed; no automatic HTTP retry', [
             'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
             'error' => $e->getMessage(), 'retry_after_minutes' => $minutes,
