@@ -53,6 +53,7 @@ class HotelSyncCommand extends Command
             $this->info('Syncing properties...');
             $providerCityIds = DB::table('provider_city_maps')
                 ->where('provider_id', $provider->id)
+                ->orderBy('id')
                 ->lazy()
                 ->pluck('provider_city_id');
 
@@ -87,6 +88,7 @@ class HotelSyncCommand extends Command
             $this->info("Crawling availability {$days} days...");
             $providerPropertyIds = DB::table('accommodation_provider_maps')
                 ->where('provider_id', $provider->id)
+                ->orderBy('id')
                 ->lazy()
                 ->pluck('provider_property_id');
 
