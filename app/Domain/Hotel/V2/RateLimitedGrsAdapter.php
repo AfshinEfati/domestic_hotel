@@ -36,7 +36,13 @@ class RateLimitedGrsAdapter extends GRSAdapter
     {
         try {
             $this->acquireQuota();
-            return parent::fetchRoomTypes($providerPropertyId);
+            $rooms = parent::fetchRoomTypes($providerPropertyId);
+            // The catalog job owns hotel facilities/rules. The price job only
+            // needs room and rate-plan mappings from this supplementary call.
+            return $rooms->map(static function (array $room): array {
+                unset($room['property_facilities'], $room['property_rules']);
+                return $room;
+            });
         } catch (\Throwable $e) {
             // The existing HotelSyncService catches supplemental exceptions.
             // Remember them so the caller cannot report a partial refresh as a success.
