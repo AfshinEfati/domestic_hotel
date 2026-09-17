@@ -1,11 +1,12 @@
 <?php
 
-use App\Jobs\Hotel\SyncGrsAvailabilityJob;
 use Illuminate\Support\Facades\Schedule;
-Schedule::job(new SyncGrsAvailabilityJob())
-    ->dailyAt('02:00')
-    ->name('sync-grs-availability');
 
+// Hotel catalog only: no city sync, per-property HTTP requests, rooms, or availability.
+Schedule::command('grs:sync-hotels')
+    ->weeklyOn(5, '05:00')
+    ->timezone('Asia/Tehran')
+    ->withoutOverlapping();
 
-Schedule::command('fetch-hotel-data')->weeklyOn(5, '02:00'); // friday at 2:00 AM
-Schedule::command('fetch:grs-hotel')->weeklyOn(5, '03:00');
+// Legacy automatic GRS availability and generic room sync are paused until
+// their independent flows are validated. Their commands/jobs remain unchanged.
