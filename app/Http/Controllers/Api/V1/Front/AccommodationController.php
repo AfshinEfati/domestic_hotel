@@ -95,10 +95,9 @@ class AccommodationController extends Controller
     public function getAvailableRooms(
         AvailableRoomsRequest        $request,
         RoomCalendarServiceInterface $roomCalendarService
-    )
-    {
+    ) {
         $data = $roomCalendarService->getAvailableRoomsByAccommodationId(
-            (int)$request->validated('hotel_id')
+            $request->validated()
         );
 
         return ApiResponseHelper::successResponse(

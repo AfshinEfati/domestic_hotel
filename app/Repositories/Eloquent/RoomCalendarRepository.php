@@ -31,8 +31,11 @@ class RoomCalendarRepository extends BaseRepository implements RoomCalendarRepos
         return parent::store($data);
     }
 
-    public function getAvailableByAccommodationId(int $accommodationId): Collection
-    {
+    public function getAvailableByAccommodationId(
+        int $accommodationId,
+        string $checkIn,
+        string $checkOut
+    ): Collection {
         return $this->model
             ->newQuery()
             ->with([
@@ -40,7 +43,8 @@ class RoomCalendarRepository extends BaseRepository implements RoomCalendarRepos
                 'ratePlan',
             ])
             ->where('accommodation_id', $accommodationId)
-            ->whereDate('day', '>=', now()->toDateString())
+            ->whereDate('day', '>=', $checkIn)
+            ->whereDate('day', '<', $checkOut)
             ->where('closed', false)
             ->where('inventory', '>', 0)
             ->whereHas('roomType', function ($query) {

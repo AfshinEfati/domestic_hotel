@@ -20,7 +20,11 @@ interface RoomCalendarRepositoryInterface extends BaseRepositoryInterface
 
     public function delete(int|string $id): bool;
 
-    public function getAvailableByAccommodationId(int $accommodationId): Collection;
+    public function getAvailableByAccommodationId(
+        int $accommodationId,
+        string $checkIn,
+        string $checkOut
+    ): Collection;
 
     public function getByRoomTypeIdsAndDays(array $roomTypeIds, array $days): Collection;
 

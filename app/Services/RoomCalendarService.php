@@ -81,10 +81,24 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
         ];
     }
 
-    public function getAvailableRoomsByAccommodationId(int $accommodationId): array
+    public function getAvailableRoomsByAccommodationId(array $request): array
     {
+        $accommodationId = (int) $request['hotel_id'];
+
+        $checkIn = isset($request['checkin'])
+            ? Carbon::createFromFormat('Y-m-d', $request['checkin'])->startOfDay()
+            : now()->startOfDay();
+
+        $checkOut = isset($request['checkout'])
+            ? Carbon::createFromFormat('Y-m-d', $request['checkout'])->startOfDay()
+            : $checkIn->copy()->addDays(90);
+
         $calendars = $this->repository
-            ->getAvailableByAccommodationId($accommodationId);
+            ->getAvailableByAccommodationId(
+                $accommodationId,
+                $checkIn->toDateString(),
+                $checkOut->toDateString()
+            );
 
         $rooms = $calendars
             ->groupBy('room_type_id')
@@ -171,6 +185,8 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
 
         return [
             'accommodation_id' => $accommodationId,
+            'checkin' => $checkIn->toDateString(),
+            'checkout' => $checkOut->toDateString(),
             'rooms' => $rooms,
         ];
     }
