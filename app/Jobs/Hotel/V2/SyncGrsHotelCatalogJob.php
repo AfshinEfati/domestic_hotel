@@ -62,11 +62,24 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS returned an empty properties list; refusing an incomplete sync.');
         }
 
-        $domestic = array_values(array_filter($properties, static fn ($property) =>
-            is_array($property) && (string) ($property['country_id'] ?? '') === '222'
+        // Only fields required for mapping/facilities enter the queue. Discard photos
+        // and descriptions here; they belong to a separate hotel-media workflow.
+        $fields = array_fill_keys([
+            'id', 'city_id', 'name', 'name_en', 'type', 'star', 'grade',
+            'address', 'latitude', 'longitude', 'facilities',
+        ], true);
+        $domestic = array_values(array_map(
+            static fn (array $property) => array_intersect_key($property, $fields),
+            array_filter($properties, static fn ($property) =>
+                is_array($property) && (string) ($property['country_id'] ?? '') === '222'
+            )
         ));
+        if ($domestic === []) {
+            throw new RuntimeException('GRS returned no domestic hotels; refusing an empty import.');
+        }
 
-        // Initialize shared facilities sequentially before parallel database-only batches.
+        // Initialize the shared facility dictionary sequentially, before parallel DB-only batches.
+        // This avoids duplicate facility/group creation when several queue workers are running.
         $this->prepareFacilities($domestic);
 
         foreach (array_chunk($domestic, self::BATCH_SIZE) as $batch) {
@@ -85,7 +98,7 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
         $groups = [];
         $facilities = [];
         foreach ($properties as $property) {
-            foreach (($property['facilities'] ?? []) as $facility) {
+            foreach (is_array($property['facilities'] ?? null) ? $property['facilities'] : [] as $facility) {
                 if (!is_array($facility)) {
                     continue;
                 }
