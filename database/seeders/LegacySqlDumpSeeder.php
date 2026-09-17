@@ -30,7 +30,7 @@ class LegacySqlDumpSeeder extends Seeder
             'accommodation_types.sql',
             ...array_map(
                 static fn (int $part): string => sprintf('accommodations-%02d.sql', $part),
-                range(1, 17),
+                range(1, 41),
             ),
         ];
 
