@@ -20,7 +20,8 @@ return [
     ],
     'availability' => [
         'default_days' => 90,
-        'dispatch_limit' => 10,
+        // Set to 1 for the first live test, then increase after inspecting results.
+        'dispatch_limit' => (int) env('GRS_PRICES_DISPATCH_LIMIT', 10),
         'claim_minutes' => 15,
         'failure_backoff_minutes' => 15,
         // Disabled by default: opt in AFTER the shared migration and tests succeed.
