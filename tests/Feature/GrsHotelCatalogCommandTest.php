@@ -19,6 +19,8 @@ class GrsHotelCatalogCommandTest extends TestCase
         $this->artisan('grs:sync-hotels')->assertExitCode(0);
 
         Bus::assertDispatched(SyncGrsHotelCatalogJob::class, 1);
+        Bus::assertDispatched(SyncGrsHotelCatalogJob::class,
+            fn (SyncGrsHotelCatalogJob $job) => $job->queue === 'grs-hotels');
         Bus::assertNotDispatched(SyncCitiesJob::class);
         Bus::assertNotDispatched(SyncGrsAvailabilityJob::class);
         Http::assertNothingSent();
