@@ -205,7 +205,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         $groupNames = [];
         $facilityNames = [];
         foreach ($this->properties as $property) {
-            foreach (($property['facilities'] ?? []) as $facility) {
+            foreach (is_array($property['facilities'] ?? null) ? $property['facilities'] : [] as $facility) {
                 if (!is_array($facility)) {
                     continue;
                 }
@@ -243,7 +243,8 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             $name = trim((string) ($facility['name'] ?? ''));
             $id = $lookup[$group."\0".$name] ?? null;
             if ($id !== null) {
-                $ids[$id] = ['description' => $this->nullableString($facility['description'] ?? null)];
+                $description = $this->nullableString($facility['description'] ?? null);
+                $ids[$id] = $description === null ? [] : ['description' => mb_substr($description, 0, 500)];
             }
         }
         if ($ids !== []) {
