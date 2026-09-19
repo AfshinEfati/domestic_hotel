@@ -21,17 +21,9 @@ class HotelPriceRefreshScheduleRepository
             throw new RuntimeException('Configure the shared_ssp connection using the DB_*_SHARE credentials.');
         }
 
-        foreach ([
-                     'gds_id',
-                     'next_gds_run_at',
-                     'last_gds_success_run_at',
-                     'last_gds_success_at',
-                 ] as $column) {
-            if (!Schema::connection('shared_ssp')
-                ->hasColumn('hotel_price_refresh_schedules', $column)) {
-                throw new RuntimeException(
-                    "SSP hotel_price_refresh_schedules.{$column} must exist before GRS pricing."
-                );
+        foreach (['gds_id', 'next_gds_run_at', 'last_gds_success_run_at', 'last_gds_success_at'] as $column) {
+            if (!Schema::connection('shared_ssp')->hasColumn('hotel_price_refresh_schedules', $column)) {
+                throw new RuntimeException("SSP hotel_price_refresh_schedules.{$column} must exist before GRS pricing.");
             }
         }
     }
@@ -52,7 +44,7 @@ class HotelPriceRefreshScheduleRepository
             ->get();
     }
 
-    public function active(int $id, string $gdsId): ?HotelPriceRefreshSchedule
+    public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
     {
         return HotelPriceRefreshSchedule::query()
             ->whereKey($id)
@@ -62,19 +54,19 @@ class HotelPriceRefreshScheduleRepository
     }
 
     /** Called after API quota has been acquired, just before availability HTTP. */
-    public function markRequestStarted(int $id, string $gdsId): void
+    public function markRequestStarted(int $id, int $gdsId): void
     {
         $this->updateTime($id, $gdsId, 'last_gds_success_run_at');
     }
 
-    /** HTTP 200 counts even if subsequent room/calendar persistence fails. */
-    public function markHttp200(int $id, string $gdsId): void
+    /** HTTP success counts even if subsequent room/calendar persistence fails. */
+    public function markHttp200(int $id, int $gdsId): void
     {
         $this->updateTime($id, $gdsId, 'last_gds_success_at');
     }
 
     /** The due time changes ONLY after verified local persistence. */
-    public function markPersisted(int $id, string $gdsId): int
+    public function markPersisted(int $id, int $gdsId): int
     {
         $schedule = $this->active($id, $gdsId);
         if ($schedule === null) {
@@ -95,7 +87,7 @@ class HotelPriceRefreshScheduleRepository
         return $minutes;
     }
 
-    private function updateTime(int $id, string $gdsId, string $column): void
+    private function updateTime(int $id, int $gdsId, string $column): void
     {
         $updated = HotelPriceRefreshSchedule::query()
             ->whereKey($id)
