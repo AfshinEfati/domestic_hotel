@@ -6,13 +6,6 @@ use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
-use App\Models\AccommodationProviderMap;
-use App\Models\Provider;
-use App\Models\RatePlan;
-use App\Models\RatePlanProviderMap;
-use App\Models\RoomCalendar;
-use App\Models\RoomType;
-use App\Models\RoomTypeProviderMap;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -25,14 +18,14 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
-/** Dedicated GRS-only price/stock worker. It never syncs cities or hotels. */
+/** GRS-specific price/inventory worker; IDs and persistence go through services/repositories. */
 class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 100; // Quota releases count as attempts; HTTP errors do not retry here.
+    public int $tries = 100; // Quota releases count as attempts; HTTP errors are not retried here.
     public int $maxExceptions = 1;
-    public int $timeout = 55; // Below Horizon's 60-second worker timeout and Redis retry_after=90.
+    public int $timeout = 55; // Below Horizon's 60s worker timeout and Redis retry_after=90.
     public int $uniqueFor = 14400;
 
     public function __construct(
@@ -52,13 +45,12 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
     public function handle(HotelSyncService $service, GrsPriceRefreshScheduleService $schedules): void
     {
         try {
-            $provider = Provider::query()->findOrFail($this->providerId);
-            if ($provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
-                throw new RuntimeException('GRS provider inactive, offline, or mismatched.');
+            $provider = $schedules->providerById($this->providerId);
+            if ($provider === null || $provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
+                throw new RuntimeException('GRS provider inactive, offline, missing, or mismatched.');
             }
 
-            // SSP.gds_id and this job's gdsId identify the LOCAL accommodation.
-            // Only provider_property_id from its GRS map may be sent to GRS HTTP.
+            // The shared schedule and this job carry our local accommodations.id.
             if ($schedules->active($this->scheduleId, $this->gdsId) === null) {
                 Log::warning('GRS price job skipped: shared schedule disabled/remapped', [
                     'schedule_id' => $this->scheduleId, 'gds_id' => $this->gdsId,
@@ -66,47 +58,54 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            $map = AccommodationProviderMap::query()
-                ->where('provider_id', $provider->id)
-                ->where('accommodation_id', $this->gdsId)
-                ->firstOrFail();
-            $grsId = trim((string) $map->provider_property_id);
+            $map = $schedules->mapForAccommodation($this->gdsId, (int) $provider->id);
+            $grsId = trim((string) ($map?->provider_property_id ?? ''));
             if ($grsId === '') {
                 throw new RuntimeException('GRS provider property ID missing from local accommodation map.');
             }
 
             $from = CarbonImmutable::today('Asia/Tehran');
             $to = $from->addDays($this->days);
-            $started = now()->subSeconds(2); // Include DB timestamps rounded to the second.
+            $started = now()->subSeconds(2); // Account for second-granularity DB timestamps.
             $adapter = new RateLimitedGrsAdapter($provider);
             $adapter->trackAvailability(
                 fn (): mixed => $schedules->requestStarted($this->scheduleId, $this->gdsId),
                 fn (): mixed => $schedules->http200($this->scheduleId, $this->gdsId)
             );
 
-            // A supplemental room/rate mapping request is made only when needed.
-            // Both requests share the GRS API quota.
+            // Each actual HTTP call consumes the provider's existing quota.
+            // Persist provider-returned dates even when outside the requested window.
             $service->crawlAvailabilityForProperty($provider, $adapter, $grsId, $from, $to);
             if ($adapter->supplementalError !== null) {
                 throw $adapter->supplementalError;
             }
 
-            $count = $this->verifyPersistedAvailability(
-                $provider->id, $this->gdsId, $grsId, $adapter, $started, $from, $to
+            // Missing calendar days, and even an empty successful response, are valid.
+            // Only dimensions that were actually returned must have been persisted.
+            $count = $schedules->verifiedRowCount(
+                (int) $provider->id,
+                $this->gdsId,
+                $grsId,
+                $adapter->lastAvailability,
+                $started
             );
-            // SSP's current interval, not a stale value captured during dispatch.
             $minutes = $schedules->persisted($this->scheduleId, $this->gdsId);
-            Log::info('GRS scheduled availability successfully persisted', [
-                'schedule_id' => $this->scheduleId, 'gds_id' => $this->gdsId, 'grs_id' => $grsId,
-                'days' => $this->days, 'calendar_rows' => $count, 'next_in_minutes' => $minutes,
+            Log::info('GRS scheduled availability refresh completed', [
+                'schedule_id' => $this->scheduleId,
+                'gds_id' => $this->gdsId,
+                'grs_id' => $grsId,
+                'days' => $this->days,
+                'calendar_rows' => $count,
+                'next_in_minutes' => $minutes,
             ]);
         } catch (GrsApiQuotaExceeded $e) {
-            // No request was made at this step; keep the SSP due time unchanged.
+            // Quota is already exhausted; do not advance the SSP due time.
             $this->release(max(1, $e->retryAfterSeconds + 1));
         } catch (RequestException $e) {
             if ($e->response?->status() === 429) {
                 Log::error('GRS returned HTTP 429; API cooldown enabled; due time unchanged', [
-                    'schedule_id' => $this->scheduleId, 'gds_id' => $this->gdsId,
+                    'schedule_id' => $this->scheduleId,
+                    'gds_id' => $this->gdsId,
                     'cooldown_seconds' => RateLimitedGrsAdapter::cooldownSeconds(),
                 ]);
             }
@@ -116,96 +115,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         }
     }
 
-    private function verifyPersistedAvailability(
-        int $providerId,
-        int $accommodationId,
-        string $grsId,
-        RateLimitedGrsAdapter $adapter,
-        \Carbon\CarbonInterface $started,
-        CarbonImmutable $from,
-        CarbonImmutable $to,
-    ): int {
-        $response = $adapter->lastAvailability;
-        if ($response === null || $response->isEmpty()) {
-            throw new RuntimeException('GRS availability was empty; no price/stock data was saved.');
-        }
-
-        $roomProviderIds = [];
-        $rateProviderIds = [];
-        $rows = [];
-        foreach ($response as $row) {
-            $roomId = trim((string) ($row['room_type_id'] ?? ''));
-            $rateId = trim((string) ($row['rate_plan_id'] ?? ''));
-            $day = $row['day'] ?? null;
-            if ($roomId === '' || $rateId === '' || !is_string($day) || $day === '') {
-                throw new RuntimeException('GRS availability contains rows without room, rate-plan or date.');
-            }
-            try {
-                $normalizedDay = CarbonImmutable::parse($day)->toDateString();
-            } catch (Throwable $e) {
-                throw new RuntimeException('GRS availability contains an invalid date.', 0, $e);
-            }
-            if ($normalizedDay < $from->toDateString() || $normalizedDay >= $to->toDateString()) {
-                throw new RuntimeException(sprintf(
-                    'GRS availability date outside requested range: schedule_id=%d gds_id=%d grs_id=%s received_day=%s normalized_day=%s check_in=%s check_out_exclusive=%s room_type_id=%s rate_plan_id=%s.',
-                    $this->scheduleId,
-                    $this->gdsId,
-                    $grsId,
-                    $day,
-                    $normalizedDay,
-                    $from->toDateString(),
-                    $to->toDateString(),
-                    $roomId,
-                    $rateId
-                ));
-            }
-            $roomProviderIds[$roomId] = true;
-            $rateProviderIds[$rateId] = true;
-            $rows[] = [$roomId, $rateId, $normalizedDay];
-        }
-
-        $roomIds = RoomTypeProviderMap::query()->where('provider_id', $providerId)
-            ->whereIn('provider_room_type_id', array_keys($roomProviderIds))
-            ->pluck('room_type_id', 'provider_room_type_id')->all();
-        $rateIds = RatePlanProviderMap::query()->where('provider_id', $providerId)
-            ->whereIn('provider_rate_plan_id', array_keys($rateProviderIds))
-            ->pluck('rate_plan_id', 'provider_rate_plan_id')->all();
-        if (count($roomIds) !== count($roomProviderIds) || count($rateIds) !== count($rateProviderIds)) {
-            throw new RuntimeException('GRS room/rate-plan maps remain incomplete; refresh not marked successful.');
-        }
-
-        if (RoomType::query()->where('accommodation_id', $accommodationId)
-                ->whereIn('id', array_values($roomIds))->count() !== count($roomIds) ||
-            RatePlan::query()->where('accommodation_id', $accommodationId)
-                ->whereIn('id', array_values($rateIds))->count() !== count($rateIds)) {
-            throw new RuntimeException('GRS room/rate-plan mappings belong to a different accommodation.');
-        }
-
-        $expected = [];
-        foreach ($rows as [$roomProviderId, $rateProviderId, $day]) {
-            $expected[$roomIds[$roomProviderId].'|'.$rateIds[$rateProviderId].'|'.$day] = true;
-        }
-        $persisted = RoomCalendar::query()->where('provider_id', $providerId)
-            ->where('accommodation_id', $accommodationId)
-            ->where('provider_property_id', $grsId)
-            ->where('updated_at', '>=', $started)
-            ->where('day', '>=', $from->toDateString())
-            ->where('day', '<', $to->toDateString())
-            ->get(['room_type_id', 'rate_plan_id', 'day']);
-        foreach ($persisted as $calendar) {
-            $key = $calendar->room_type_id.'|'.$calendar->rate_plan_id.'|'.substr((string) $calendar->day, 0, 10);
-            unset($expected[$key]);
-        }
-        if ($expected !== []) {
-            throw new RuntimeException('GRS price/stock rows not fully saved: '.count($expected).' calendar dimensions missing.');
-        }
-        return count($rows);
-    }
-
     private function recordFailure(Throwable $e): void
     {
         Log::error('GRS scheduled price refresh failed; shared due time unchanged', [
-            'schedule_id' => $this->scheduleId, 'gds_id' => $this->gdsId,
+            'schedule_id' => $this->scheduleId,
+            'gds_id' => $this->gdsId,
             'error' => $e->getMessage(),
         ]);
         $this->fail($e);
