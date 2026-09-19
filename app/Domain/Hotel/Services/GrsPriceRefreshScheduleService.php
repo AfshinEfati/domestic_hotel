@@ -14,11 +14,16 @@ class GrsPriceRefreshScheduleService
     {
     }
 
+    public function assertReady(): void
+    {
+        $this->schedules->assertReady();
+    }
+
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function due(Provider $provider): Collection
     {
-        // One hotel = one planned availability request. Supplemental calls, when
-        // necessary, are charged separately by the HTTP adapter's rate limiter.
+        // Ten due hotels mean ten planned availability calls. The adapter
+        // still meters occasional supplemental requests against the same quota.
         $capacity = min(10, max(1, (int) data_get($provider->config, 'availability_rate_limit.max_requests', 10)));
         return $this->schedules->due($capacity);
     }
