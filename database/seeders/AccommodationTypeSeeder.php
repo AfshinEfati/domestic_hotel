@@ -31,5 +31,12 @@ class AccommodationTypeSeeder extends Seeder
             ['id'],
             ['fa_name', 'en_name', 'updated_at']
         );
+
+        // Additional production IDs are already occupied by bad imports. Never
+        // force ID 17 or overwrite an existing type while provisioning unknown.
+        DB::table('accommodation_types')->firstOrInsert(
+            ['fa_name' => 'نامشخص'],
+            ['en_name' => 'unknown', 'created_at' => now(), 'updated_at' => now()]
+        );
     }
 }
