@@ -2,11 +2,11 @@
 
 namespace App\Jobs\Hotel;
 
+use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
 use App\Models\Facility;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
-use App\Repositories\Contracts\AccommodationTypeRepositoryInterface;
 use App\Repositories\Contracts\CityRepositoryInterface;
 use App\Repositories\Contracts\FacilityRepositoryInterface;
 use App\Repositories\Contracts\ProviderCityMapRepositoryInterface;
@@ -41,7 +41,7 @@ class ProcessGrsHotelPropertyJob implements ShouldQueue
         ProviderRepositoryInterface $providerRepo,
         ProviderCityMapRepositoryInterface $providerCityMapRepo,
         CityRepositoryInterface $cityRepo,
-        AccommodationTypeRepositoryInterface $accTypeRepo,
+        AccommodationTypeResolver $types,
         AccommodationRepositoryInterface $accRepo,
         AccommodationProviderMapRepositoryInterface $mapRepo,
         FacilityRepositoryInterface $facilityRepo
@@ -82,20 +82,7 @@ class ProcessGrsHotelPropertyJob implements ShouldQueue
                 return;
             }
 
-            $typeName = $this->normalizeString($this->property['type'] ?? null) ?? 'hotel';
-            $typeEnName = $this->normalizeString($this->property['type_en'] ?? null);
-
-            $type = $accTypeRepo->findDynamic(where: ['fa_name' => $typeName]);
-            if (!$type) {
-                $type = $accTypeRepo->store([
-                    'fa_name' => $typeName,
-                    'en_name' => $typeEnName,
-                ]);
-            } elseif ($typeEnName !== null && $type->en_name === null) {
-                $accTypeRepo->update($type->id, ['en_name' => $typeEnName]);
-                $type->refresh();
-            }
-
+            $typeId = $types->resolveId($this->property['type'] ?? null, $this->property['type_en'] ?? null);
             $enName = $this->resolveEnglishName($this->property);
 
             /** @var Accommodation $acc */
@@ -106,7 +93,7 @@ class ProcessGrsHotelPropertyJob implements ShouldQueue
                 ],
                 [
                     'en_name' => $enName,
-                    'accommodation_type_id' => $type->id,
+                    'accommodation_type_id' => $typeId,
                     'star' => $this->resolveStar($this->property['star'] ?? null),
                     'grade' => $this->normalizeString($this->property['grade'] ?? null),
                     'address' => $this->normalizeString($this->property['address'] ?? null),
