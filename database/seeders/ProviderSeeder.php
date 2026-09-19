@@ -6,6 +6,7 @@ use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
 use App\Domain\Hotel\Providers\SnappTripAdapter;
+use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
 use Illuminate\Database\Seeder;
 
@@ -13,38 +14,33 @@ class ProviderSeeder extends Seeder
 {
     public function run(): void
     {
+        $grsDefaults = [
+            'base_url' => 'https://api.grschannel.com/',
+            'token' => 'https://api.grschannel.com-$2y$10$/iQviVsfD1mKLS58OYdNve9',
+            'availability_rate_limit' => [
+                'max_requests' => 10,
+                'window_minutes' => 1,
+            ],
+            'price_refresh' => GrsRefreshSettings::defaults(),
+        ];
+
         $grs = Provider::query()->firstOrCreate(
             ['code' => 'grs'],
             [
                 'fa_name' => 'اقامت ۲۴',
                 'en_name' => 'GRS Channel',
                 'class' => GRSAdapter::class,
-                'config' => [
-                    'base_url' => 'https://api.grschannel.com/',
-                    'token' => 'https://api.grschannel.com-$2y$10$/iQviVsfD1mKLS58OYdNve9',
-                    'availability_rate_limit' => [
-                        'max_requests' => 10,
-                        'window_minutes' => 1,
-                    ],
-                ],
+                'config' => $grsDefaults,
                 'is_online' => true,
             ]
         );
 
-        $grs->forceFill([
-            'is_online' => true,
-            'config' => array_replace_recursive(
-                [
-                    'base_url' => 'https://api.grschannel.com/',
-                    'token' => 'https://api.grschannel.com-$2y$10$/iQviVsfD1mKLS58OYdNve9',
-                    'availability_rate_limit' => [
-                        'max_requests' => 10,
-                        'window_minutes' => 1,
-                    ],
-                ],
-                $grs->config ?? []
-            ),
-        ])->save();
+        // Fill only missing JSON keys. Preserve the current administrator's
+        // settings, provider activation state, token, and other provider metadata.
+        $mergedConfig = array_replace_recursive($grsDefaults, $grs->config ?? []);
+        if ($mergedConfig !== ($grs->config ?? [])) {
+            $grs->forceFill(['config' => $mergedConfig])->save();
+        }
 
         $parto = Provider::query()->firstOrCreate(
             ['code' => 'parto'],
