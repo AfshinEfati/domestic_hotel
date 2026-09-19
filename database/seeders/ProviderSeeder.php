@@ -35,14 +35,22 @@ class ProviderSeeder extends Seeder
             ]
         );
 
-        // Add only missing JSON keys; never overwrite administrator changes.
-        $mergedConfig = array_replace_recursive($grsDefaults, $grs->config ?? []);
+        // Keep admin overrides and unrelated keys; clean up the obsolete settings
+        // that were introduced in the previous, unapproved implementation.
+        $currentConfig = is_array($grs->config) ? $grs->config : [];
+        if (isset($currentConfig['price_refresh']) && is_array($currentConfig['price_refresh'])) {
+            unset(
+                $currentConfig['price_refresh']['dispatch_limit'],
+                $currentConfig['price_refresh']['claim_minutes'],
+                $currentConfig['price_refresh']['failure_backoff_minutes']
+            );
+        }
+        $mergedConfig = array_replace_recursive($grsDefaults, $currentConfig);
         if ($mergedConfig !== ($grs->config ?? [])) {
             $grs->forceFill(['config' => $mergedConfig])->save();
         }
 
-        // Other suppliers are created only when missing. Running a seeder must
-        // never reset an administrator's existing is_online setting.
+        // Never reset an administrator's settings or online status for other providers.
         Provider::query()->firstOrCreate(
             ['code' => 'parto'],
             [
