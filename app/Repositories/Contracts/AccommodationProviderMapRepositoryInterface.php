@@ -14,6 +14,8 @@ interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInte
 
     public function findForAccommodationAndProvider(int $accommodationId, int $providerId): ?AccommodationProviderMap;
 
+    public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap;
+
     public function store(array $data): AccommodationProviderMap;
 
     public function update(int|string $id, array $data): bool;
