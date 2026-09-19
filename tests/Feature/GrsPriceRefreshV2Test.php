@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
+use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Jobs\Hotel\SyncCitiesJob;
 use App\Jobs\Hotel\SyncGrsAvailabilityJob;
@@ -22,6 +23,33 @@ use Tests\TestCase;
 
 class GrsPriceRefreshV2Test extends TestCase
 {
+    public function test_missing_config_uses_defaults_and_valid_admin_values_override_them(): void
+    {
+        $provider = new Provider(['config' => []]);
+        $this->assertSame(GrsRefreshSettings::defaults(), GrsRefreshSettings::from($provider));
+        $provider->config = [
+            'price_refresh' => [
+                'default_days' => 120,
+                'dispatch_limit' => 1,
+                'claim_minutes' => 25,
+                'failure_backoff_minutes' => 35,
+                'api_cooldown_minutes' => 45,
+                'scheduler_enabled' => true,
+            ],
+        ];
+        $this->assertSame([
+            'default_days' => 120,
+            'dispatch_limit' => 1,
+            'claim_minutes' => 25,
+            'failure_backoff_minutes' => 35,
+            'api_cooldown_minutes' => 45,
+            'scheduler_enabled' => true,
+        ], GrsRefreshSettings::from($provider));
+        $provider->config = ['price_refresh' => ['dispatch_limit' => 0, 'scheduler_enabled' => false]];
+        $this->assertSame(10, GrsRefreshSettings::from($provider)['dispatch_limit']);
+        $this->assertFalse(GrsRefreshSettings::from($provider)['scheduler_enabled']);
+    }
+
     public function test_command_is_independent_and_defaults_to_ninety_days(): void
     {
         Bus::fake();
@@ -60,7 +88,6 @@ class GrsPriceRefreshV2Test extends TestCase
             ],
             'grs.shared_db.database' => 'test',
             'grs.shared_db.username' => 'test',
-            'grs.availability.dispatch_limit' => 1,
             'cache.default' => 'array',
         ]);
         Cache::flush();
@@ -90,7 +117,8 @@ class GrsPriceRefreshV2Test extends TestCase
         });
         DB::table('providers')->insert([
             'id' => 1, 'code' => 'grs', 'is_active' => 1, 'is_online' => 1,
-            'config' => '{}', 'created_at' => now(), 'updated_at' => now(),
+            'config' => json_encode(['price_refresh' => ['dispatch_limit' => 1, 'default_days' => 120]]),
+            'created_at' => now(), 'updated_at' => now(),
         ]);
         foreach (['100', '200'] as $id) {
             DB::table('accommodation_provider_maps')->insert([
@@ -105,11 +133,11 @@ class GrsPriceRefreshV2Test extends TestCase
                 'next_gds_run_at' => now()->subHours(2), 'is_active' => 1, 'refresh_interval_minutes' => 15],
         ]);
 
-        (new SyncGrsDuePricesJob(30))->handle();
+        (new SyncGrsDuePricesJob())->handle();
 
         Bus::assertDispatchedTimes(RefreshGrsPropertyPricesJob::class, 1);
         Bus::assertDispatched(RefreshGrsPropertyPricesJob::class, fn ($job) =>
-            $job->grsId === '200' && $job->days === 30 && $job->intervalMinutes === 15);
+            $job->grsId === '200' && $job->days === 120 && $job->intervalMinutes === 15);
         $this->assertGreaterThan(
             now()->toDateTimeString(),
             DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')->where('id', 2)->value('next_gds_run_at')
