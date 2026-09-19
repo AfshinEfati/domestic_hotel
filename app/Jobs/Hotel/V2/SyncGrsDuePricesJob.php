@@ -56,9 +56,13 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        if (trim((string) config('grs.shared_db.database')) === '' ||
-            trim((string) config('grs.shared_db.username')) === '') {
-            throw new RuntimeException('Set DB_HOST_SHARE, DB_DATABASE_SHARE, DB_USERNAME_SHARE and DB_PASSWORD_SHARE before GRS pricing.');
+        // A system-wide database connection, shared by all integrations.
+        $connection = config('database.connections.shared_ssp');
+        if (!is_array($connection) || !isset($connection['driver']) ||
+            (in_array($connection['driver'], ['mysql', 'mariadb'], true) &&
+                (trim((string) ($connection['database'] ?? '')) === '' ||
+                    trim((string) ($connection['username'] ?? '')) === ''))) {
+            throw new RuntimeException('Configure shared_ssp using DB_HOST_SHARE, DB_DATABASE_SHARE, DB_USERNAME_SHARE and DB_PASSWORD_SHARE.');
         }
 
         foreach (['grs_id', 'next_gds_run_at'] as $column) {
