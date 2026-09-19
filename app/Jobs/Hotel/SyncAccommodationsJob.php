@@ -2,8 +2,8 @@
 
 namespace App\Jobs\Hotel;
 
+use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
-use App\Models\AccommodationType;
 use App\Models\City;
 use App\Models\Facility;
 use App\Models\FacilityGroup;
@@ -18,7 +18,10 @@ use Illuminate\Queue\SerializesModels;
 
 class SyncAccommodationsJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public string $providerCode;
 
@@ -30,7 +33,7 @@ class SyncAccommodationsJob implements ShouldQueue
     /**
      * @throws BindingResolutionException
      */
-    public function handle(): void
+    public function handle(AccommodationTypeResolver $types): void
     {
         $provider = Provider::where('code', $this->providerCode)->firstOrFail();
 
@@ -50,11 +53,8 @@ class SyncAccommodationsJob implements ShouldQueue
                     continue;
                 }
 
-                // type
-                $type = AccommodationType::firstOrCreate(
-                    ['fa_name' => $p['type']],
-                    ['en_name' => $p['type_en'] ?? null]
-                );
+                // Only existing canonical types or the shared unknown type.
+                $typeId = $types->resolveId($p['type'] ?? null, $p['type_en'] ?? null);
 
                 // accommodation
                 $acc = Accommodation::updateOrCreate(
@@ -64,7 +64,7 @@ class SyncAccommodationsJob implements ShouldQueue
                     ],
                     [
                         'en_name' => $p['name_en'] ?? null,
-                        'accommodation_type_id' => $type->id,
+                        'accommodation_type_id' => $typeId,
                         'star' => (int)($p['star'] ?? 0),
                         'grade' => $p['grade'] ?? null,
                         'address' => $p['address'] ?? null,
