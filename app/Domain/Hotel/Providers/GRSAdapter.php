@@ -54,6 +54,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
                 'country_id'            => $c['country_id'] ?? null,
                 'country_name'          => $c['country_name'] ?? null,
                 'country_name_ar'       => $c['country_name_ar'] ?? null,
+                'country_name_en'       => $c['country_name_en'] ?? null,
                 'country_code_alpha_2'  => $c['country_code_alpha_2'] ?? null,
                 'country_code_alpha_3'  => $c['country_code_alpha_3'] ?? null,
             ];
@@ -204,8 +205,8 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
                     'rack_rate'      => data_get($price, 'rack_rate'),
                     'daily_rate'     => data_get($price, 'daily_rate'),
                     'grs_rate'       => data_get($price, 'grs_rate'),
-                    'min_stay'       => data_get($price, 'min_stay'),
-                    'max_stay'       => data_get($price, 'max_stay'),
+                    'min_stay'      => data_get($price, 'min_stay'),
+                    'max_stay'      => data_get($price, 'max_stay'),
                     'cta'            => (bool)data_get($price, 'close_to_arrival', false),
                     'ctd'            => (bool)data_get($price, 'close_to_departure', false),
                     'closed'         => (bool)data_get($price, 'closed', false),
@@ -249,7 +250,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         $val = data_get($res, 'value', []);
         return [
             'ok'            => true,
-            'reserve_id'    => (string)data_get($val, 'reserve_id'),
+            'reserve_id'    => (string)($val['reserve_id'] ?? $reserveId),
             'new_expires_at' => data_get($val, 'expires_at'),
         ];
     }
@@ -299,9 +300,9 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         $res = $this->client()->post('/v1/cancel', $payload)->throw()->json();
         $val = data_get($res, 'value', []);
         return [
-            'ok'              => true,
-            'reserve_id'      => (string)data_get($val, 'reserve_id'),
-            'status'          => data_get($val, 'status'),
+            'ok'           => true,
+            'reserve_id'   => (string)data_get($val, 'reserve_id'),
+            'status'       => data_get($val, 'status'),
             'refund_amount' => data_get($val, 'refund_amount'),
         ];
     }
@@ -335,9 +336,9 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         $res = $this->client()->get("/v1/reserves/{$reserveId}")->throw()->json();
         $val = data_get($res, 'value', []);
         return [
-            'ok'            => true,
-            'reserve_id'    => (string)data_get($val, 'reserve_id', $reserveId),
-            'status'        => data_get($val, 'status'),
+            'ok'           => true,
+            'reserve_id'   => (string)data_get($val, 'reserve_id', $reserveId),
+            'status'       => data_get($val, 'status'),
             'property_id'  => (string)data_get($val, 'property_id'),
             'room_type_id' => (string)data_get($val, 'room_type_id'),
             'rate_plan_id' => (string)data_get($val, 'rate_plan_id'),
