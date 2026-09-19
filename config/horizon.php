@@ -25,7 +25,6 @@ return [
     | This is the URI path where Horizon will be accessible from. If this
     | setting is null, Horizon will reside under the same domain as the
     | application. Otherwise, this value will serve as the subdomain.
-    |
     */
 
     'path' => env('HORIZON_PATH', 'horizon'),
@@ -38,7 +37,6 @@ return [
     | This is the name of the Redis connection where Horizon will store the
     | meta information required for it to function. It includes the list
     | of supervisors, failed jobs, job metrics, and other information.
-    |
     */
 
     'use' => 'default',
@@ -49,7 +47,6 @@ return [
     |--------------------------------------------------------------------------
     |
     | This prefix is used for all Horizon data in Redis.
-    |
     */
 
     'prefix' => env(
@@ -75,6 +72,7 @@ return [
         'redis:default' => 60,
         'redis:grs-hotels' => 60,
         'redis:grs-prices' => 60,
+        'redis:grs-details' => 60,
     ],
 
     /*
@@ -151,6 +149,20 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-grs-details' => [
+            'connection' => 'redis',
+            'queue' => ['grs-details'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => env('HORIZON_JOB_TRIES', 2),
+            'timeout' => 80,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -160,10 +172,18 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-grs-details' => [
+                'maxProcesses' => 10,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
+                'maxProcesses' => 3,
+            ],
+            'supervisor-grs-details' => [
                 'maxProcesses' => 3,
             ],
         ],
