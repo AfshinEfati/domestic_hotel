@@ -1,0 +1,89 @@
+<?php
+
+namespace App\Jobs\Hotel\V2;
+
+use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
+use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
+use App\Models\AccommodationProviderMap;
+use App\Models\Provider;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+
+/** One query selects one batch of due SSP hotels, ordered by their due time. */
+class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 1;
+    public int $timeout = 60;
+    public int $uniqueFor = 600;
+
+    public function __construct(public ?int $days = null)
+    {
+        $this->onQueue('grs-prices');
+    }
+
+    public function uniqueId(): string
+    {
+        return 'grs-due-prices-dispatch';
+    }
+
+    public function handle(GrsPriceRefreshScheduleService $schedules): void
+    {
+        $provider = Provider::query()->where('code', 'grs')->firstOrFail();
+        if (!$provider->is_active || !$provider->is_online) {
+            Log::warning('GRS prices skipped: provider inactive or offline');
+            return;
+        }
+
+        $days = $this->days ?? GrsRefreshSettings::from($provider)['default_days'];
+        if ($days < 1 || $days > 3650) {
+            throw new RuntimeException('GRS availability days must be between 1 and 3650.');
+        }
+
+        if (RateLimitedGrsAdapter::cooldownSeconds() > 0) {
+            Log::warning('GRS prices paused by API 429 cooldown');
+            return;
+        }
+
+        $schedules->assertReady();
+        // The batch size is the existing GRS HTTP quota, NOT a separate hotel cap.
+        // No next_gds_run_at write occurs while selecting or dispatching.
+        $due = $schedules->due($provider);
+        $queued = 0;
+        $unmapped = 0;
+
+        foreach ($due as $schedule) {
+            $grsId = trim((string) $schedule->grs_id);
+            if (!AccommodationProviderMap::query()
+                ->where('provider_id', $provider->id)
+                ->where('provider_property_id', $grsId)
+                ->exists()) {
+                $unmapped++;
+                Log::warning('GRS due property missing local accommodation map; due time unchanged', [
+                    'schedule_id' => $schedule->id, 'grs_id' => $grsId,
+                ]);
+                continue;
+            }
+
+            RefreshGrsPropertyPricesJob::dispatch(
+                (int) $schedule->id,
+                $grsId,
+                (int) $provider->id,
+                $days
+            );
+            $queued++;
+        }
+
+        Log::info('GRS due price scan finished', [
+            'days' => $days, 'selected' => $due->count(), 'queued' => $queued, 'unmapped' => $unmapped,
+        ]);
+    }
+}

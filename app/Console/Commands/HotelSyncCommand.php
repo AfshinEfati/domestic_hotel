@@ -2,8 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Domain\Hotel\Services\HotelSyncService;
+use App\Jobs\Hotel\SyncGrsAvailabilityJob;
 use App\Models\Provider;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -19,19 +20,23 @@ class HotelSyncCommand extends Command
 
     protected $description = 'همگام‌سازی دیتا از تأمین‌کننده‌ها (شهرها، هتل‌ها، نرخ/ظرفیت)';
 
-    /**
-     * @param HotelSyncService $service
-     * @return int
-     */
     public function handle(HotelSyncService $service): int
     {
-        $providerCode = $this->argument('provider');
-        $days = (int)$this->option('days');
+        $providerCode = (string) $this->argument('provider');
+        $days = max(1, (int) $this->option('days'));
 
         $provider = Provider::query()->where('code', $providerCode)->first();
         if (!$provider) {
             $this->error("Provider {$providerCode} not found.");
             return self::FAILURE;
+        }
+
+        // GRS cities and properties have separate commands. Never fetch either here:
+        // doing so bypasses the availability rate limiter and can trigger HTTP 429s.
+        if ($providerCode === 'grs') {
+            SyncGrsAvailabilityJob::dispatch(days: $days);
+            $this->info('GRS availability sync queued only; no city or property sync was started.');
+            return self::SUCCESS;
         }
 
         try {
@@ -53,9 +58,10 @@ class HotelSyncCommand extends Command
         }
 
         try {
-            $this->info("Syncing properties...");
+            $this->info('Syncing properties...');
             $providerCityIds = DB::table('provider_city_maps')
                 ->where('provider_id', $provider->id)
+                ->orderBy('id')
                 ->lazy()
                 ->pluck('provider_city_id');
 
@@ -64,7 +70,7 @@ class HotelSyncCommand extends Command
 
             foreach ($providerCityIds as $providerCityId) {
                 try {
-                    $service->syncPropertiesForCity($provider, $adapter, (string)$providerCityId);
+                    $service->syncPropertiesForCity($provider, $adapter, (string) $providerCityId);
                 } catch (Throwable $e) {
                     $this->warn("Failed to sync properties for city {$providerCityId}: {$e->getMessage()}");
                 }
@@ -84,6 +90,7 @@ class HotelSyncCommand extends Command
             $this->info("Crawling availability {$days} days...");
             $providerPropertyIds = DB::table('accommodation_provider_maps')
                 ->where('provider_id', $provider->id)
+                ->orderBy('id')
                 ->lazy()
                 ->pluck('provider_property_id');
 
@@ -92,7 +99,7 @@ class HotelSyncCommand extends Command
 
             foreach ($providerPropertyIds as $ppid) {
                 try {
-                    $service->crawlAvailabilityForProperty($provider, $adapter, (string)$ppid, $from, $to);
+                    $service->crawlAvailabilityForProperty($provider, $adapter, (string) $ppid, $from, $to);
                 } catch (Throwable $e) {
                     $this->warn("Failed to crawl availability for property {$ppid}: {$e->getMessage()}");
                 }

@@ -18,12 +18,13 @@ class SyncGrsAvailabilityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private const MAX_GRS_REQUESTS_PER_WINDOW = 10;
+
     public function __construct(
         public ?int $days = null,
         public ?int $chunkSize = null,
         public ?int $throttleMs = null,
         public ?int $maxAttempts = null,
-        public ?int $requestsPerMinute = null,
     ) {
     }
 
@@ -31,10 +32,21 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         SystemLogger $logger,
         SystemSettingServiceInterface $systemSettingService
     ): void {
-        $provider = Provider::where('code', 'grs')->first();
+        $provider = Provider::query()->where('code', 'grs')->first();
+
         if (!$provider) {
-            $logger->warning(__METHOD__, 'SyncGrsAvailabilityJob skipped because provider not found', [
+            $logger->warning(__METHOD__, 'GRS availability sync skipped because provider was not found', [
                 'code' => 'grs',
+            ]);
+
+            return;
+        }
+
+        if (!$provider->is_active || !$provider->is_online) {
+            $logger->warning(__METHOD__, 'GRS availability sync skipped because provider is not active and online', [
+                'provider_id' => $provider->id,
+                'is_active' => $provider->is_active,
+                'is_online' => $provider->is_online,
             ]);
 
             return;
@@ -60,10 +72,12 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_MAX_ATTEMPTS),
             1
         );
-        $requestsPerMinute = $this->resolvePositiveInt(
-            $this->requestsPerMinute,
-            (int) $systemSettingService->getValue(SystemSettingKey::GRS_AVAILABILITY_REQUESTS_PER_MINUTE),
-            1
+
+        $maxRequests = $this->resolveMaxRequests(
+            data_get($provider->config, 'availability_rate_limit.max_requests')
+        );
+        $windowMinutes = $this->resolveWindowMinutes(
+            data_get($provider->config, 'availability_rate_limit.window_minutes')
         );
 
         $from = CarbonImmutable::today();
@@ -74,26 +88,24 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             ->whereNotNull('provider_property_id');
 
         $totalProperties = (clone $baseQuery)->count();
+
         if ($totalProperties === 0) {
-            $logger->info(__METHOD__, 'SyncGrsAvailabilityJob skipped because no mapped properties found', [
+            $logger->info(__METHOD__, 'GRS availability sync skipped because no mapped properties were found', [
                 'provider_id' => $provider->id,
             ]);
 
             return;
         }
 
-        $logger->info(__METHOD__, 'SyncGrsAvailabilityJob started', [
+        $logger->info(__METHOD__, 'GRS availability sync dispatch started', [
             'provider_id' => $provider->id,
-            'date_range' => [
-                'from' => $from->toDateString(),
-                'to' => $to->toDateString(),
-            ],
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
             'total_properties' => $totalProperties,
             'chunk_size' => $chunkSize,
-            'throttle_ms' => $throttleMs,
             'max_attempts' => $maxAttempts,
-            'requests_per_minute' => $requestsPerMinute,
-            'dispatch_mode' => 'per_property',
+            'rate_limit_max_requests' => $maxRequests,
+            'rate_limit_window_minutes' => $windowMinutes,
         ]);
 
         $queued = 0;
@@ -108,15 +120,17 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                 $to,
                 $maxAttempts,
                 $throttleMs,
-                $requestsPerMinute,
+                $maxRequests,
+                $windowMinutes,
                 &$queued,
                 &$skipped,
                 $logger
             ) {
                 foreach ($rows as $row) {
-                    $propertyKey = trim((string)($row->provider_property_id ?? ''));
+                    $propertyKey = trim((string) ($row->provider_property_id ?? ''));
+
                     if ($propertyKey === '') {
-                        $logger->warning(__METHOD__, 'Skipping GRS availability sync because provider property id is empty', [
+                        $logger->warning(__METHOD__, 'GRS availability property skipped because provider property id is empty', [
                             'provider_id' => $provider->id,
                             'map_id' => $row->id,
                         ]);
@@ -125,21 +139,29 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                         continue;
                     }
 
-                    SyncGrsAvailabilityForPropertyJob::dispatch(
+                    $windowIndex = intdiv($queued, $maxRequests);
+                    $delaySeconds = $windowIndex * $windowMinutes * 60;
+
+                    $pending = SyncGrsAvailabilityForPropertyJob::dispatch(
                         $provider->id,
                         $propertyKey,
                         $from->toDateString(),
                         $to->toDateString(),
                         $maxAttempts,
                         $throttleMs,
-                        $requestsPerMinute
+                        $maxRequests,
+                        $windowMinutes
                     );
+
+                    if ($delaySeconds > 0) {
+                        $pending->delay(now()->addSeconds($delaySeconds));
+                    }
 
                     $queued++;
                 }
             }, 'id');
 
-        $logger->info(__METHOD__, 'SyncGrsAvailabilityJob finished', [
+        $logger->info(__METHOD__, 'GRS availability sync dispatch finished', [
             'provider_id' => $provider->id,
             'queued_properties' => $queued,
             'skipped_properties' => $skipped,
@@ -152,10 +174,20 @@ class SyncGrsAvailabilityJob implements ShouldQueue
             return $value;
         }
 
-        if ($default < $min) {
-            return $min;
-        }
+        return max($min, $default);
+    }
 
-        return $default;
+    private function resolveMaxRequests(mixed $value): int
+    {
+        $resolved = is_numeric($value) ? (int) $value : self::MAX_GRS_REQUESTS_PER_WINDOW;
+
+        return min(self::MAX_GRS_REQUESTS_PER_WINDOW, max(1, $resolved));
+    }
+
+    private function resolveWindowMinutes(mixed $value): int
+    {
+        $resolved = is_numeric($value) ? (int) $value : 1;
+
+        return max(1, $resolved);
     }
 }

@@ -75,13 +75,6 @@ class SystemSettingSeeder extends Seeder
                 'value_type' => SystemSettingValueType::INTEGER,
                 'is_active' => true,
             ],
-            [
-                'key' => SystemSettingKey::GRS_AVAILABILITY_REQUESTS_PER_MINUTE,
-                'group' => 'provider.grs.availability',
-                'value' => '10',
-                'value_type' => SystemSettingValueType::INTEGER,
-                'is_active' => true,
-            ],
         ];
 
         foreach ($settings as $setting) {
