@@ -2,9 +2,9 @@
 
 namespace App\Jobs\Hotel\V2;
 
+use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
-use App\Models\AccommodationType;
 use App\Models\Facility;
 use App\Models\FacilityGroup;
 use App\Models\ProviderCityMap;
@@ -30,7 +30,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
     {
     }
 
-    public function handle(): void
+    public function handle(AccommodationTypeResolver $types): void
     {
         $facilityLookup = $this->loadFacilities();
         $errors = 0;
@@ -50,7 +50,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             }
 
             try {
-                $result = DB::transaction(fn () => $this->processProperty($property, $propertyId, $facilityLookup));
+                $result = DB::transaction(fn () => $this->processProperty($property, $propertyId, $facilityLookup, $types));
                 if ($result === 'created') {
                     $created++;
                 } elseif ($result === 'mapped') {
@@ -74,8 +74,12 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         }
     }
 
-    private function processProperty(array $property, string $propertyId, array $facilityLookup): string
-    {
+    private function processProperty(
+        array $property,
+        string $propertyId,
+        array $facilityLookup,
+        AccommodationTypeResolver $types
+    ): string {
         $faName = trim((string) ($property['name'] ?? ''));
         if ($faName === '') {
             throw new RuntimeException('Property has no Persian name.');
@@ -110,12 +114,22 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
 
             $hotel = $this->findUnambiguousMatch((int) $cityId, $property, $faName, $enName);
             if (!$hotel) {
-                $type = $this->resolveType($property);
+                $providerType = $property['type'] ?? null;
+                $providerTypeEn = $property['type_en'] ?? null;
+                if ($types->canonicalId($providerType, $providerTypeEn) === null) {
+                    Log::warning('GRS property uses unknown accommodation type; expert review needed', [
+                        'property_id' => $propertyId,
+                        'provider_id' => $this->providerId,
+                        'provider_type' => $providerType,
+                        'provider_type_en' => $providerTypeEn,
+                    ]);
+                }
+                $typeId = $types->resolveId($providerType, $providerTypeEn);
                 $hotel = Accommodation::query()->create([
                     'city_id' => $cityId,
                     'fa_name' => $faName,
                     'en_name' => $enName,
-                    'accommodation_type_id' => $type->id,
+                    'accommodation_type_id' => $typeId,
                     'star' => is_numeric($property['star'] ?? null) ? (int) $property['star'] : null,
                     'grade' => $this->nullableString($property['grade'] ?? null),
                     'address' => $this->nullableString($property['address'] ?? null),
@@ -193,15 +207,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         }
 
         return $matches->first();
-    }
-
-    private function resolveType(array $property): AccommodationType
-    {
-        $typeCode = trim((string) ($property['type'] ?? 'hotel')) ?: 'hotel';
-        return AccommodationType::query()->where('en_name', $typeCode)->first()
-            ?? AccommodationType::query()->firstOrCreate(
-                ['fa_name' => $typeCode], ['en_name' => $typeCode]
-            );
     }
 
     private function loadFacilities(): array
