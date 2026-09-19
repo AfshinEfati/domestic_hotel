@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Models\Provider;
 use Illuminate\Support\Facades\Schedule;
 
 // Hotel catalog only: no city sync, per-property HTTP requests, rooms, or availability.
@@ -8,13 +10,15 @@ Schedule::command('grs:sync-hotels')
     ->timezone('Asia/Tehran')
     ->withoutOverlapping();
 
-// GRS pricing is independently scheduled. Shared SSP next_gds_run_at decides
-// what is due; this minute tick only dispatches due jobs, not all hotels.
-// Disabled until the shared columns and database connection are validated.
+// Read the provider JSON on every scheduler evaluation so admin changes take
+// effect without changing .env, editing PHP or rebuilding the config cache.
 Schedule::command('grs:sync-prices')
     ->everyMinute()
     ->withoutOverlapping()
-    ->when(fn (): bool => (bool) config('grs.availability.scheduler_enabled', false));
+    ->when(static function (): bool {
+        $provider = Provider::query()->where('code', 'grs')->first();
+        return $provider !== null && GrsRefreshSettings::from($provider)['scheduler_enabled'];
+    });
 
 // Legacy automatic GRS availability and generic room sync remain paused.
 // Their commands and jobs have not been modified by the V2 implementation.
