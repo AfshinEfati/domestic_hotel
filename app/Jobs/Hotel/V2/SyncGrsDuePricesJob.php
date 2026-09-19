@@ -54,7 +54,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $schedules->assertReady();
-        // The batch size is the existing GRS HTTP quota, NOT a separate hotel cap.
+        // SSP.gds_id is the local accommodations.id, never a provider property ID.
         // No next_gds_run_at write occurs while selecting or dispatching.
         $due = $schedules->due($provider);
         $queued = 0;
@@ -62,32 +62,28 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
         foreach ($due as $schedule) {
             $gdsId = (int) $schedule->gds_id;
-
             $map = AccommodationProviderMap::query()
                 ->where('provider_id', $provider->id)
                 ->where('accommodation_id', $gdsId)
                 ->first();
-
             $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
-            if ($grsId === '') {
+            if ($gdsId <= 0 || $grsId === '') {
                 $unmapped++;
-
                 Log::warning('GRS due property missing local accommodation map; due time unchanged', [
                     'schedule_id' => $schedule->id,
                     'gds_id' => $gdsId,
                 ]);
-
                 continue;
             }
 
+            // The worker resolves the provider property ID again from this GDS ID.
             RefreshGrsPropertyPricesJob::dispatch(
                 (int) $schedule->id,
-                $grsId,
+                $gdsId,
                 (int) $provider->id,
                 $days
             );
-
             $queued++;
         }
 
