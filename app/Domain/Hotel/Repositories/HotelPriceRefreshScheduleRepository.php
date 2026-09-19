@@ -21,9 +21,17 @@ class HotelPriceRefreshScheduleRepository
             throw new RuntimeException('Configure the shared_ssp connection using the DB_*_SHARE credentials.');
         }
 
-        foreach (['grs_id', 'next_gds_run_at', 'last_gds_success_run_at', 'last_gds_success_at'] as $column) {
-            if (!Schema::connection('shared_ssp')->hasColumn('hotel_price_refresh_schedules', $column)) {
-                throw new RuntimeException("SSP hotel_price_refresh_schedules.{$column} must exist before GRS pricing.");
+        foreach ([
+                     'gds_id',
+                     'next_gds_run_at',
+                     'last_gds_success_run_at',
+                     'last_gds_success_at',
+                 ] as $column) {
+            if (!Schema::connection('shared_ssp')
+                ->hasColumn('hotel_price_refresh_schedules', $column)) {
+                throw new RuntimeException(
+                    "SSP hotel_price_refresh_schedules.{$column} must exist before GRS pricing."
+                );
             }
         }
     }
@@ -33,8 +41,7 @@ class HotelPriceRefreshScheduleRepository
     {
         return HotelPriceRefreshSchedule::query()
             ->where('is_active', true)
-            ->whereNotNull('grs_id')
-            ->where('grs_id', '<>', '')
+            ->whereNotNull('gds_id')
             ->where(function ($query): void {
                 $query->whereNull('next_gds_run_at')
                     ->orWhereRaw('next_gds_run_at <= CURRENT_TIMESTAMP');
@@ -45,31 +52,31 @@ class HotelPriceRefreshScheduleRepository
             ->get();
     }
 
-    public function active(int $id, string $grsId): ?HotelPriceRefreshSchedule
+    public function active(int $id, string $gdsId): ?HotelPriceRefreshSchedule
     {
         return HotelPriceRefreshSchedule::query()
             ->whereKey($id)
-            ->where('grs_id', $grsId)
+            ->where('gds_id', $gdsId)
             ->where('is_active', true)
             ->first();
     }
 
     /** Called after API quota has been acquired, just before availability HTTP. */
-    public function markRequestStarted(int $id, string $grsId): void
+    public function markRequestStarted(int $id, string $gdsId): void
     {
-        $this->updateTime($id, $grsId, 'last_gds_success_run_at');
+        $this->updateTime($id, $gdsId, 'last_gds_success_run_at');
     }
 
     /** HTTP 200 counts even if subsequent room/calendar persistence fails. */
-    public function markHttp200(int $id, string $grsId): void
+    public function markHttp200(int $id, string $gdsId): void
     {
-        $this->updateTime($id, $grsId, 'last_gds_success_at');
+        $this->updateTime($id, $gdsId, 'last_gds_success_at');
     }
 
     /** The due time changes ONLY after verified local persistence. */
-    public function markPersisted(int $id, string $grsId): int
+    public function markPersisted(int $id, string $gdsId): int
     {
-        $schedule = $this->active($id, $grsId);
+        $schedule = $this->active($id, $gdsId);
         if ($schedule === null) {
             throw new RuntimeException('SSP price refresh schedule is no longer active or mapped.');
         }
@@ -78,7 +85,7 @@ class HotelPriceRefreshScheduleRepository
         $next = $this->clock()->addMinutes($minutes)->toDateTimeString();
         $updated = HotelPriceRefreshSchedule::query()
             ->whereKey($id)
-            ->where('grs_id', $grsId)
+            ->where('gds_id', $gdsId)
             ->where('is_active', true)
             ->update(['next_gds_run_at' => $next]);
         if ($updated !== 1) {
@@ -88,11 +95,11 @@ class HotelPriceRefreshScheduleRepository
         return $minutes;
     }
 
-    private function updateTime(int $id, string $grsId, string $column): void
+    private function updateTime(int $id, string $gdsId, string $column): void
     {
         $updated = HotelPriceRefreshSchedule::query()
             ->whereKey($id)
-            ->where('grs_id', $grsId)
+            ->where('gds_id', $gdsId)
             ->where('is_active', true)
             ->update([$column => $this->clock()->toDateTimeString()]);
         if ($updated !== 1) {

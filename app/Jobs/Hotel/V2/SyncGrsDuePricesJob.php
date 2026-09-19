@@ -61,15 +61,23 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         $unmapped = 0;
 
         foreach ($due as $schedule) {
-            $grsId = trim((string) $schedule->grs_id);
-            if (!AccommodationProviderMap::query()
+            $gdsId = (int) $schedule->gds_id;
+
+            $map = AccommodationProviderMap::query()
                 ->where('provider_id', $provider->id)
-                ->where('provider_property_id', $grsId)
-                ->exists()) {
+                ->where('accommodation_id', $gdsId)
+                ->first();
+
+            $grsId = trim((string) ($map?->provider_property_id ?? ''));
+
+            if ($grsId === '') {
                 $unmapped++;
+
                 Log::warning('GRS due property missing local accommodation map; due time unchanged', [
-                    'schedule_id' => $schedule->id, 'grs_id' => $grsId,
+                    'schedule_id' => $schedule->id,
+                    'gds_id' => $gdsId,
                 ]);
+
                 continue;
             }
 
@@ -79,6 +87,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
                 (int) $provider->id,
                 $days
             );
+
             $queued++;
         }
 

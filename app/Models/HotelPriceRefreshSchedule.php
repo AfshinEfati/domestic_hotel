@@ -16,6 +16,7 @@ class HotelPriceRefreshSchedule extends Model
     protected $guarded = [];
 
     protected $casts = [
+        'gds_id' => 'integer',
         'is_active' => 'boolean',
         'refresh_interval_minutes' => 'integer',
         'next_gds_run_at' => 'datetime',
