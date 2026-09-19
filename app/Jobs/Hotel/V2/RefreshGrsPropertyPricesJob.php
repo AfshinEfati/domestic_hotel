@@ -146,7 +146,18 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 throw new RuntimeException('GRS availability contains an invalid date.', 0, $e);
             }
             if ($normalizedDay < $from->toDateString() || $normalizedDay >= $to->toDateString()) {
-                throw new RuntimeException('GRS availability returned a date outside the requested range.');
+                throw new RuntimeException(sprintf(
+                    'GRS availability date outside requested range: schedule_id=%d gds_id=%d grs_id=%s received_day=%s normalized_day=%s check_in=%s check_out_exclusive=%s room_type_id=%s rate_plan_id=%s.',
+                    $this->scheduleId,
+                    $this->gdsId,
+                    $grsId,
+                    $day,
+                    $normalizedDay,
+                    $from->toDateString(),
+                    $to->toDateString(),
+                    $roomId,
+                    $rateId
+                ));
             }
             $roomProviderIds[$roomId] = true;
             $rateProviderIds[$rateId] = true;
