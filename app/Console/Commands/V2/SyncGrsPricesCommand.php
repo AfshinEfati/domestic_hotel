@@ -4,7 +4,6 @@ namespace App\Console\Commands\V2;
 
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
-use App\Models\Provider;
 use Illuminate\Console\Command;
 
 class SyncGrsPricesCommand extends Command
@@ -33,10 +32,11 @@ class SyncGrsPricesCommand extends Command
         }
 
         $days = $value === null || $value === '' ? null : (int) $value;
-        $provider = Provider::query()->where('code', 'grs')->first();
-        $defaultDays = GrsRefreshSettings::from($provider)['default_days'];
         SyncGrsDuePricesJob::dispatch($days);
-        $this->info('GRS due price refresh queued; days: '.($days ?? $defaultDays).'. Only shared SSP due hotels will be selected.');
+        $label = $days === null
+            ? 'provider-configured (fallback '.GrsRefreshSettings::defaults()['default_days'].')'
+            : (string) $days;
+        $this->info('GRS due price refresh queued; days: '.$label.'. Only shared SSP due hotels will be selected.');
         return self::SUCCESS;
     }
 }
