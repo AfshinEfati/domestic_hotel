@@ -5,7 +5,6 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
-use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,10 +33,8 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         return 'grs-due-prices-dispatch';
     }
 
-    public function handle(
-        GrsPriceRefreshScheduleService $schedules,
-        AccommodationProviderMapRepositoryInterface $maps,
-    ): void {
+    public function handle(GrsPriceRefreshScheduleService $schedules): void
+    {
         $provider = $schedules->grsProvider();
         if ($provider === null) {
             throw new RuntimeException('GRS provider is not configured.');
@@ -66,7 +63,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         foreach ($due as $schedule) {
             $gdsId = (int) $schedule->gds_id;
             $map = $gdsId > 0
-                ? $maps->findForAccommodationAndProvider($gdsId, (int) $provider->id)
+                ? $schedules->mapForAccommodation($gdsId, (int) $provider->id)
                 : null;
             $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
