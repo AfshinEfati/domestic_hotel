@@ -4,6 +4,7 @@ namespace App\Jobs\Hotel\V2;
 
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
+use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
@@ -52,6 +53,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(HotelSyncService $service): void
     {
+        $provider = null;
         try {
             $provider = Provider::query()->findOrFail($this->providerId);
             if ($provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
@@ -66,7 +68,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 ->where('id', $this->scheduleId)->where('grs_id', $this->grsId)
                 ->where('is_active', true)->first(['id', 'refresh_interval_minutes']);
             if (!$schedule) {
-                // The SSP row may have been disabled or remapped after dispatch.
                 Log::warning('GRS price job skipped: shared schedule disabled/remapped', [
                     'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
                 ]);
@@ -78,8 +79,8 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $started = now()->subSeconds(2); // Include DB timestamps rounded to the second.
             $adapter = new RateLimitedGrsAdapter($provider);
 
-            // Preserve the proven room/rate-plan mapping fallback. The adapter
-            // meters BOTH availability and any additional /properties/{id} request.
+            // Preserve the proven room/rate-plan mapping fallback. Both the
+            // availability call and additional property-details call are metered.
             $service->crawlAvailabilityForProperty($provider, $adapter, $this->grsId, $from, $to);
             if ($adapter->supplementalError !== null) {
                 throw $adapter->supplementalError;
@@ -87,7 +88,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             $count = $this->verifyPersistedAvailability($provider->id, (int) $map->accommodation_id,
                 $adapter, $started, $from, $to);
-            // Re-read from SSP at execution time; the owner may have changed the interval.
+            // Re-read SSP interval for the current job rather than using a stale dispatch value.
             $minutes = max(1, (int) ($schedule->refresh_interval_minutes ?? $this->intervalMinutes));
             $this->rescheduleAfterSeconds($minutes * 60);
             Log::info('GRS scheduled availability successfully persisted', [
@@ -95,22 +96,24 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 'days' => $this->days, 'calendar_rows' => $count, 'next_in_minutes' => $minutes,
             ]);
         } catch (GrsApiQuotaExceeded $e) {
-            // Rate quota is not an API failure; do not advance next_gds_run_at.
             $this->release(max(1, $e->retryAfterSeconds + 1));
         } catch (RequestException $e) {
             if ($e->response?->status() === 429) {
-                $seconds = max(900, RateLimitedGrsAdapter::cooldownSeconds());
+                $seconds = max(
+                    GrsRefreshSettings::from($provider)['api_cooldown_minutes'] * 60,
+                    RateLimitedGrsAdapter::cooldownSeconds()
+                );
                 $this->rescheduleAfterSeconds($seconds);
                 Log::error('GRS returned 429: stopped this property; API cooldown enabled', [
                     'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
                     'cooldown_seconds' => $seconds,
                 ]);
-                $this->fail($e); // A real HTTP 429 must never appear as a successful DONE job.
+                $this->fail($e);
                 return;
             }
-            $this->recordFailure($e);
+            $this->recordFailure($e, $provider);
         } catch (Throwable $e) {
-            $this->recordFailure($e);
+            $this->recordFailure($e, $provider);
         }
     }
 
@@ -160,7 +163,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS room/rate-plan maps remain incomplete; refresh not marked successful.');
         }
 
-        // Reject accidentally shared mappings that point to a different local hotel.
         if (RoomType::query()->where('accommodation_id', $accommodationId)
                 ->whereIn('id', array_values($roomIds))->count() !== count($roomIds) ||
             RatePlan::query()->where('accommodation_id', $accommodationId)
@@ -199,9 +201,9 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             ->update(['next_gds_run_at' => $dbNow->addSeconds(max(1, $seconds))->toDateTimeString()]);
     }
 
-    private function recordFailure(Throwable $e): void
+    private function recordFailure(Throwable $e, ?Provider $provider): void
     {
-        $minutes = max(1, (int) config('grs.availability.failure_backoff_minutes', 15));
+        $minutes = GrsRefreshSettings::from($provider)['failure_backoff_minutes'];
         $this->rescheduleAfterSeconds($minutes * 60);
         Log::error('GRS scheduled price refresh failed; no automatic HTTP retry', [
             'schedule_id' => $this->scheduleId, 'grs_id' => $this->grsId,
