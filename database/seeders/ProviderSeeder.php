@@ -35,14 +35,15 @@ class ProviderSeeder extends Seeder
             ]
         );
 
-        // Fill only missing JSON keys. Preserve the current administrator's
-        // settings, provider activation state, token, and other provider metadata.
+        // Add only missing JSON keys; never overwrite administrator changes.
         $mergedConfig = array_replace_recursive($grsDefaults, $grs->config ?? []);
         if ($mergedConfig !== ($grs->config ?? [])) {
             $grs->forceFill(['config' => $mergedConfig])->save();
         }
 
-        $parto = Provider::query()->firstOrCreate(
+        // Other suppliers are created only when missing. Running a seeder must
+        // never reset an administrator's existing is_online setting.
+        Provider::query()->firstOrCreate(
             ['code' => 'parto'],
             [
                 'fa_name' => 'پرتو CRS',
@@ -55,11 +56,11 @@ class ProviderSeeder extends Seeder
                     'access_key' => 'CRS001539',
                     'secret_key' => ',sXL059?mZN3',
                 ],
+                'is_online' => false,
             ]
         );
-        $parto->forceFill(['is_online' => false])->save();
 
-        $iho = Provider::query()->firstOrCreate(
+        Provider::query()->firstOrCreate(
             ['code' => 'iho'],
             [
                 'fa_name' => 'ایران هتل آنلاین',
@@ -69,11 +70,11 @@ class ProviderSeeder extends Seeder
                     'base_url' => 'https://www.iranhotelonline.com:443',
                     'version' => 1,
                 ],
+                'is_online' => false,
             ]
         );
-        $iho->forceFill(['is_online' => false])->save();
 
-        $snap = Provider::query()->firstOrCreate(
+        Provider::query()->firstOrCreate(
             ['code' => 'snap'],
             [
                 'fa_name' => 'اسنپ تریپ',
@@ -83,8 +84,8 @@ class ProviderSeeder extends Seeder
                     'base_url' => 'https://b2bapiv2.snapptrip.com/',
                     'token' => '9EcxDBS7gmfvh5HaHDtjjxQhEVRHaPJP6hegUJ5FBerz8Cam3Xt6X97k8rf5GDGL',
                 ],
+                'is_online' => false,
             ]
         );
-        $snap->forceFill(['is_online' => false])->save();
     }
 }
