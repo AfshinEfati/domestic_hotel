@@ -3,9 +3,9 @@
 namespace App\Jobs\Hotel;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
-use App\Repositories\Contracts\AccommodationTypeRepositoryInterface;
 use App\Repositories\Contracts\CityRepositoryInterface;
 use App\Repositories\Contracts\FacilityGroupRepositoryInterface;
 use App\Repositories\Contracts\FacilityRepositoryInterface;
@@ -56,7 +56,7 @@ class SyncAccommodationsByCityJob implements ShouldQueue
     public function handle(
         ProviderRepositoryInterface $providerRepo,
         CityRepositoryInterface $cityRepo,
-        AccommodationTypeRepositoryInterface $accTypeRepo,
+        AccommodationTypeResolver $types,
         AccommodationRepositoryInterface $accRepo,
         AccommodationProviderMapRepositoryInterface $mapRepo,
         FacilityGroupRepositoryInterface $facilityGroupRepo,
@@ -91,10 +91,8 @@ class SyncAccommodationsByCityJob implements ShouldQueue
         $properties = $adapter->fetchPropertiesByCity($this->providerCityId);
 
         foreach ($properties as $p) {
-            $type = $accTypeRepo->firstOrCreate(
-                ['fa_name' => $p['type']],
-                ['en_name' => $p['type_en'] ?? null]
-            );
+            // Resolve to one of the seeded types, or the single unknown type.
+            $typeId = $types->resolveId($p['type'] ?? null, $p['type_en'] ?? null);
 
             $acc = $accRepo->updateOrCreate(
                 [
@@ -103,7 +101,7 @@ class SyncAccommodationsByCityJob implements ShouldQueue
                 ],
                 [
                     'en_name' => $p['name_en'] ?? null,
-                    'accommodation_type_id' => $type->id,
+                    'accommodation_type_id' => $typeId,
                     'star' => (int)($p['star'] ?? 0),
                     'grade' => $p['grade'] ?? null,
                     'address' => $p['address'] ?? null,

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\AccommodationType;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -30,6 +31,12 @@ class AccommodationTypeSeeder extends Seeder
             ],
             ['id'],
             ['fa_name', 'en_name', 'updated_at']
+        );
+
+        // Reuse a single fallback without assuming its numeric ID.
+        AccommodationType::query()->firstOrCreate(
+            ['fa_name' => 'نامشخص'],
+            ['en_name' => 'unknown']
         );
     }
 }
