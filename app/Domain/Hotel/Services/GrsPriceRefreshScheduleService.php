@@ -2,19 +2,22 @@
 
 namespace App\Domain\Hotel\Services;
 
+use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\Provider;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
-/** GRS scheduling policy; the scheduler never queries the database itself. */
+/** GRS price refresh policy: provider selection and persistence are repository-backed. */
 class GrsPriceRefreshScheduleService
 {
     public function __construct(
         private readonly HotelPriceRefreshScheduleRepository $schedules,
         private readonly ProviderRepositoryInterface $providers,
+        private readonly GrsAvailabilityPersistenceRepository $availability,
     ) {
     }
 
@@ -54,6 +57,19 @@ class GrsPriceRefreshScheduleService
     public function http200(int $id, int $gdsId): void
     {
         $this->schedules->markHttp200($id, $gdsId);
+    }
+
+    /** @param Collection<int, array<string, mixed>>|null $response */
+    public function verifiedRowCount(
+        int $providerId,
+        int $gdsId,
+        string $providerPropertyId,
+        ?Collection $response,
+        CarbonInterface $started,
+    ): int {
+        return $this->availability->verifiedRowCount(
+            $providerId, $gdsId, $providerPropertyId, $response, $started
+        );
     }
 
     public function persisted(int $id, int $gdsId): int
