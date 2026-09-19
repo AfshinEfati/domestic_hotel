@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 class GrsProviderSeederTest extends TestCase
 {
-    public function test_existing_provider_seeder_fills_missing_grs_keys_without_overriding_any_admin_settings(): void
+    public function test_existing_provider_seeder_cleans_old_grs_keys_without_overriding_admin_settings(): void
     {
         Schema::dropIfExists('providers');
         Schema::create('providers', function (Blueprint $table): void {
@@ -32,7 +32,14 @@ class GrsProviderSeederTest extends TestCase
             'config' => [
                 'token' => 'administrator-token',
                 'availability_rate_limit' => ['max_requests' => 3],
-                'price_refresh' => ['dispatch_limit' => 2, 'scheduler_enabled' => true],
+                'price_refresh' => [
+                    'default_days' => 120,
+                    'api_cooldown_minutes' => 45,
+                    'scheduler_enabled' => true,
+                    'dispatch_limit' => 2,
+                    'claim_minutes' => 20,
+                    'failure_backoff_minutes' => 30,
+                ],
             ],
             'is_active' => false,
             'is_online' => false,
@@ -50,7 +57,6 @@ class GrsProviderSeederTest extends TestCase
 
         $this->seed(ProviderSeeder::class);
         $this->assertProviderState();
-
         $this->seed(ProviderSeeder::class);
         $this->assertProviderState();
     }
@@ -60,9 +66,13 @@ class GrsProviderSeederTest extends TestCase
         $grs = Provider::query()->where('code', 'grs')->firstOrFail();
         $this->assertSame('administrator-token', $grs->config['token']);
         $this->assertSame(3, data_get($grs->config, 'availability_rate_limit.max_requests'));
-        $this->assertSame(2, data_get($grs->config, 'price_refresh.dispatch_limit'));
+        $this->assertSame(120, data_get($grs->config, 'price_refresh.default_days'));
+        $this->assertSame(45, data_get($grs->config, 'price_refresh.api_cooldown_minutes'));
         $this->assertTrue(data_get($grs->config, 'price_refresh.scheduler_enabled'));
-        $this->assertSame(GrsRefreshSettings::defaults()['default_days'], data_get($grs->config, 'price_refresh.default_days'));
+        $this->assertSame(
+            array_keys(GrsRefreshSettings::defaults()),
+            array_keys($grs->config['price_refresh'])
+        );
         $this->assertFalse($grs->is_active);
         $this->assertFalse($grs->is_online);
 
