@@ -1,27 +1,35 @@
 # GRS V2 — SSP-driven price and inventory refresh
 
-Updated: 2026-09-19. Branch: `feature/reservation-foundation`.
+Updated: 2026-09-19. Deployment branch: `main`.
 
 ## Scope and ownership
 
 - `provider:city grs` remains the separate city synchronizer.
-- `grs:sync-hotels` / `grs-hotels` own weekly GRS catalog and mappings.
-- `grs:sync-prices` / `grs-prices` own the availability refresh only. No catalog or city syncing on this path.
+- `grs:sync-hotels` queues the GRS catalog once, then dispatches `grs-hotels` database-only mapping batches.
+- `grs:sync-prices` / `grs-prices` own the availability refresh only; no city or catalog sync on this path.
 - The SSP application owns `hotel_price_refresh_schedules` and its migrations. GDS must not create or migrate SSP tables.
-- `shared_ssp` is an application-wide connection defined once in `config/database.php`, not a GRS-specific connection. Only shared DB credentials live in `.env` (`DB_HOST_SHARE`, `DB_PORT_SHARE`, `DB_DATABASE_SHARE`, `DB_USERNAME_SHARE`, `DB_PASSWORD_SHARE`).
+- `shared_ssp` is the application-wide shared connection from `config/database.php`. Only shared DB credentials belong in `.env` (`DB_HOST_SHARE`, `DB_PORT_SHARE`, `DB_DATABASE_SHARE`, `DB_USERNAME_SHARE`, `DB_PASSWORD_SHARE`).
 
-## SSP Model, Repository and Service
+## Critical identifier contract
 
-- `App\Models\HotelPriceRefreshSchedule`: explicit `shared_ssp` connection, SSP table name, no Eloquent timestamps.
-- `App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository`: the sole accessor for selecting due records and recording GDS timestamps.
-- `App\Domain\Hotel\Services\GrsPriceRefreshScheduleService`: selects one batch based on the provider's existing HTTP capacity and exposes the repository's lifecycle operations.
-- Required SSP columns: `grs_id`, `next_gds_run_at`, `last_gds_success_run_at`, `last_gds_success_at`; additionally the existing `id`, `is_active`, and `refresh_interval_minutes` are used. The first four are checked before dispatch. `hotel_accommodation_id` is an SSP ID, NOT the local GDS accommodation ID.
+The actual SSP table has an unsigned nullable **`gds_id`**, not `grs_id`.
 
-## Administrator settings and seeding
+```text
+SSP.hotel_price_refresh_schedules.gds_id
+  = local GDS accommodations.id
+    -> accommodation_provider_maps.accommodation_id
+       constrained by provider_id for providers.code = grs
+       -> accommodation_provider_maps.provider_property_id
+          = GRS property ID sent to /v1/available-rooms and /v1/properties/{id}
+```
 
-Use the existing `database/seeders/ProviderSeeder.php`, already included in `DatabaseSeeder`; do not create a separate seeder. Existing provider settings, token and online status are preserved. Re-running the seeder removes the three unapproved legacy keys `dispatch_limit`, `claim_minutes`, `failure_backoff_minutes` from the GRS `price_refresh` JSON.
+`hotel_accommodation_id` identifies an SSP hotel, NOT the GDS accommodation ID. Never use `gds_id` as the provider property ID. The dispatcher passes the numeric GDS ID into the worker; the worker independently looks up the GRS mapping before its HTTP request. Calendar verification uses both local `accommodation_id = gds_id` and `provider_property_id = grs property ID`.
 
-Approved `providers.config.price_refresh` defaults:
+`App\Models\HotelPriceRefreshSchedule` selects the `shared_ssp` connection with no automatic timestamps. `HotelPriceRefreshScheduleRepository` owns due selection and SSP timestamp writes, while `GrsPriceRefreshScheduleService` handles the GRS provider quota policy. Required shared columns checked by the repository: `gds_id`, `next_gds_run_at`, `last_gds_success_run_at`, `last_gds_success_at`. Also used: `id`, `is_active`, `refresh_interval_minutes`. No GDS migration for this SSP table.
+
+## Settings and scheduling
+
+Use existing `database/seeders/ProviderSeeder.php` (already included by `DatabaseSeeder`). Existing provider config and token are preserved. The approved `providers.config.price_refresh` defaults are:
 
 ```json
 {
@@ -31,26 +39,29 @@ Approved `providers.config.price_refresh` defaults:
 }
 ```
 
-Missing or invalid keys use defaults through `GrsRefreshSettings`. The existing `availability_rate_limit.max_requests` (default 10, hard ceiling 10) and `availability_rate_limit.window_minutes` (default 1) are the ONLY provider request-capacity settings. The existing provider Admin API can update the JSON without modifying PHP or `.env`.
+The legacy keys `dispatch_limit`, `claim_minutes`, `failure_backoff_minutes` are removed by the seeder. The existing `availability_rate_limit.max_requests` (default 10, hard ceiling 10) and `availability_rate_limit.window_minutes` (default 1) control request capacity. The Admin API can adjust the provider JSON.
 
-## Selection, request limits and exact timestamp semantics
+`routes/console.php` evaluates `scheduler_enabled` each minute. If false, only the automated schedule is disabled; a manual `php artisan grs:sync-prices --days=30` still dispatches a job. The CLI message saying "queued" confirms dispatch only, not that the HTTP request or persistence succeeded.
 
-1. The minute scheduler runs only when the current GRS provider JSON has `price_refresh.scheduler_enabled=true`. A manual `php artisan grs:sync-prices --days=30` is also available; absent override uses configured 90-day default.
-2. One query selects up to the existing GRS request capacity (10 by default) from active, due SSP schedules with a GRS ID, sorted **only** by `next_gds_run_at ASC, id ASC`. There is no separate hotel dispatch limit, random order, per-row polling, claim, artificial fairness sorting, or failure backoff.
-3. These selected hotels are queued together as separate per-property jobs. Neither selection nor queue dispatch modifies `next_gds_run_at`. Existing per-property job uniqueness and the shared HTTP rate limiter remain technical safeguards; they do not modify the schedule.
-4. On acquiring quota and starting the availability request, set `last_gds_success_run_at` using the SSP database clock. When GRS returns a successful HTTP response (normally HTTP 200), set `last_gds_success_at` even if subsequent mapping or persistence fails. This SSP-owned field name is preserved as supplied.
-5. The existing availability service performs the conditional supplementary room/rate-plan mapping request when missing. Both network calls are metered separately; the normal production planning assumption is **10 hotels = 10 HTTP requests**.
-6. Only after mapping verification and successful calendar persistence is `next_gds_run_at` advanced using the shared row's **current** `refresh_interval_minutes`. No other path advances or defers the due time: errors, 429, absent maps, quota exhaustion and empty availability leave it untouched.
-7. `api_cooldown_minutes` remains: HTTP 429 pauses provider requests via shared cache, honoring a longer `Retry-After` when supplied. The due time is still not moved.
+## Selection, limits and timestamps
 
-For 50 overdue, mapped hotels with one HTTP request each and successful persistence, five consecutive minute ticks can select ten hotels per tick. If the earliest due hotels keep failing or processing lags, they can remain at the head of subsequent selections: no unrequested priority changes or backoff were introduced.
+1. A due-scan job selects up to the provider's configured capacity (10 by default) from active, mapped-ID, due SSP rows, ordered by `next_gds_run_at ASC, id ASC`. An absent local provider map skips the selected row without changing its due time.
+2. The scan dispatches per-GDS-accommodation price jobs. Selection and dispatch do NOT modify `next_gds_run_at`. Job uniqueness and the shared rate limiter prevent uncontrolled duplicate work; they do not advance the SSP due time.
+3. The worker verifies the shared schedule and resolves the corresponding GRS provider property ID from its local map. Availability is fetched for the GRS ID only. When missing room/rate mappings require it, the existing service can send one supplementary property request; both calls consume the same API quota. Do not assume one hotel ALWAYS equals one HTTP request.
+4. Once API quota is acquired, `last_gds_success_run_at` is set just before the availability request using the SSP DB clock. Successful HTTP response updates `last_gds_success_at`, even if subsequent persistence fails.
+5. Only after verifying saved calendar dimensions does `next_gds_run_at` advance using that SSP row's current `refresh_interval_minutes`. Empty data, HTTP failures, 429, missing mappings, quota exhaustion or persistence failures leave the due time unchanged. HTTP 429 starts the configured shared cooldown (or longer `Retry-After`).
+6. With 50 overdue hotels and 10 successful persisted hotel jobs per minute, the first five scans can process them in order. If earliest rows fail or are delayed, they remain due and can be selected again; no fairness, claim or backoff was introduced.
+
+## Horizon and timeouts
+
+`config/horizon.php` must listen to all existing queues: `default`, `grs-hotels`, `grs-prices`. In `main`, `supervisor-1` uses the Redis connection, `balance=auto`, max 10 processes in production, and retains its 60-second timeout. The dedicated GRS price worker has a 55-second timeout below that Horizon limit; Redis retry_after defaults to 90 seconds. **Any newly introduced named queue must be added to Horizon configuration in the same change.** Separate queues alone do not make jobs faster.
 
 ## Verification and rollout
 
-1. Populate the four GDS-used columns in the **SSP-owned** table and configure the general `shared_ssp` connection. Do not run migrations against the shared database from GDS.
-2. For a disposable local test database only: `php artisan migrate:fresh --seed`. For an existing local database: `php artisan db:seed --class=ProviderSeeder`.
-3. Run `php artisan test --filter=GrsProviderSeederTest` and `php artisan test --filter=GrsPriceRefreshV2Test`. Tests exercise approved config keys, idempotent seeding, ten-of-fifty selection without deadline writes, and the timestamp lifecycle.
-4. Keep `scheduler_enabled=false` for a manual initial run: `php artisan grs:sync-prices --days=30`, then `php artisan queue:work --queue=grs-prices --sleep=3`. Inspect `room_calendars`, the two new timestamp columns and `next_gds_run_at`; do not treat the selector being DONE as proof of successful persistence.
-5. After local validation, the administrator can enable `price_refresh.scheduler_enabled` through the existing provider API.
+1. Confirm `shared_ssp.hotel_price_refresh_schedules` has `gds_id` and the three GDS timestamp fields. Do NOT run migrations against the SSP database from GDS.
+2. Run `php artisan test --filter=GrsPriceRefreshV2Test` against the disposable test database only. The fixture deliberately makes GDS IDs different from GRS property IDs and asserts the HTTP request sends the provider ID.
+3. Verify `php artisan config:show horizon` lists both GRS queues, `php artisan horizon:status` reports running, and the running Horizon process has loaded the latest config. Reload its managed process through the deployment process if needed.
+4. Keep `scheduler_enabled=false` while manually testing `php artisan grs:sync-prices --days=30`; this still selects up to the provider capacity, not exactly one hotel. Check `GRS due price scan finished` logs, individual price job logs, `room_calendars`, and SSP timestamps. A successful due-scan alone does not mean prices were persisted. Be careful with jobs left in Redis from older incompatible versions.
+5. After validation, the administrator may enable `price_refresh.scheduler_enabled` through the provider API.
 
-Laravel tests, the live SSP database and GRS production HTTP have NOT been executed from this GitHub-only change environment.
+Automated tests and production HTTP/SSP integration have not been run from the GitHub connector environment; verify them in the project runtime before enabling automated price refresh.
