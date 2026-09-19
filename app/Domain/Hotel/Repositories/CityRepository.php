@@ -7,10 +7,24 @@ use App\Models\Country;
 use App\Models\Provider;
 use App\Models\ProviderCityMap;
 use App\Models\State;
-use Illuminate\Support\Facades\DB;
 
 class CityRepository
 {
+    public function find(int $id): ?City
+    {
+        return City::query()->find($id);
+    }
+
+    public function mappedCityId(int $providerId, string $providerCityId): ?int
+    {
+        $id = ProviderCityMap::query()
+            ->where('provider_id', $providerId)
+            ->where('provider_city_id', $providerCityId)
+            ->value('city_id');
+
+        return $id === null ? null : (int) $id;
+    }
+
     public function upsertFromProvider(array $payload, Provider $provider): City
     {
         $country = Country::query()->firstOrCreate(

@@ -12,9 +12,7 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
         parent::__construct($model);
     }
 
-    /**
-     * @return iterable<AccommodationProviderMap>
-     */
+    /** @return iterable<AccommodationProviderMap> */
     public function getAll(): iterable
     {
         /** @var iterable<AccommodationProviderMap> */
@@ -25,6 +23,22 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
     {
         /** @var AccommodationProviderMap|null */
         return parent::find($id);
+    }
+
+    public function findForAccommodationAndProvider(int $accommodationId, int $providerId): ?AccommodationProviderMap
+    {
+        return $this->model->newQuery()
+            ->where('accommodation_id', $accommodationId)
+            ->where('provider_id', $providerId)
+            ->first();
+    }
+
+    public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap
+    {
+        return $this->model->newQuery()
+            ->where('provider_id', $providerId)
+            ->where('provider_property_id', $providerPropertyId)
+            ->first();
     }
 
     public function store(array $data): AccommodationProviderMap
@@ -67,15 +81,6 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
 
     public function chunkActive(callable $callback): void
     {
-        // برای تست فعلا ۱۰ دونه میگیریم
-//        $maps = $this->model
-//            ->whereHas('provider', function ($query) {
-//                $query->where('is_active', true);
-//            })
-//            ->limit(20)
-//            ->get();
-//        $callback($maps);
-        // بعد از تست اون بالا رو پاک کن و این پایین رو فعال کن .
         $this->model->whereHas('provider', function ($query) {
             $query->where('is_active', true);
         })->chunk(100, $callback);

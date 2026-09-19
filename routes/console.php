@@ -1,24 +1,20 @@
 <?php
 
-use App\Domain\Hotel\V2\GrsRefreshSettings;
-use App\Models\Provider;
+use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use Illuminate\Support\Facades\Schedule;
 
-// Hotel catalog only: no city sync, per-property HTTP requests, rooms, or availability.
+// Catalog sync remains separate from every provider's price refresh.
 Schedule::command('grs:sync-hotels')
     ->weeklyOn(5, '05:00')
     ->timezone('Asia/Tehran')
     ->withoutOverlapping();
 
-// Read the provider JSON on every scheduler evaluation so admin changes take
-// effect without changing .env, editing PHP or rebuilding the config cache.
-Schedule::command('grs:sync-prices')
+// One repository read per minute for all registered providers. Each provider
+// has its own handler, settings, job, API quota and pricing implementation.
+// No database query or provider-specific condition is placed in this file.
+Schedule::call(static fn (): int => app(ProviderPriceRefreshScheduler::class)->dispatch())
+    ->name('hotel-provider-price-refresh')
     ->everyMinute()
-    ->withoutOverlapping()
-    ->when(static function (): bool {
-        $provider = Provider::query()->where('code', 'grs')->first();
-        return $provider !== null && GrsRefreshSettings::from($provider)['scheduler_enabled'];
-    });
+    ->withoutOverlapping();
 
-// Legacy automatic GRS availability and generic room sync remain paused.
-// Their commands and jobs have not been modified by the V2 implementation.
+// Manual grs:sync-prices remains available independently of scheduler_enabled.

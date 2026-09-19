@@ -5,8 +5,6 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
-use App\Models\AccommodationProviderMap;
-use App\Models\Provider;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -16,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-/** One query selects one batch of due SSP hotels, ordered by their due time. */
+/** GRS-only due scan. Provider and accommodation lookups belong to repositories. */
 class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -37,7 +35,10 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(GrsPriceRefreshScheduleService $schedules): void
     {
-        $provider = Provider::query()->where('code', 'grs')->firstOrFail();
+        $provider = $schedules->grsProvider();
+        if ($provider === null) {
+            throw new RuntimeException('GRS provider is not configured.');
+        }
         if (!$provider->is_active || !$provider->is_online) {
             Log::warning('GRS prices skipped: provider inactive or offline');
             return;
@@ -54,18 +55,16 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $schedules->assertReady();
-        // SSP.gds_id is the local accommodations.id, never a provider property ID.
-        // No next_gds_run_at write occurs while selecting or dispatching.
+        // SSP.gds_id identifies GDS accommodations.id. Dispatch does not alter due time.
         $due = $schedules->due($provider);
         $queued = 0;
         $unmapped = 0;
 
         foreach ($due as $schedule) {
             $gdsId = (int) $schedule->gds_id;
-            $map = AccommodationProviderMap::query()
-                ->where('provider_id', $provider->id)
-                ->where('accommodation_id', $gdsId)
-                ->first();
+            $map = $gdsId > 0
+                ? $schedules->mapForAccommodation($gdsId, (int) $provider->id)
+                : null;
             $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
             if ($gdsId <= 0 || $grsId === '') {
@@ -77,7 +76,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
                 continue;
             }
 
-            // The worker resolves the provider property ID again from this GDS ID.
+            // Only the GDS ID goes to the worker; it resolves the provider ID anew.
             RefreshGrsPropertyPricesJob::dispatch(
                 (int) $schedule->id,
                 $gdsId,

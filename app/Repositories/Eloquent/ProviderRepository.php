@@ -12,9 +12,7 @@ class ProviderRepository extends BaseRepository implements ProviderRepositoryInt
         parent::__construct($model);
     }
 
-    /**
-     * @return iterable<Provider>
-     */
+    /** @return iterable<Provider> */
     public function getAll(): iterable
     {
         /** @var iterable<Provider> */
@@ -25,6 +23,11 @@ class ProviderRepository extends BaseRepository implements ProviderRepositoryInt
     {
         /** @var Provider|null */
         return parent::find($id);
+    }
+
+    public function findByCode(string $code): ?Provider
+    {
+        return $this->model->newQuery()->where('code', $code)->first();
     }
 
     public function store(array $data): Provider

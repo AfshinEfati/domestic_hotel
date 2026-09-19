@@ -7,12 +7,14 @@ use Illuminate\Support\Collection;
 
 interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInterface
 {
-    /**
-     * @return iterable<AccommodationProviderMap>
-     */
+    /** @return iterable<AccommodationProviderMap> */
     public function getAll(): iterable;
 
     public function find(int|string $id): ?AccommodationProviderMap;
+
+    public function findForAccommodationAndProvider(int $accommodationId, int $providerId): ?AccommodationProviderMap;
+
+    public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap;
 
     public function store(array $data): AccommodationProviderMap;
 
@@ -24,9 +26,7 @@ interface AccommodationProviderMapRepositoryInterface extends BaseRepositoryInte
 
     public function existsForAccommodationAndProvider(int $accommodationId, int $providerId): bool;
 
-    /**
-     * @param callable(Collection<int, AccommodationProviderMap>): void $callback
-     */
+    /** @param callable(Collection<int, AccommodationProviderMap>): void $callback */
     public function chunkMappedPropertiesByProvider(int $providerId, int $chunkSize, callable $callback): void;
 
     public function chunkByProvider(int $providerId, callable $callback): void;
