@@ -32,17 +32,11 @@ class GrsPriceRefreshV2Test extends TestCase
         $provider = new Provider(['config' => []]);
         $this->assertSame(GrsRefreshSettings::defaults(), GrsRefreshSettings::from($provider));
         $provider->config = ['price_refresh' => [
-            'default_days' => 120,
-            'api_cooldown_minutes' => 45,
-            'scheduler_enabled' => true,
-            'dispatch_limit' => 1,
-            'claim_minutes' => 30,
-            'failure_backoff_minutes' => 60,
+            'default_days' => 120, 'api_cooldown_minutes' => 45, 'scheduler_enabled' => true,
+            'dispatch_limit' => 1, 'claim_minutes' => 30, 'failure_backoff_minutes' => 60,
         ]];
         $this->assertSame([
-            'default_days' => 120,
-            'api_cooldown_minutes' => 45,
-            'scheduler_enabled' => true,
+            'default_days' => 120, 'api_cooldown_minutes' => 45, 'scheduler_enabled' => true,
         ], GrsRefreshSettings::from($provider));
         $provider->config = ['price_refresh' => ['default_days' => 0, 'scheduler_enabled' => false]];
         $this->assertSame(90, GrsRefreshSettings::from($provider)['default_days']);
@@ -54,7 +48,6 @@ class GrsPriceRefreshV2Test extends TestCase
         Bus::fake();
         Http::fake();
         config(['queue.default' => 'database', 'cache.default' => 'database']);
-
         $this->artisan('grs:sync-prices')->assertExitCode(0);
         Bus::assertDispatched(SyncGrsDuePricesJob::class, fn ($job) =>
             $job->days === null && $job->queue === 'grs-prices');
@@ -77,9 +70,9 @@ class GrsPriceRefreshV2Test extends TestCase
     public function test_horizon_listens_to_all_dispatched_queues_without_increasing_worker_timeout(): void
     {
         $queues = config('horizon.defaults.supervisor-1.queue');
-        $this->assertContains('default', $queues);
-        $this->assertContains('grs-hotels', $queues);
-        $this->assertContains('grs-prices', $queues);
+        foreach (['default', 'grs-hotels', 'grs-prices'] as $queue) {
+            $this->assertContains($queue, $queues);
+        }
         $this->assertSame(60, config('horizon.defaults.supervisor-1.timeout'));
         $this->assertLessThan(60, (new RefreshGrsPropertyPricesJob(1, 10001, 1, 30))->timeout);
     }
@@ -89,7 +82,6 @@ class GrsPriceRefreshV2Test extends TestCase
         $this->createScheduleFixture();
         Bus::fake();
         Http::fake();
-
         $service = app(GrsPriceRefreshScheduleService::class);
         $this->assertSame('shared_ssp', (new HotelPriceRefreshSchedule())->getConnectionName());
         $before = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')
@@ -97,10 +89,8 @@ class GrsPriceRefreshV2Test extends TestCase
 
         (new SyncGrsDuePricesJob())->handle($service);
         Bus::assertDispatchedTimes(RefreshGrsPropertyPricesJob::class, 10);
-        $this->assertSame(
-            range(10001, 10010),
-            Bus::dispatched(RefreshGrsPropertyPricesJob::class)->pluck('gdsId')->all()
-        );
+        $this->assertSame(range(10001, 10010),
+            Bus::dispatched(RefreshGrsPropertyPricesJob::class)->pluck('gdsId')->all());
         Bus::assertDispatched(RefreshGrsPropertyPricesJob::class, fn ($job) =>
             $job->gdsId === 10001 && $job->scheduleId === 1 && $job->days === 120 && $job->queue === 'grs-prices');
         $this->assertSame('50001', DB::table('accommodation_provider_maps')
@@ -117,10 +107,8 @@ class GrsPriceRefreshV2Test extends TestCase
         Bus::fake();
         (new SyncGrsDuePricesJob())->handle($service);
         Bus::assertDispatchedTimes(RefreshGrsPropertyPricesJob::class, 10);
-        $this->assertSame(
-            range(10011, 10020),
-            Bus::dispatched(RefreshGrsPropertyPricesJob::class)->pluck('gdsId')->all()
-        );
+        $this->assertSame(range(10011, 10020),
+            Bus::dispatched(RefreshGrsPropertyPricesJob::class)->pluck('gdsId')->all());
     }
 
     public function test_schedule_updates_are_scoped_to_local_gds_id(): void
@@ -129,19 +117,16 @@ class GrsPriceRefreshV2Test extends TestCase
         $repository = app(HotelPriceRefreshScheduleRepository::class);
         $before = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')
             ->where('id', 1)->value('next_gds_run_at');
-
         $this->assertNull($repository->active(1, 50001)); // Provider ID is not the GDS ID.
         $repository->markRequestStarted(1, 10001);
         $row = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')->where('id', 1)->first();
         $this->assertNotNull($row->last_gds_success_run_at);
         $this->assertNull($row->last_gds_success_at);
         $this->assertSame($before, $row->next_gds_run_at);
-
         $repository->markHttp200(1, 10001);
         $row = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')->where('id', 1)->first();
         $this->assertNotNull($row->last_gds_success_at);
         $this->assertSame($before, $row->next_gds_run_at);
-
         $this->assertSame(10, $repository->markPersisted(1, 10001));
         $this->assertGreaterThan(now()->toDateTimeString(), DB::connection('shared_ssp')
             ->table('hotel_price_refresh_schedules')->where('id', 1)->value('next_gds_run_at'));
@@ -153,19 +138,16 @@ class GrsPriceRefreshV2Test extends TestCase
         Http::fake(['*/v1/available-rooms*' => Http::response(['value' => ['rooms' => []]], 200)]);
         $before = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')
             ->where('id', 1)->value('next_gds_run_at');
-
         (new RefreshGrsPropertyPricesJob(1, 10001, 1, 30))->handle(
             app(HotelSyncService::class), app(GrsPriceRefreshScheduleService::class)
         );
-
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/available-rooms') &&
-            (string) ($request->data()['property_id'] ?? '') === '50001');
+            str_contains($request->url(), 'property_id=50001'));
         $row = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')->where('id', 1)->first();
         $this->assertNotNull($row->last_gds_success_run_at);
         $this->assertNotNull($row->last_gds_success_at);
-        // Empty availability cannot be considered successfully persisted.
-        $this->assertSame($before, $row->next_gds_run_at);
+        $this->assertSame($before, $row->next_gds_run_at); // Empty availability is not persisted.
     }
 
     public function test_200_triggers_both_tracking_hooks_even_when_response_has_no_calendar_rows(): void
@@ -207,7 +189,6 @@ class GrsPriceRefreshV2Test extends TestCase
         ]);
         $adapter = new RateLimitedGrsAdapter($provider);
         $adapter->fetchAvailability('50001', CarbonImmutable::today(), CarbonImmutable::tomorrow());
-
         try {
             $adapter->fetchRoomTypes('50001');
             $this->fail('Supplemental call should be deferred when the API slot is consumed.');
@@ -230,7 +211,6 @@ class GrsPriceRefreshV2Test extends TestCase
         DB::purge('shared_ssp');
         Cache::flush();
         RateLimiter::clear('grs-availability');
-
         Schema::dropIfExists('accommodation_provider_maps');
         Schema::dropIfExists('providers');
         Schema::create('providers', function (Blueprint $table): void {
@@ -267,7 +247,6 @@ class GrsPriceRefreshV2Test extends TestCase
             ]),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-
         $maps = [];
         $rows = [];
         foreach (range(1, 50) as $id) {
