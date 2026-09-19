@@ -86,10 +86,9 @@ class GrsPriceRefreshV2Test extends TestCase
                 'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
                 'foreign_key_constraints' => false,
             ],
-            'grs.shared_db.database' => 'test',
-            'grs.shared_db.username' => 'test',
             'cache.default' => 'array',
         ]);
+        DB::purge('shared_ssp');
         Cache::flush();
 
         Schema::create('providers', function (Blueprint $table): void {
