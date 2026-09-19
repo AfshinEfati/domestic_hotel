@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\RatePlanProviderMap;
 use App\Repositories\Contracts\RatePlanProviderMapRepositoryInterface;
+use Illuminate\Support\Collection;
 
 class RatePlanProviderMapRepository extends BaseRepository implements RatePlanProviderMapRepositoryInterface
 {
@@ -12,9 +13,7 @@ class RatePlanProviderMapRepository extends BaseRepository implements RatePlanPr
         parent::__construct($model);
     }
 
-    /**
-     * @return iterable<RatePlanProviderMap>
-     */
+    /** @return iterable<RatePlanProviderMap> */
     public function getAll(): iterable
     {
         /** @var iterable<RatePlanProviderMap> */
@@ -25,6 +24,19 @@ class RatePlanProviderMapRepository extends BaseRepository implements RatePlanPr
     {
         /** @var RatePlanProviderMap|null */
         return parent::find($id);
+    }
+
+    public function mappedForProviderIds(int $providerId, array $providerRateIds): Collection
+    {
+        if ($providerRateIds === []) {
+            return collect();
+        }
+
+        return $this->model->newQuery()
+            ->where('provider_id', $providerId)
+            ->whereIn('provider_rate_plan_id', $providerRateIds)
+            ->get()
+            ->keyBy('provider_rate_plan_id');
     }
 
     public function store(array $data): RatePlanProviderMap
