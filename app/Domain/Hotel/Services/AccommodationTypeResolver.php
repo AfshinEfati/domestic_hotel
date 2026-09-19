@@ -4,10 +4,7 @@ namespace App\Domain\Hotel\Services;
 
 use App\Repositories\Contracts\AccommodationTypeRepositoryInterface;
 
-/**
- * Provider terminology is not the accommodation-type taxonomy. Only the 16
- * seeded canonical IDs may be selected automatically; unknowns share one row.
- */
+/** Provider names map only to the seeded taxonomy; unknowns share one row. */
 class AccommodationTypeResolver
 {
     public const CANONICAL_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
@@ -59,14 +56,15 @@ class AccommodationTypeResolver
         'pension' => 16,
     ];
 
+    /** @var array<int, int|null> */
+    private array $resolvedCanonicalIds = [];
+    private ?int $unknownId = null;
+
     public function __construct(private readonly AccommodationTypeRepositoryInterface $types)
     {
     }
 
-    /**
-     * Return null when neither name is known OR two recognized names disagree.
-     * Never guess by substring: inn, privilege inn and apartment hotel differ.
-     */
+    /** Never guess by substring; conflicting recognized names mean unknown. */
     public function canonicalId(mixed $providerType, mixed $providerEnglishType = null): ?int
     {
         $primary = self::ALIASES[$this->normalize($providerType)] ?? null;
@@ -81,8 +79,18 @@ class AccommodationTypeResolver
 
     public function resolveId(mixed $providerType, mixed $providerEnglishType = null): int
     {
-        return $this->canonicalId($providerType, $providerEnglishType)
-            ?? $this->types->getOrCreateUnknownType()->id;
+        $id = $this->canonicalId($providerType, $providerEnglishType);
+        if ($id !== null) {
+            if (!array_key_exists($id, $this->resolvedCanonicalIds)) {
+                // Resolve the seeded ID from the database; never create canonical types.
+                $this->resolvedCanonicalIds[$id] = $this->types->find($id)?->id;
+            }
+            if ($this->resolvedCanonicalIds[$id] !== null) {
+                return $this->resolvedCanonicalIds[$id];
+            }
+        }
+
+        return $this->unknownId ??= $this->types->getOrCreateUnknownType()->id;
     }
 
     private function normalize(mixed $value): string
@@ -92,7 +100,6 @@ class AccommodationTypeResolver
         }
 
         $value = trim((string) $value);
-        // Split camelCase before lowercasing; normalize Arabic and Persian forms.
         $value = preg_replace('/(?<=[a-z])(?=[A-Z])/', ' ', $value) ?? $value;
         $value = str_replace(['ي', 'ى', 'ك', 'ۀ', 'ة', '‌', 'ـ'], ['ی', 'ی', 'ک', 'ه', 'ه', ' ', ''], $value);
         $value = preg_replace('/[\x{064B}-\x{065F}\x{0670}]/u', '', $value) ?? $value;
