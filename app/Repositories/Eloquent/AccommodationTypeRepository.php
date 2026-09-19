@@ -2,9 +2,8 @@
 
 namespace App\Repositories\Eloquent;
 
-use App\Repositories\Contracts\AccommodationTypeRepositoryInterface;
-use App\Repositories\Eloquent\BaseRepository;
 use App\Models\AccommodationType;
+use App\Repositories\Contracts\AccommodationTypeRepositoryInterface;
 
 class AccommodationTypeRepository extends BaseRepository implements AccommodationTypeRepositoryInterface
 {
@@ -13,24 +12,29 @@ class AccommodationTypeRepository extends BaseRepository implements Accommodatio
         parent::__construct($model);
     }
 
-    /**
-     * @return iterable<AccommodationType>
-     */
+    /** @return iterable<AccommodationType> */
     public function getAll(): iterable
     {
-        /** @var iterable<AccommodationType> */
         return parent::getAll();
     }
 
     public function find(int|string $id): ?AccommodationType
     {
-        /** @var AccommodationType|null */
         return parent::find($id);
     }
 
     public function store(array $data): AccommodationType
     {
-        /** @var AccommodationType */
         return parent::store($data);
+    }
+
+    public function getOrCreateUnknownType(): AccommodationType
+    {
+        // The AccommodationTypeSeeder creates this row before workers are run.
+        // Do not hardcode ID 17: production already contains extra type IDs.
+        return $this->model->newQuery()->firstOrCreate(
+            ['fa_name' => 'نامشخص'],
+            ['en_name' => 'unknown']
+        );
     }
 }
