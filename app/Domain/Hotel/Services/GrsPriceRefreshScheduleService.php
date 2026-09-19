@@ -28,23 +28,23 @@ class GrsPriceRefreshScheduleService
         return $this->schedules->due($capacity);
     }
 
-    public function active(int $id, string $grsId): ?HotelPriceRefreshSchedule
+    public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
     {
-        return $this->schedules->active($id, $grsId);
+        return $this->schedules->active($id, $gdsId);
     }
 
-    public function requestStarted(int $id, string $grsId): void
+    public function requestStarted(int $id, int $gdsId): void
     {
-        $this->schedules->markRequestStarted($id, $grsId);
+        $this->schedules->markRequestStarted($id, $gdsId);
     }
 
-    public function http200(int $id, string $grsId): void
+    public function http200(int $id, int $gdsId): void
     {
-        $this->schedules->markHttp200($id, $grsId);
+        $this->schedules->markHttp200($id, $gdsId);
     }
 
-    public function persisted(int $id, string $grsId): int
+    public function persisted(int $id, int $gdsId): int
     {
-        return $this->schedules->markPersisted($id, $grsId);
+        return $this->schedules->markPersisted($id, $gdsId);
     }
 }
