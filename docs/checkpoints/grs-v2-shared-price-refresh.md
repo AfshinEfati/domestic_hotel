@@ -4,65 +4,56 @@ Updated: 2026-09-19. Branch: `feature/reservation-foundation`.
 
 ## Ownership and isolation
 
-- `provider:city grs` remains unchanged and owns city synchronization.
-- `grs:sync-hotels` / queue `grs-hotels` own the weekly GRS hotel catalog and mappings.
-- `grs:sync-prices` / queue `grs-prices` own GRS availability only. No city/catalog sync and no other suppliers.
-- Legacy price and generic room commands still exist but their previous automatic scheduling is paused. Do not run legacy default price workers in parallel during the initial rollout.
+- `provider:city grs` owns city synchronization and is unchanged.
+- `grs:sync-hotels` / `grs-hotels` own the weekly hotel catalog and mappings.
+- `grs:sync-prices` / `grs-prices` own GRS price and inventory only; neither cities nor the catalog are synced by this path.
+- Legacy automatic availability and generic room schedules remain paused pending validation.
 
-## Required SSP schema and connection
+## Shared SSP database: standard Laravel configuration
 
-SSP owns `hotel_price_refresh_schedules`. Add `grs_id` (nullable string, indexed; provider's property ID) and `next_gds_run_at` (nullable indexed timestamp) in the SSP-owning project, then populate verified mapping IDs. SSP `hotel_accommodation_id` is not the local GDS accommodation ID. GDS does not migrate SSP tables. It checks both columns before contacting GRS.
+The `shared_ssp` connection belongs to the **entire application**, not to GRS. Its single definition lives in `config/database.php` under `connections.shared_ssp`. All consumers use `DB::connection('shared_ssp')`. No GRS-specific config file or `AppServiceProvider` dynamic connection registration is needed.
 
-Only the database **connection credentials** live in `.env`: `DB_HOST_SHARE`, `DB_DATABASE_SHARE`, `DB_USERNAME_SHARE`, `DB_PASSWORD_SHARE` and optional `DB_PORT_SHARE`. `shared_ssp` is registered separately from the local GDS connection. SSP owns its existing last-run, error and lock fields. GDS modifies only `next_gds_run_at`.
+Only connection credentials are supplied via `.env`: `DB_HOST_SHARE`, `DB_DATABASE_SHARE`, `DB_USERNAME_SHARE`, `DB_PASSWORD_SHARE` and optional `DB_PORT_SHARE`. These are not operational provider settings. If config is cached after changing credentials, rebuild/clear the Laravel config cache. The ordinary default database connection is untouched.
 
-## Admin-configurable refresh options (providers.config JSON)
+SSP owns `hotel_price_refresh_schedules`. Add/populate `grs_id` (nullable string, indexed, the provider's property ID) and `next_gds_run_at` (nullable indexed timestamp) in the SSP-owning project. SSP `hotel_accommodation_id` must not be treated as local GDS `accommodations.id`. GDS does not migrate SSP tables and checks both columns before contacting GRS. SSP retains ownership of last-run, error and locking fields; the GDS job updates only `next_gds_run_at`.
 
-For an existing provider, run **only** `php artisan db:seed --class=GrsPriceRefreshConfigSeeder` to populate missing defaults. This dedicated seeder requires an existing GRS provider and never creates, edits or deactivates other suppliers. `ProviderSeeder` also includes the defaults when creating a fresh GRS provider but may alter legacy supplier states and is NOT the recommended production backfill command. Both seeders preserve existing GRS administrator overrides and its online state. The existing provider Admin update service recursively merges JSON changes.
+## Provider config and seeding
 
-The GRS JSON contains the following `price_refresh` object:
+There is **one** provider seeder: `database/seeders/ProviderSeeder.php`. It contains the GRS `price_refresh` defaults alongside existing provider configuration. This is already included by the existing `DatabaseSeeder` for a fresh/test database; no extra seeder exists. For an existing database use `php artisan db:seed --class=ProviderSeeder`. Re-running it fills missing GRS JSON keys while preserving admin overrides, provider activation, authentication tokens and other suppliers' online states.
+
+`providers.config.price_refresh` defaults:
 
 ```json
 {
-  "price_refresh": {
-    "default_days": 90,
-    "dispatch_limit": 10,
-    "claim_minutes": 15,
-    "failure_backoff_minutes": 15,
-    "api_cooldown_minutes": 15,
-    "scheduler_enabled": false
-  }
+  "default_days": 90,
+  "dispatch_limit": 10,
+  "claim_minutes": 15,
+  "failure_backoff_minutes": 15,
+  "api_cooldown_minutes": 15,
+  "scheduler_enabled": false
 }
 ```
 
-Admins edit this object through the existing provider configuration API. Values are read directly from `providers.config` on each scan/worker execution and each scheduler tick; missing or invalid keys use defaults from `GrsRefreshSettings`. The existing `availability_rate_limit.max_requests` and `availability_rate_limit.window_minutes` in the same provider JSON control BOTH availability and supplementary room metadata requests. The safety cap of 10 requests/window remains.
-
-No `GRS_PRICES_DISPATCH_LIMIT`, `GRS_PRICES_SCHEDULER_ENABLED` or operational `config/grs.php` values are used. `config/grs.php` contains connection details only.
+The existing Admin provider API accepts changes to this JSON and merges them into the current provider configuration. `GrsRefreshSettings` reads it at each execution and provides defaults if keys are missing or invalid. The existing `availability_rate_limit.max_requests` and `availability_rate_limit.window_minutes` in the same JSON also meter both availability and necessary supplemental room/rate-plan requests. No provider operational settings belong in `.env` or a standalone PHP config file.
 
 ## Scheduling and priority
 
-- `php artisan grs:sync-prices` uses current `price_refresh.default_days` (90 if missing); `--days=30` overrides the range for that dispatch. `SyncGrsDuePricesJob::dispatch(30)` works too. Allowed override: 1–3650 days.
-- The minute scheduler is enabled only when `price_refresh.scheduler_enabled=true`. The seeded default is false until shared schema and integration are ready; changing it through Admin takes effect on subsequent scheduler evaluations.
-- The selector takes active, mapped, due SSP rows (`next_gds_run_at <= SSP clock`, or null) ordered oldest first. It claims up to `price_refresh.dispatch_limit` rows with compare-and-swap and a temporary deadline set by `price_refresh.claim_minutes`.
-- On verified persistence the deadline advances by the row's current SSP `refresh_interval_minutes`. Failures back off using `failure_backoff_minutes`. HTTP 429 sets a global cooldown of at least `api_cooldown_minutes` (or a longer Retry-After); quota deferrals retain jobs instead of marking success.
-- A missing local accommodation map causes no provider HTTP and is moved an hour later for investigation.
+- `php artisan grs:sync-prices` uses current `price_refresh.default_days` (90 fallback). `--days=30` overrides the window for that dispatch; allowed range is 1–3650 days.
+- The minute scheduler checks `price_refresh.scheduler_enabled` directly from the current provider JSON. The default is false until shared-schema deployment and tests are completed; an Admin change takes effect at the next scheduler evaluation.
+- The selector takes active due SSP rows with a non-null `grs_id`, orders by oldest `next_gds_run_at` then ID, and uses compare-and-swap to claim up to `price_refresh.dispatch_limit` hotels. The temporary claim duration comes from `claim_minutes`.
+- On verified calendar persistence, `next_gds_run_at` advances according to the shared row's latest `refresh_interval_minutes`. Failures back off using `failure_backoff_minutes`; HTTP 429 enables a shared cooldown using `api_cooldown_minutes` or longer Retry-After. Quota deferrals are not marked successful.
+- Unmapped provider hotels make no provider HTTP request and are deferred for investigation.
 
 ## API quota and mapping fallback
 
-`RateLimitedGrsAdapter` wraps both availability and conditional room metadata requests. Both consume the same GRS quota; the secondary request is NOT removed. Cache must be shared/persistent across workers (`database` or Redis) and the queue asynchronous. The V2 command rejects unsafe sync queues/unshared caches. Do not run an unmetered legacy worker concurrently.
+The V2 adapter meters both availability and necessary supplemental room-metadata requests on the same quota. The existing mapping fallback is retained. A persistent shared cache (database/Redis) and asynchronous queue are required; do not run unmetered legacy workers concurrently. The property worker verifies mapping ownership and recently persisted calendar dimensions before recording success. Empty/unmapped responses are not treated as successful refreshes.
 
-`HotelSyncService` performs the existing room/rate-plan mapping fallback. V2 surfaces swallowed supplementary failures and validates that response dimensions map to the right local hotel and calendar rows were freshly persisted before advancing the SSP deadline. Empty responses are not declared successful.
+## Testing and rollout
 
-## Safe rollout
+1. Fresh/test DB: `php artisan migrate:fresh --seed` **only in an expendable test environment**. For an existing database, do not refresh it: run `php artisan db:seed --class=ProviderSeeder` instead.
+2. Apply/populate the two SSP columns in its owning project and configure shared connection credentials in `.env`; run `php artisan config:clear` after connection changes if needed.
+3. Run `php artisan test --filter=GrsProviderSeederTest` and `php artisan test --filter=GrsPriceRefreshV2Test`. Keep `price_refresh.scheduler_enabled=false` and set `dispatch_limit=1` through the Admin provider API for the first live test.
+4. Manually dispatch `php artisan grs:sync-prices --days=30`, then run the separate queue worker `php artisan queue:work --queue=grs-prices --sleep=3`. Delayed jobs may remain in queue; do not interpret the dispatcher finishing as evidence of a successful per-hotel refresh.
+5. Verify new `room_calendars` values, each SSP `next_gds_run_at`, map completeness, logs and 429 handling. Only after validation, enable `price_refresh.scheduler_enabled=true` through Admin.
 
-1. Deploy/populate SSP `grs_id` and `next_gds_run_at`. Configure only shared DB credentials in `.env`.
-2. Run `php artisan db:seed --class=GrsPriceRefreshConfigSeeder`; edit `providers.config.price_refresh` through the existing Admin provider API. Keep `scheduler_enabled=false` and use `dispatch_limit=1` for the first live run.
-3. Run `php artisan test --filter=GrsPriceRefreshV2Test` and `php artisan test --filter=GrsProviderSeederTest`. Stop the old default price worker.
-4. Manually dispatch `php artisan grs:sync-prices --days=30`, then run only `php artisan queue:work --queue=grs-prices --sleep=3` in another terminal. Avoid `--stop-when-empty` while delayed jobs remain.
-5. Inspect `room_calendars`, mapping completeness, `next_gds_run_at`, logs and 429 handling. Dispatcher DONE alone does not prove successful per-hotel refresh.
-6. After validation enable `price_refresh.scheduler_enabled=true` through Admin. No `.env` or code edit is needed.
-
-## Boundaries
-
-- GDS does not own SSP migrations, nor was production SSP/GRS accessed during implementation.
-- Historical calendar rows with mismatched `provider_property_id` may need separate reconciliation rather than being reported successful.
-- Other suppliers and the old commands/jobs are not changed by this refactor.
+The SSP and live GRS API were not available for execution during this code change; the Laravel tests need to run in the project environment before rollout.
