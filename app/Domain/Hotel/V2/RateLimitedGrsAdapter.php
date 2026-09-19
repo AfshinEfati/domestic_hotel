@@ -37,15 +37,14 @@ class RateLimitedGrsAdapter extends GRSAdapter
         try {
             $this->acquireQuota();
             $rooms = parent::fetchRoomTypes($providerPropertyId);
-            // The catalog job owns hotel facilities/rules. The price job only
-            // needs room and rate-plan mappings from this supplementary call.
+            // Hotel catalog owns property metadata; this path needs maps only.
             return $rooms->map(static function (array $room): array {
                 unset($room['property_facilities'], $room['property_rules']);
                 return $room;
             });
         } catch (\Throwable $e) {
-            // The existing HotelSyncService catches supplemental exceptions.
-            // Remember them so the caller cannot report a partial refresh as a success.
+            // HotelSyncService catches supplemental exceptions. Remember them
+            // so a partial refresh cannot be marked successful.
             $this->supplementalError = $e;
             if ($e instanceof RequestException) {
                 $this->handleHttpError($e);
@@ -64,8 +63,7 @@ class RateLimitedGrsAdapter extends GRSAdapter
         $max = min(10, max(1, (int) data_get($this->provider->config, 'availability_rate_limit.max_requests', 10)));
         $seconds = max(60, (int) data_get($this->provider->config, 'availability_rate_limit.window_minutes', 1) * 60);
 
-        // Atomic across workers if CACHE_STORE uses database or Redis; use a
-        // single queue worker and a shared cache store in production.
+        // Serialize quota accounting across workers using the configured shared cache.
         Cache::lock('grs-v2-api-quota-lock', 10)->block(5, function () use ($max, $seconds): void {
             $cooldown = self::cooldownSeconds();
             if ($cooldown > 0) {
@@ -74,7 +72,6 @@ class RateLimitedGrsAdapter extends GRSAdapter
             if (RateLimiter::tooManyAttempts(self::LIMITER, $max)) {
                 throw new GrsApiQuotaExceeded(max(1, RateLimiter::availableIn(self::LIMITER)));
             }
-            // Charge quota before sending the request, including unsuccessful HTTP requests.
             RateLimiter::hit(self::LIMITER, $seconds);
         });
     }
@@ -85,7 +82,8 @@ class RateLimitedGrsAdapter extends GRSAdapter
             return;
         }
         $retryAfter = $e->response->header('Retry-After');
-        $seconds = is_numeric($retryAfter) ? max(900, (int) $retryAfter) : 900;
+        $configuredSeconds = GrsRefreshSettings::from($this->provider)['api_cooldown_minutes'] * 60;
+        $seconds = is_numeric($retryAfter) ? max($configuredSeconds, (int) $retryAfter) : $configuredSeconds;
         Cache::put(self::COOLDOWN, time() + $seconds, $seconds);
     }
 }
