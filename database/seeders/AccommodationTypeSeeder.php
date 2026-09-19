@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\AccommodationType;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -32,11 +33,10 @@ class AccommodationTypeSeeder extends Seeder
             ['fa_name', 'en_name', 'updated_at']
         );
 
-        // Additional production IDs are already occupied by bad imports. Never
-        // force ID 17 or overwrite an existing type while provisioning unknown.
-        DB::table('accommodation_types')->firstOrInsert(
+        // Reuse a single fallback without assuming its numeric ID.
+        AccommodationType::query()->firstOrCreate(
             ['fa_name' => 'نامشخص'],
-            ['en_name' => 'unknown', 'created_at' => now(), 'updated_at' => now()]
+            ['en_name' => 'unknown']
         );
     }
 }
