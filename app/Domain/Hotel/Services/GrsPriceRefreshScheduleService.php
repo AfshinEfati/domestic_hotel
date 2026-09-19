@@ -5,18 +5,21 @@ namespace App\Domain\Hotel\Services;
 use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\Provider;
+use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
-/** GRS price refresh policy: provider selection and persistence are repository-backed. */
+/** Provider-specific GRS refresh policy with repository-backed data access. */
 class GrsPriceRefreshScheduleService
 {
     public function __construct(
         private readonly HotelPriceRefreshScheduleRepository $schedules,
         private readonly ProviderRepositoryInterface $providers,
+        private readonly AccommodationProviderMapRepositoryInterface $maps,
         private readonly GrsAvailabilityPersistenceRepository $availability,
     ) {
     }
@@ -24,6 +27,16 @@ class GrsPriceRefreshScheduleService
     public function grsProvider(): ?Provider
     {
         return $this->providers->findByCode('grs');
+    }
+
+    public function providerById(int $id): ?Provider
+    {
+        return $this->providers->find($id);
+    }
+
+    public function mapForAccommodation(int $gdsId, int $providerId): ?AccommodationProviderMap
+    {
+        return $this->maps->findForAccommodationAndProvider($gdsId, $providerId);
     }
 
     public function schedulerEnabled(): bool
