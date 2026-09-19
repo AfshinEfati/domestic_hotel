@@ -5,11 +5,29 @@ namespace App\Domain\Hotel\Repositories;
 use App\Models\HotelPriceRefreshSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /** All access to the SSP-owned refresh schedule stays on its named connection. */
 class HotelPriceRefreshScheduleRepository
 {
+    public function assertReady(): void
+    {
+        $connection = config('database.connections.shared_ssp');
+        if (!is_array($connection) || !isset($connection['driver']) ||
+            (in_array($connection['driver'], ['mysql', 'mariadb'], true) &&
+                (trim((string) ($connection['database'] ?? '')) === '' ||
+                    trim((string) ($connection['username'] ?? '')) === ''))) {
+            throw new RuntimeException('Configure the shared_ssp connection using the DB_*_SHARE credentials.');
+        }
+
+        foreach (['grs_id', 'next_gds_run_at', 'last_gds_success_run_at', 'last_gds_success_at'] as $column) {
+            if (!Schema::connection('shared_ssp')->hasColumn('hotel_price_refresh_schedules', $column)) {
+                throw new RuntimeException("SSP hotel_price_refresh_schedules.{$column} must exist before GRS pricing.");
+            }
+        }
+    }
+
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function due(int $requestCapacity): Collection
     {
