@@ -4,19 +4,13 @@ namespace App\Domain\Hotel\V2;
 
 use App\Models\Provider;
 
-/**
- * The provider's config JSON is the sole source of operational refresh settings.
- * These defaults are used only when a JSON key is absent or invalid.
- */
+/** Operational GRS settings are owned by the provider's editable config JSON. */
 final class GrsRefreshSettings
 {
     public static function defaults(): array
     {
         return [
             'default_days' => 90,
-            'dispatch_limit' => 10,
-            'claim_minutes' => 15,
-            'failure_backoff_minutes' => 15,
             'api_cooldown_minutes' => 15,
             'scheduler_enabled' => false,
         ];
@@ -31,9 +25,6 @@ final class GrsRefreshSettings
 
         return [
             'default_days' => self::boundedInt($values['default_days'] ?? null, $defaults['default_days'], 1, 3650),
-            'dispatch_limit' => self::boundedInt($values['dispatch_limit'] ?? null, $defaults['dispatch_limit'], 1, 100),
-            'claim_minutes' => self::boundedInt($values['claim_minutes'] ?? null, $defaults['claim_minutes'], 5, 1440),
-            'failure_backoff_minutes' => self::boundedInt($values['failure_backoff_minutes'] ?? null, $defaults['failure_backoff_minutes'], 1, 1440),
             'api_cooldown_minutes' => self::boundedInt($values['api_cooldown_minutes'] ?? null, $defaults['api_cooldown_minutes'], 1, 1440),
             'scheduler_enabled' => self::boolValue($values['scheduler_enabled'] ?? null, $defaults['scheduler_enabled']),
         ];
