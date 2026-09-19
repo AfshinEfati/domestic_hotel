@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Console\Commands\V2\SyncGrsHotelDetailsCommand;
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
 use App\Domain\Hotel\V2\GrsHotelDetailsClient;
 use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
@@ -55,7 +54,7 @@ class GrsHotelDetailsV2Test extends TestCase
             'code' => 'grs', 'is_active' => true, 'is_online' => true,
             'config' => ['base_url' => 'https://grs.example', 'token' => 'test-token'],
         ]);
-        Http::fake(['grs.example/v1/properties/2065' => Http::response([
+        Http::fake(['https://grs.example/v1/properties/2065' => Http::response([
             'code' => 200,
             'value' => ['property' => [
                 'id' => 2065,
