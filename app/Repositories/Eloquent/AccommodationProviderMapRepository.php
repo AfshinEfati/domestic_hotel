@@ -33,6 +33,14 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->first();
     }
 
+    public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap
+    {
+        return $this->model->newQuery()
+            ->where('provider_id', $providerId)
+            ->where('provider_property_id', $providerPropertyId)
+            ->first();
+    }
+
     public function store(array $data): AccommodationProviderMap
     {
         /** @var AccommodationProviderMap */
