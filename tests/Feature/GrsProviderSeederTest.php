@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 class GrsProviderSeederTest extends TestCase
 {
-    public function test_seeding_fills_missing_grs_keys_without_overriding_admin_settings(): void
+    public function test_existing_provider_seeder_fills_missing_grs_keys_without_overriding_any_admin_settings(): void
     {
         Schema::dropIfExists('providers');
         Schema::create('providers', function (Blueprint $table): void {
@@ -37,22 +37,43 @@ class GrsProviderSeederTest extends TestCase
             'is_active' => false,
             'is_online' => false,
         ]);
+        Provider::query()->create([
+            'fa_name' => 'Parto', 'code' => 'parto',
+            'config' => ['token' => 'parto-admin-token'],
+            'is_active' => true, 'is_online' => true,
+        ]);
+        Provider::query()->create([
+            'fa_name' => 'Snap', 'code' => 'snap',
+            'config' => ['token' => 'snap-admin-token'],
+            'is_active' => false, 'is_online' => true,
+        ]);
 
         $this->seed(ProviderSeeder::class);
-        $provider = Provider::query()->where('code', 'grs')->firstOrFail();
-        $this->assertSame('administrator-token', $provider->config['token']);
-        $this->assertSame(3, data_get($provider->config, 'availability_rate_limit.max_requests'));
-        $this->assertSame(2, data_get($provider->config, 'price_refresh.dispatch_limit'));
-        $this->assertTrue(data_get($provider->config, 'price_refresh.scheduler_enabled'));
-        $this->assertSame(GrsRefreshSettings::defaults()['default_days'], data_get($provider->config, 'price_refresh.default_days'));
-        $this->assertFalse($provider->is_active);
-        $this->assertFalse($provider->is_online);
+        $this->assertProviderState();
 
         $this->seed(ProviderSeeder::class);
-        $provider->refresh();
-        $this->assertSame(2, data_get($provider->config, 'price_refresh.dispatch_limit'));
-        $this->assertTrue(data_get($provider->config, 'price_refresh.scheduler_enabled'));
-        $this->assertSame('administrator-token', $provider->config['token']);
-        $this->assertFalse($provider->is_online);
+        $this->assertProviderState();
+    }
+
+    private function assertProviderState(): void
+    {
+        $grs = Provider::query()->where('code', 'grs')->firstOrFail();
+        $this->assertSame('administrator-token', $grs->config['token']);
+        $this->assertSame(3, data_get($grs->config, 'availability_rate_limit.max_requests'));
+        $this->assertSame(2, data_get($grs->config, 'price_refresh.dispatch_limit'));
+        $this->assertTrue(data_get($grs->config, 'price_refresh.scheduler_enabled'));
+        $this->assertSame(GrsRefreshSettings::defaults()['default_days'], data_get($grs->config, 'price_refresh.default_days'));
+        $this->assertFalse($grs->is_active);
+        $this->assertFalse($grs->is_online);
+
+        $parto = Provider::query()->where('code', 'parto')->firstOrFail();
+        $this->assertSame(['token' => 'parto-admin-token'], $parto->config);
+        $this->assertTrue($parto->is_active);
+        $this->assertTrue($parto->is_online);
+
+        $snap = Provider::query()->where('code', 'snap')->firstOrFail();
+        $this->assertSame(['token' => 'snap-admin-token'], $snap->config);
+        $this->assertFalse($snap->is_active);
+        $this->assertTrue($snap->is_online);
     }
 }
