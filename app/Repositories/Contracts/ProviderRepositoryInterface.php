@@ -6,12 +6,12 @@ use App\Models\Provider;
 
 interface ProviderRepositoryInterface extends BaseRepositoryInterface
 {
-    /**
-     * @return iterable<Provider>
-     */
+    /** @return iterable<Provider> */
     public function getAll(): iterable;
 
     public function find(int|string $id): ?Provider;
+
+    public function findByCode(string $code): ?Provider;
 
     public function store(array $data): Provider;
 
