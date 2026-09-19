@@ -39,8 +39,12 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         $skipped = 0;
 
         foreach ($this->properties as $property) {
+            if (!is_array($property)) {
+                $skipped++;
+                continue;
+            }
             $propertyId = trim((string) ($property['id'] ?? ''));
-            if ($propertyId === '' || !is_array($property)) {
+            if ($propertyId === '') {
                 $skipped++;
                 continue;
             }
@@ -115,8 +119,8 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                     'star' => is_numeric($property['star'] ?? null) ? (int) $property['star'] : null,
                     'grade' => $this->nullableString($property['grade'] ?? null),
                     'address' => $this->nullableString($property['address'] ?? null),
-                    'lat' => is_numeric($property['latitude'] ?? null) ? $property['latitude'] : null,
-                    'lng' => is_numeric($property['longitude'] ?? null) ? $property['longitude'] : null,
+                    'lat' => $this->coordinate($property['latitude'] ?? null, -90, 90),
+                    'lng' => $this->coordinate($property['longitude'] ?? null, -180, 180),
                     'is_active' => true,
                 ]);
                 $new = true;
@@ -169,17 +173,17 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             }
         }
 
-        // Different name: match only on the same normalized address AND close coordinates.
+        // Different name: match only on the same normalized address AND close valid coordinates.
         $address = $this->normalize($property['address'] ?? null);
-        $lat = $property['latitude'] ?? null;
-        $lng = $property['longitude'] ?? null;
-        if ($address === '' || !is_numeric($lat) || !is_numeric($lng)) {
+        $lat = $this->coordinate($property['latitude'] ?? null, -90, 90);
+        $lng = $this->coordinate($property['longitude'] ?? null, -180, 180);
+        if ($address === '' || $lat === null || $lng === null) {
             return null;
         }
         $matches = $candidates->filter(fn (Accommodation $hotel) =>
             $hotel->lat !== null && $hotel->lng !== null &&
-            abs((float) $hotel->lat - (float) $lat) <= 0.00015 &&
-            abs((float) $hotel->lng - (float) $lng) <= 0.00015 &&
+            abs((float) $hotel->lat - $lat) <= 0.00015 &&
+            abs((float) $hotel->lng - $lng) <= 0.00015 &&
             $this->normalize($hotel->address) === $address &&
             (!is_numeric($property['star'] ?? null) || $hotel->star === null ||
                 (int) $hotel->star === (int) $property['star'])
@@ -251,6 +255,17 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             // Do not detach facilities from another provider or manually entered data.
             $hotel->facilities()->syncWithoutDetaching($ids);
         }
+    }
+
+    private function coordinate(mixed $value, float $minimum, float $maximum): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $coordinate = (float) $value;
+        return is_finite($coordinate) && $coordinate >= $minimum && $coordinate <= $maximum
+            ? $coordinate
+            : null;
     }
 
     private function nullableString(mixed $value): ?string
