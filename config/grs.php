@@ -1,8 +1,8 @@
 <?php
 
 return [
-    // SSP is the source of truth for which GRS hotels need a price refresh.
-    // These credentials must be configured in the local .env, never committed.
+    // Connection credentials only. All GRS refresh operations are configured
+    // by admins in providers.config.price_refresh, NOT by .env or this file.
     'shared_db' => [
         'driver' => 'mysql',
         'host' => env('DB_HOST_SHARE', '127.0.0.1'),
@@ -17,14 +17,5 @@ return [
         'prefix_indexes' => true,
         'strict' => true,
         'engine' => null,
-    ],
-    'availability' => [
-        'default_days' => 90,
-        // Set to 1 for the first live test, then increase after inspecting results.
-        'dispatch_limit' => (int) env('GRS_PRICES_DISPATCH_LIMIT', 10),
-        'claim_minutes' => 15,
-        'failure_backoff_minutes' => 15,
-        // Disabled by default: opt in AFTER the shared migration and tests succeed.
-        'scheduler_enabled' => (bool) env('GRS_PRICES_SCHEDULER_ENABLED', false),
     ],
 ];
