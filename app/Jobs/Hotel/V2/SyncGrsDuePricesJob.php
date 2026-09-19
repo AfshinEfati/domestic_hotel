@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Hotel\V2;
 
+use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
@@ -33,21 +34,21 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        // Do not overlap two scans with different day windows.
         return 'grs-due-prices-dispatch';
     }
 
     public function handle(): void
     {
-        $days = $this->days ?? (int) config('grs.availability.default_days', 90);
-        if ($days < 1 || $days > 3650) {
-            throw new RuntimeException('GRS availability days must be between 1 and 3650.');
-        }
-
         $provider = Provider::query()->where('code', 'grs')->firstOrFail();
         if (!$provider->is_active || !$provider->is_online) {
             Log::warning('GRS prices skipped: provider inactive or offline');
             return;
+        }
+
+        $settings = GrsRefreshSettings::from($provider);
+        $days = $this->days ?? $settings['default_days'];
+        if ($days < 1 || $days > 3650) {
+            throw new RuntimeException('GRS availability days must be between 1 and 3650.');
         }
 
         if (RateLimitedGrsAdapter::cooldownSeconds() > 0) {
@@ -67,11 +68,10 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $db = DB::connection('shared_ssp');
-        // Compare and write TIMESTAMP using SSP's own database clock, regardless
-        // of PHP timezone or a differing timezone on the local GDS connection.
+        // Compare and write TIMESTAMP using SSP's own database clock.
         $now = CarbonImmutable::parse($db->selectOne('SELECT CURRENT_TIMESTAMP AS db_now')->db_now);
-        $limit = max(1, min(100, (int) config('grs.availability.dispatch_limit', 10)));
-        $claimMinutes = max(5, (int) config('grs.availability.claim_minutes', 15));
+        $limit = $settings['dispatch_limit'];
+        $claimMinutes = $settings['claim_minutes'];
 
         $due = $db->table('hotel_price_refresh_schedules')
             ->where('is_active', true)
@@ -92,8 +92,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
                 continue;
             }
 
-            // Compare-and-swap claim so multiple schedulers cannot dispatch the same row.
-            // The claim expires: a lost job can be selected again after claimMinutes.
+            // Compare-and-swap claim prevents simultaneous schedulers selecting a row.
             $claim = $db->table('hotel_price_refresh_schedules')
                 ->where('id', $schedule->id)
                 ->where('is_active', true)
