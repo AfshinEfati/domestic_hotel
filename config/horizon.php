@@ -22,9 +22,9 @@ return [
     | Horizon Path
     |--------------------------------------------------------------------------
     |
-    | This is the URI path where Horizon will be accessible from. Feel free
-    | to change this path to anything you like. Note that the URI will not
-    | affect the paths of its internal API that aren't exposed to users.
+    | This is the URI path where Horizon will be accessible from. If this
+    | setting is null, Horizon will reside under the same domain as the
+    | application. Otherwise, this value will serve as the subdomain.
     |
     */
 
@@ -48,9 +48,7 @@ return [
     | Horizon Redis Prefix
     |--------------------------------------------------------------------------
     |
-    | This prefix will be used when storing all Horizon data in Redis. You
-    | may modify the prefix when you are running multiple installations
-    | of Horizon on the same server so that they don't have problems.
+    | This prefix is used for all Horizon data in Redis.
     |
     */
 
@@ -63,11 +61,6 @@ return [
     |--------------------------------------------------------------------------
     | Horizon Route Middleware
     |--------------------------------------------------------------------------
-    |
-    | These middleware will get attached onto each Horizon route, giving you
-    | the chance to add your own middleware to this list or change any of
-    | the existing middleware. Or, you can simply stick with this list.
-    |
     */
 
     'middleware' => ['web'],
@@ -76,26 +69,18 @@ return [
     |--------------------------------------------------------------------------
     | Queue Wait Time Thresholds
     |--------------------------------------------------------------------------
-    |
-    | This option allows you to configure when the LongWaitDetected event
-    | will be fired. Every connection / queue combination may have its
-    | own, unique threshold (in seconds) before this event is fired.
-    |
     */
 
     'waits' => [
         'redis:default' => 60,
+        'redis:grs-hotels' => 60,
+        'redis:grs-prices' => 60,
     ],
 
     /*
     |--------------------------------------------------------------------------
     | Job Trimming Times
     |--------------------------------------------------------------------------
-    |
-    | Here you can configure for how long (in minutes) you desire Horizon to
-    | persist the recent and failed jobs. Typically, recent jobs are kept
-    | for one hour while all failed jobs are stored for an entire week.
-    |
     */
 
     'trim' => [
@@ -111,11 +96,6 @@ return [
     |--------------------------------------------------------------------------
     | Silenced Jobs
     |--------------------------------------------------------------------------
-    |
-    | Silencing a job will instruct Horizon to not place the job in the list
-    | of completed jobs within the Horizon dashboard. This setting may be
-    | used to fully remove any noisy jobs from the completed jobs list.
-    |
     */
 
     'silenced' => [
@@ -126,11 +106,6 @@ return [
     |--------------------------------------------------------------------------
     | Metrics
     |--------------------------------------------------------------------------
-    |
-    | Here you can configure how many snapshots should be kept to display in
-    | the metrics graph. This will get used in combination with Horizon's
-    | `horizon:snapshot` schedule to define how long to retain metrics.
-    |
     */
 
     'metrics' => [
@@ -144,13 +119,6 @@ return [
     |--------------------------------------------------------------------------
     | Fast Termination
     |--------------------------------------------------------------------------
-    |
-    | When this option is enabled, Horizon's "terminate" command will not
-    | wait on all of the workers to terminate unless the --wait option
-    | is provided. Fast termination can shorten deployment delay by
-    | allowing a new instance of Horizon to start while the last
-    | instance will continue to terminate each of its workers.
-    |
     */
 
     'fast_termination' => false,
@@ -159,11 +127,6 @@ return [
     |--------------------------------------------------------------------------
     | Memory Limit (MB)
     |--------------------------------------------------------------------------
-    |
-    | This value describes the maximum amount of memory the Horizon master
-    | supervisor may consume before it is terminated and restarted. For
-    | configuring these limits on your workers, see the next section.
-    |
     */
 
     'memory_limit' => 64,
@@ -172,17 +135,12 @@ return [
     |--------------------------------------------------------------------------
     | Queue Worker Configuration
     |--------------------------------------------------------------------------
-    |
-    | Here you may define the queue worker settings used by your application
-    | in all environments. These supervisors and settings handle all your
-    | queued jobs and will be provisioned by Horizon during deployment.
-    |
     */
 
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            'queue' => ['default', 'grs-hotels', 'grs-prices'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
