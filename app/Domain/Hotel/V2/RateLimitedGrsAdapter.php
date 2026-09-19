@@ -3,29 +3,46 @@
 namespace App\Domain\Hotel\V2;
 
 use App\Domain\Hotel\Providers\GRSAdapter;
+use Closure;
 use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 
-/**
- * GRS-only adapter used by V2 price refresh. Every network call is metered,
- * including the additional property detail call needed for missing room maps.
- */
+/** Both availability and the necessary supplemental room request use one API quota. */
 class RateLimitedGrsAdapter extends GRSAdapter
 {
-    private const LIMITER = 'grs-availability'; // Share accounting with the legacy GRS flow.
+    private const LIMITER = 'grs-availability';
     private const COOLDOWN = 'grs-v2-api-cooldown';
 
     public ?Collection $lastAvailability = null;
     public ?\Throwable $supplementalError = null;
 
+    private ?Closure $availabilityStarting = null;
+    private ?Closure $availabilitySucceeded = null;
+
+    public function trackAvailability(Closure $starting, Closure $succeeded): void
+    {
+        $this->availabilityStarting = $starting;
+        $this->availabilitySucceeded = $succeeded;
+    }
+
     public function fetchAvailability(string $providerPropertyId, DateTimeInterface $from, DateTimeInterface $to): Collection
     {
         $this->acquireQuota();
         try {
-            return $this->lastAvailability = parent::fetchAvailability($providerPropertyId, $from, $to);
+            // Quota is acquired before recording the actual HTTP attempt.
+            if ($this->availabilityStarting !== null) {
+                ($this->availabilityStarting)();
+            }
+            $availability = parent::fetchAvailability($providerPropertyId, $from, $to);
+            // The parent uses ->throw(): reaching this line means its HTTP GET
+            // returned successfully, regardless of later calendar persistence.
+            if ($this->availabilitySucceeded !== null) {
+                ($this->availabilitySucceeded)();
+            }
+            return $this->lastAvailability = $availability;
         } catch (RequestException $e) {
             $this->handleHttpError($e);
             throw $e;
@@ -37,7 +54,7 @@ class RateLimitedGrsAdapter extends GRSAdapter
         try {
             $this->acquireQuota();
             $rooms = parent::fetchRoomTypes($providerPropertyId);
-            // Hotel catalog owns property metadata; this path needs maps only.
+            // Catalog metadata belongs to the separate hotel catalog flow.
             return $rooms->map(static function (array $room): array {
                 unset($room['property_facilities'], $room['property_rules']);
                 return $room;
@@ -63,7 +80,6 @@ class RateLimitedGrsAdapter extends GRSAdapter
         $max = min(10, max(1, (int) data_get($this->provider->config, 'availability_rate_limit.max_requests', 10)));
         $seconds = max(60, (int) data_get($this->provider->config, 'availability_rate_limit.window_minutes', 1) * 60);
 
-        // Serialize quota accounting across workers using the configured shared cache.
         Cache::lock('grs-v2-api-quota-lock', 10)->block(5, function () use ($max, $seconds): void {
             $cooldown = self::cooldownSeconds();
             if ($cooldown > 0) {
