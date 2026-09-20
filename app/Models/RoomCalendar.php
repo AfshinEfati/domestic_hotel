@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RoomCalendar extends Model
 {
+    use MassPrunable;
+
     protected $fillable = [
         'id',
         'accommodation_id',
@@ -64,6 +68,11 @@ class RoomCalendar extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function prunable(): Builder
+    {
+        return static::query()->where('day', '<', now('Asia/Tehran')->toDateString());
+    }
 
     public function accommodation(): BelongsTo
     {
