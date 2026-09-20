@@ -49,43 +49,52 @@ class GrsHotelDetailsRepository
 
     public function persist(AccommodationProviderMap $map, array $property, HotelChildPolicyTextParser $parser): void
     {
-        // Facilities and their groups have no DB uniqueness constraint. Serialize
-        // the short dictionary writes across details workers to avoid duplicates.
-        Cache::store('redis')->lock('grs-v2-hotel-details-dictionary', 120)->block(30, function () use ($map, $property, $parser): void {
-            DB::transaction(function () use ($map, $property, $parser): void {
-                $map->refresh();
-                $hotel = $map->accommodation;
-                if ($hotel === null || (string) $map->provider_property_id !== (string) ($property['id'] ?? '')) {
-                    throw new RuntimeException('GRS details mapping was deleted or changed during refresh.');
-                }
+        $facilityIds = [];
+        if ($property['facilities'] !== []) {
+            // Facility/group names have no DB uniqueness constraints. Commit
+            // dictionary entries before releasing this short shared lock.
+            // Room/plan/rule updates remain parallel and independent per hotel.
+            $facilityIds = Cache::store('redis')->lock('grs-v2-hotel-details-dictionary', 60)
+                ->block(30, fn (): array => DB::transaction(
+                    fn (): array => $this->resolveFacilities($property['facilities'])
+                ));
+        }
 
-                $this->syncFacilities($hotel, $property['facilities']);
-                foreach ($property['room_types'] as $roomData) {
-                    if (!is_array($roomData)) {
-                        throw new RuntimeException('GRS property has an invalid room type.');
-                    }
-                    $this->syncRoom($map, $roomData);
-                }
+        DB::transaction(function () use ($map, $property, $parser, $facilityIds): void {
+            $map->refresh();
+            $hotel = $map->accommodation;
+            if ($hotel === null || (string) $map->provider_property_id !== (string) ($property['id'] ?? '')) {
+                throw new RuntimeException('GRS details mapping was deleted or changed during refresh.');
+            }
+            if ($facilityIds !== []) {
+                // Do not remove manually curated or other providers' facilities.
+                $hotel->facilities()->syncWithoutDetaching($facilityIds);
+            }
 
-                // The provider also exposes a property-level plan list. Reuse
-                // the same mappings; no duplicate plans or calendar writes.
-                foreach (is_array($property['rate_plans'] ?? null) ? $property['rate_plans'] : [] as $planData) {
-                    if (is_array($planData)) {
-                        $this->syncRatePlan($map, $planData);
-                    }
+            foreach ($property['room_types'] as $roomData) {
+                if (!is_array($roomData)) {
+                    throw new RuntimeException('GRS property has an invalid room type.');
                 }
-
-                foreach ($property['rules'] as $ruleData) {
-                    if (!is_array($ruleData)) {
-                        throw new RuntimeException('GRS property has an invalid rule.');
-                    }
-                    $this->syncRule((int) $map->accommodation_id, $ruleData, $parser);
+                $this->syncRoom($map, $roomData);
+            }
+            // The provider also exposes a property-level plan list. Reuse the
+            // same mappings; no duplicate plans and no calendar writes.
+            foreach (is_array($property['rate_plans'] ?? null) ? $property['rate_plans'] : [] as $planData) {
+                if (is_array($planData)) {
+                    $this->syncRatePlan($map, $planData);
                 }
-            });
+            }
+            foreach ($property['rules'] as $ruleData) {
+                if (!is_array($ruleData)) {
+                    throw new RuntimeException('GRS property has an invalid rule.');
+                }
+                $this->syncRule((int) $map->accommodation_id, $ruleData, $parser);
+            }
         });
     }
 
-    private function syncFacilities($hotel, array $facilities): void
+    /** @return array<int, array{description: ?string}> */
+    private function resolveFacilities(array $facilities): array
     {
         $ids = [];
         foreach ($facilities as $data) {
@@ -108,11 +117,7 @@ class GrsHotelDetailsRepository
             $description = $this->nullableString($data['description'] ?? null);
             $ids[$facility->id] = ['description' => $description === null ? null : mb_substr($description, 0, 500)];
         }
-
-        // Never detach manually assigned or other providers' facilities.
-        if ($ids !== []) {
-            $hotel->facilities()->syncWithoutDetaching($ids);
-        }
+        return $ids;
     }
 
     private function syncRoom(AccommodationProviderMap $map, array $data): void

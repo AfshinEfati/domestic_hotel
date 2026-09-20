@@ -4,9 +4,9 @@ namespace App\Support\Reservation;
 
 final class ReservationGuestType
 {
-    public const int ADULT = 1;
-    public const int CHILD = 2;
-    public const int INFANT = 3;
+    public const ADULT = 1;
+    public const CHILD = 2;
+    public const INFANT = 3;
 
     public static function all(): array
     {

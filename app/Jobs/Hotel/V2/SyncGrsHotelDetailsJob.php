@@ -7,6 +7,7 @@ use App\Domain\Hotel\V2\GrsHotelDetailsClient;
 use App\Services\HotelChildPolicyTextParser;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -22,7 +23,7 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 0; // Quota releases must not exhaust the attempt counter.
+    public int $tries = 0; // Releases must not exhaust the attempt counter.
     public int $maxExceptions = 1; // HTTP/DB errors fail this property; no blind retries.
     public int $timeout = 75; // Below its Horizon timeout (80) and Redis retry_after (90).
     public int $uniqueFor = 43200;
@@ -57,17 +58,22 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS details mapping or local hotel no longer exists.');
         }
 
-        // Independent from grs-prices/RateLimitedGrsAdapter. Delayed dispatch
-        // spaces jobs by six seconds; this guard also prevents catch-up bursts.
-        $wait = Cache::store('redis')->lock('grs-v2-details-request-lock', 10)
-            ->block(5, static function (): int {
-                $key = 'grs-v2-details-requests';
-                if (RateLimiter::tooManyAttempts($key, 10)) {
-                    return max(1, RateLimiter::availableIn($key));
-                }
-                RateLimiter::hit($key, 60);
-                return 0;
-            });
+        // Separate from the availability quota. Six-second dispatch spacing
+        // plus this independent counter prevent catch-up bursts after downtime.
+        try {
+            $wait = Cache::store('redis')->lock('grs-v2-details-request-lock', 10)
+                ->block(5, static function (): int {
+                    $key = 'grs-v2-details-requests';
+                    if (RateLimiter::tooManyAttempts($key, 10)) {
+                        return max(1, RateLimiter::availableIn($key));
+                    }
+                    RateLimiter::hit($key, 60);
+                    return 0;
+                });
+        } catch (LockTimeoutException) {
+            $this->release(10);
+            return;
+        }
         if ($wait > 0) {
             $this->release($wait + 1);
             return;
@@ -75,7 +81,14 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
 
         $propertyId = trim((string) $map->provider_property_id);
         $details = $client->fetch($provider, $propertyId);
-        $repository->persist($map, $details, $parser);
+        try {
+            $repository->persist($map, $details, $parser);
+        } catch (LockTimeoutException) {
+            // Do not fail a hotel simply because another details worker is
+            // creating shared facility dictionary entries at the same time.
+            $this->release(10);
+            return;
+        }
 
         Log::info('GRS hotel details refreshed', [
             'provider_id' => $this->providerId,

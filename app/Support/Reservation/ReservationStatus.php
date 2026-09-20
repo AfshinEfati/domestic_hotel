@@ -4,18 +4,18 @@ namespace App\Support\Reservation;
 
 final class ReservationStatus
 {
-    public const int REQUESTED = 1;
-    public const int RESERVED = 2;
-    public const int RESERVATION_FAILED = 3;
-    public const int PURCHASE_QUEUED = 4;
-    public const int PURCHASE_IN_PROGRESS = 5;
-    public const int PARTIALLY_ISSUED = 6;
-    public const int ISSUE_FAILED = 7;
-    public const int PAYMENT_REQUIRED = 8;
-    public const int ISSUED = 9;
-    public const int UNDER_REVIEW = 10;
-    public const int REFUNDED = 11;
-    public const int PURCHASE_REFUND = 12;
+    public const REQUESTED = 1;
+    public const RESERVED = 2;
+    public const RESERVATION_FAILED = 3;
+    public const PURCHASE_QUEUED = 4;
+    public const PURCHASE_IN_PROGRESS = 5;
+    public const PARTIALLY_ISSUED = 6;
+    public const ISSUE_FAILED = 7;
+    public const PAYMENT_REQUIRED = 8;
+    public const ISSUED = 9;
+    public const UNDER_REVIEW = 10;
+    public const REFUNDED = 11;
+    public const PURCHASE_REFUND = 12;
 
     public static function all(): array
     {

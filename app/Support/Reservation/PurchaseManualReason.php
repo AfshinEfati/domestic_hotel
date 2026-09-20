@@ -4,11 +4,11 @@ namespace App\Support\Reservation;
 
 final class PurchaseManualReason
 {
-    public const int MATCHED_RULE = 1;
-    public const int OFFLINE_PROVIDER = 2;
-    public const int INACTIVE_PROVIDER = 3;
-    public const int INSUFFICIENT_CREDIT = 4;
-    public const int CREDIT_UNAVAILABLE = 5;
+    public const MATCHED_RULE = 1;
+    public const OFFLINE_PROVIDER = 2;
+    public const INACTIVE_PROVIDER = 3;
+    public const INSUFFICIENT_CREDIT = 4;
+    public const CREDIT_UNAVAILABLE = 5;
 
     public static function get(int $reason): ?array
     {
