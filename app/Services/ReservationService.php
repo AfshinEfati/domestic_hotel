@@ -16,6 +16,7 @@ use App\Repositories\Contracts\ReservationRepositoryInterface;
 use App\Repositories\Contracts\ReservationRoomRepositoryInterface;
 use App\Services\Contracts\ReservationReferenceGeneratorInterface;
 use App\Services\Contracts\ReservationServiceInterface;
+use App\Services\Contracts\RoomCalendarServiceInterface;
 use App\Support\Reservation\PurchaseMethod;
 use App\Support\Reservation\ReservationHotelType;
 use App\Support\Reservation\ReservationRoomType;
@@ -34,30 +35,44 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         private readonly ReservationGuestRepositoryInterface $reservationGuestRepository,
         private readonly ReservationPurchaseSegmentRepositoryInterface $purchaseSegmentRepository,
         private readonly ReservationReferenceGeneratorInterface $referenceGenerator,
+        private readonly RoomCalendarServiceInterface $calendarService,
+        private readonly ReservationCreateValidator $createValidator,
     ) {
         parent::__construct($reservationRepository);
     }
 
     /**
+     * Create and commit the ticket first. A failed provider check never rolls it back.
+     * No payment, hold, provider reserve or book is performed by this endpoint.
      * @throws Throwable
      */
     public function createRequest(array $data): Reservation
     {
-        return DB::transaction(function () use ($data): Reservation {
+        $originalTotal = array_sum(array_map(
+            static fn (array $room): int => (int) $room['price'], $data['hotel']['rooms']
+        ));
+        $roomIds = [];
+
+        $reservation = DB::transaction(function () use ($data, $originalTotal, &$roomIds): Reservation {
             $reservation = $this->reservationRepository->store([
-                'reservation_number' => $this->referenceGenerator->generate(),
                 'agency_id' => $data['agency_id'],
                 'status' => ReservationStatus::REQUESTED,
                 'check_in' => $data['check_in'],
                 'check_out' => $data['check_out'],
-                'sale_amount' => $data['sale_amount'],
+                'sale_amount' => $originalTotal,
+                'initial_sale_amount' => $originalTotal,
                 'tax_amount' => 0,
                 'commission_amount' => null,
-                'booker_first_name' => $data['booker']['first_name'],
-                'booker_last_name' => $data['booker']['last_name'],
-                'booker_mobile' => $data['booker']['mobile'],
-                'booker_email' => $data['booker']['email'] ?? null,
-                'acc_code' => $data['acc_code'] ?? null,
+                'booker_first_name' => $data['first_name'],
+                'booker_last_name' => $data['last_name'],
+                'booker_mobile' => $data['mobile'],
+                'booker_email' => $data['email'] ?? null,
+                'acc_code' => null,
+            ]);
+
+            // Retain the legacy reference only for existing integrations: it is the SAME id.
+            $this->reservationRepository->update($reservation->id, [
+                'reservation_number' => (string) $reservation->id,
             ]);
 
             $hotel = $this->reservationHotelRepository->store([
@@ -68,15 +83,24 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             ]);
 
             foreach ($data['hotel']['rooms'] as $index => $roomData) {
+                $calendar = $this->calendarService->show((int) $roomData['room_calendar_id']);
+                $matches = $calendar !== null
+                    && (int) $calendar->accommodation_id === (int) $data['hotel']['accommodation_id']
+                    && $calendar->day?->toDateString() === $data['check_in'];
+
                 $room = $this->reservationRoomRepository->store([
                     'reservation_hotel_id' => $hotel->id,
                     'room_number' => $index + 1,
                     'type' => ReservationRoomType::REQUESTED,
                     'is_final' => true,
-                    'room_type_id' => $roomData['room_type_id'] ?? null,
-                    'rate_plan_id' => $roomData['rate_plan_id'] ?? null,
-                    'room_name' => $roomData['room_name'] ?? null,
+                    'room_calendar_id' => (int) $roomData['room_calendar_id'],
+                    'provider_id' => $matches ? (int) $calendar->provider_id : null,
+                    'room_type_id' => $matches ? $calendar->room_type_id : null,
+                    'rate_plan_id' => $matches ? $calendar->rate_plan_id : null,
+                    'room_name' => $matches ? $calendar->roomType?->fa_name : null,
+                    'initial_price' => (int) $roomData['price'],
                 ]);
+                $roomIds[$index] = $room->id;
 
                 foreach ($roomData['guests'] as $guestData) {
                     $this->reservationGuestRepository->store([
@@ -94,10 +118,42 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                     ]);
                 }
             }
-
-            return $this->reservationRepository->findByReservationNumber($reservation->reservation_number)
-                ?? $reservation;
+            return $reservation;
         });
+
+        // Commit status 2 before any network I/O. Network failures must keep the ticket.
+        $this->reservationRepository->update($reservation->id, ['status' => ReservationStatus::RESERVED]);
+        try {
+            $check = $this->createValidator->validate($data);
+        } catch (Throwable $exception) {
+            report($exception);
+            $check = [
+                'status' => ReservationStatus::RESERVED,
+                'error' => 'Price validation could not be completed.',
+                'total' => null,
+                'rooms' => [],
+            ];
+        }
+
+        DB::transaction(function () use ($reservation, $check, $roomIds, $originalTotal): void {
+            foreach ($check['rooms'] as $index => $room) {
+                $this->reservationRoomRepository->update($roomIds[$index], [
+                    'validated_price' => $room['price'],
+                    'provider_id' => $room['provider_id'],
+                ]);
+            }
+            $validated = $check['total'];
+            $this->reservationRepository->update($reservation->id, [
+                'status' => $check['status'],
+                'validation_error' => $check['error'],
+                'validated_sale_amount' => $validated,
+                'sale_amount' => $validated === null ? $originalTotal : max($originalTotal, $validated),
+            ]);
+        });
+
+        return $this->reservationRepository->findByReservationNumber((string) $reservation->id)
+            ?? $this->reservationRepository->find($reservation->id)
+            ?? $reservation;
     }
 
     public function store(mixed $payload): Reservation
@@ -112,10 +168,15 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             throw new InvalidArgumentException('Invalid reservation status.');
         }
 
-        $data['reservation_number'] = $this->referenceGenerator->generate();
         $data['status'] ??= ReservationStatus::REQUESTED;
 
-        return $this->reservationRepository->store($data);
+        return DB::transaction(function () use ($data): Reservation {
+            $reservation = $this->reservationRepository->store($data);
+            $this->reservationRepository->update($reservation->id, [
+                'reservation_number' => (string) $reservation->id,
+            ]);
+            return $this->reservationRepository->find($reservation->id) ?? $reservation;
+        });
     }
 
     public function findByReservationNumber(string $reservationNumber): ?Reservation
@@ -162,9 +223,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         ]);
     }
 
-    /**
-     * @throws Throwable
-     */
+    /** @throws Throwable */
     public function setFinalHotel(int $reservationId, int $reservationHotelId): ReservationHotel
     {
         return DB::transaction(function () use ($reservationId, $reservationHotelId): ReservationHotel {
