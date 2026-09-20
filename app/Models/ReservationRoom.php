@@ -7,10 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/**
- * Represents a single room slot assigned to a reservation hotel. A slot may have
- * a requested and an alternative candidate; only one candidate per slot is final.
- */
+/** A room slot in a reservation; its calendar ID remains a snapshot after pruning. */
 class ReservationRoom extends Model
 {
     protected $fillable = [
@@ -21,6 +18,10 @@ class ReservationRoom extends Model
         'room_type_id',
         'rate_plan_id',
         'room_name',
+        'room_calendar_id',
+        'provider_id',
+        'initial_price',
+        'validated_price',
     ];
 
     protected $casts = [
@@ -30,6 +31,10 @@ class ReservationRoom extends Model
         'is_final' => 'boolean',
         'room_type_id' => 'integer',
         'rate_plan_id' => 'integer',
+        'room_calendar_id' => 'integer',
+        'provider_id' => 'integer',
+        'initial_price' => 'integer',
+        'validated_price' => 'integer',
     ];
 
     protected $attributes = [
