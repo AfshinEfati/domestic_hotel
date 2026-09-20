@@ -11,7 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Throwable;
 
-/** Checks the exact calendar offered to the customer; never searches for another provider. */
+/** Checks the exact calendars offered to the customer; never searches for another provider. */
 class ReservationCreateValidator
 {
     public function __construct(
@@ -33,7 +33,24 @@ class ReservationCreateValidator
         }
         $nights = count($days);
         if ($nights === 0) {
-            return $failure(ReservationStatus::RESERVED, 'Invalid stay dates.');
+            return $failure(ReservationStatus::CHECKED, 'Invalid stay dates.');
+        }
+
+        // Resolve the accommodation exclusively from existing calendar IDs. Validate the
+        // entire selection before contacting any provider: a reservation cannot mix hotels.
+        $selectedCalendars = [];
+        $accommodationId = null;
+        foreach ($data['hotel']['rooms'] as $index => $selection) {
+            $calendar = $this->calendars->find((int) $selection['room_calendar_id']);
+            if ($calendar === null || $calendar->day?->toDateString() !== $data['check_in']) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendar is no longer available for check-in.');
+            }
+            if ($accommodationId === null) {
+                $accommodationId = (int) $calendar->accommodation_id;
+            } elseif ((int) $calendar->accommodation_id !== $accommodationId) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendars belong to different hotels.');
+            }
+            $selectedCalendars[$index] = $calendar;
         }
 
         $results = [];
@@ -41,22 +58,17 @@ class ReservationCreateValidator
         $inventoryUsed = [];
 
         foreach ($data['hotel']['rooms'] as $index => $selection) {
-            $calendar = $this->calendars->find((int) $selection['room_calendar_id']);
-            if (!$calendar || (int) $calendar->accommodation_id !== (int) $data['hotel']['accommodation_id']
-                || $calendar->day?->toDateString() !== $data['check_in']) {
-                return $failure(ReservationStatus::RESERVATION_FAILED, 'Selected calendar is no longer available.');
-            }
-
+            $calendar = $selectedCalendars[$index];
             $provider = $this->providers->find((int) $calendar->provider_id);
             if (!$provider || !$provider->is_active || !$provider->is_online) {
-                return $failure(ReservationStatus::RESERVED, 'Selected provider cannot validate prices online.');
+                return $failure(ReservationStatus::CHECKED, 'Selected provider cannot validate prices online.');
             }
             if (!$calendar->provider_property_id || !$calendar->provider_room_type_id || !$calendar->provider_rate_plan_id) {
-                return $failure(ReservationStatus::RESERVED, 'Selected calendar has incomplete provider mappings.');
+                return $failure(ReservationStatus::CHECKED, 'Selected calendar has incomplete provider mappings.');
             }
             $roomType = $calendar->roomType;
-            if (!$roomType || $roomType->out_of_service || (int) $roomType->accommodation_id !== (int) $calendar->accommodation_id) {
-                return $failure(ReservationStatus::RESERVATION_FAILED, 'Selected room is unavailable.');
+            if (!$roomType || $roomType->out_of_service || (int) $roomType->accommodation_id !== $accommodationId) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
             $key = $provider->id . ':' . $calendar->provider_property_id;
@@ -69,7 +81,7 @@ class ReservationCreateValidator
                     );
                 } catch (Throwable $exception) {
                     report($exception);
-                    return $failure(ReservationStatus::RESERVED, 'Provider price validation failed.');
+                    return $failure(ReservationStatus::CHECKED, 'Provider price validation failed.');
                 }
             }
 
@@ -84,19 +96,19 @@ class ReservationCreateValidator
                 $inventory = $row['inventory'] ?? null;
                 if (!$row || ($row['closed'] ?? false) || $inventory === null || (int) $inventory < 1
                     || !isset($row['daily_rate']) || $row['daily_rate'] === null) {
-                    return $failure(ReservationStatus::RESERVATION_FAILED, 'Selected room has no capacity or rate for the full stay.');
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room has no capacity or rate for the full stay.');
                 }
                 if (($offset === 0 && ($row['cta'] ?? false)) || ($offset === $nights - 1 && ($row['ctd'] ?? false))
                     || (($row['min_stay'] ?? null) !== null && $nights < (int) $row['min_stay'])
                     || (($row['max_stay'] ?? null) !== null && $nights > (int) $row['max_stay'])) {
-                    return $failure(ReservationStatus::RESERVATION_FAILED, 'Selected stay is restricted by provider rules.');
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected stay is restricted by provider rules.');
                 }
 
                 // Inventory belongs to the physical room type, not independently to its rate plans.
                 $inventoryKey = $provider->id . ':' . $calendar->room_type_id . ':' . $day;
                 $inventoryUsed[$inventoryKey] = ($inventoryUsed[$inventoryKey] ?? 0) + 1;
                 if ($inventoryUsed[$inventoryKey] > (int) $inventory) {
-                    return $failure(ReservationStatus::RESERVATION_FAILED, 'Insufficient inventory for all selected rooms.');
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Insufficient inventory for all selected rooms.');
                 }
 
                 $fresh = new RoomCalendar([
@@ -112,13 +124,13 @@ class ReservationCreateValidator
 
             $price = $this->calculateSelectedPrice($roomType, $calendar, $selection['guests'], $live);
             if ($price === null) {
-                return $failure(ReservationStatus::RESERVED, 'Cannot calculate the selected room price.');
+                return $failure(ReservationStatus::CHECKED, 'Cannot calculate the selected room price.');
             }
             $results[$index] = ['price' => $price, 'provider_id' => (int) $provider->id];
         }
 
         return [
-            'status' => ReservationStatus::PURCHASE_QUEUED,
+            'status' => ReservationStatus::READY_FOR_PAYMENT,
             'error' => null,
             'total' => array_sum(array_column($results, 'price')),
             'rooms' => $results,
