@@ -14,7 +14,6 @@ use App\Repositories\Contracts\ReservationHotelRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseSegmentRepositoryInterface;
 use App\Repositories\Contracts\ReservationRepositoryInterface;
 use App\Repositories\Contracts\ReservationRoomRepositoryInterface;
-use App\Services\Contracts\ReservationReferenceGeneratorInterface;
 use App\Services\Contracts\ReservationServiceInterface;
 use App\Services\Contracts\RoomCalendarServiceInterface;
 use App\Support\Reservation\PurchaseMethod;
@@ -34,7 +33,6 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         private readonly ReservationRoomRepositoryInterface $reservationRoomRepository,
         private readonly ReservationGuestRepositoryInterface $reservationGuestRepository,
         private readonly ReservationPurchaseSegmentRepositoryInterface $purchaseSegmentRepository,
-        private readonly ReservationReferenceGeneratorInterface $referenceGenerator,
         private readonly RoomCalendarServiceInterface $calendarService,
         private readonly ReservationCreateValidator $createValidator,
     ) {
@@ -42,8 +40,9 @@ class ReservationService extends BaseService implements ReservationServiceInterf
     }
 
     /**
-     * Create and commit the ticket first. A failed provider check never rolls it back.
-     * No payment, hold, provider reserve or book is performed by this endpoint.
+     * Commit the ticket with status 1 before any provider request. Invalid prices,
+     * offline providers and network failures never erase a successfully created ticket.
+     * This endpoint does not reserve, pay for, or book inventory with a provider.
      * @throws Throwable
      */
     public function createRequest(array $data): Reservation
@@ -69,8 +68,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                 'booker_email' => $data['email'] ?? null,
                 'acc_code' => null,
             ]);
-
-            // Retain the legacy reference only for existing integrations: it is the SAME id.
+            // Keep legacy integrations working without inventing another reservation ID.
             $this->reservationRepository->update($reservation->id, [
                 'reservation_number' => (string) $reservation->id,
             ]);
@@ -87,7 +85,6 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                 $matches = $calendar !== null
                     && (int) $calendar->accommodation_id === (int) $data['hotel']['accommodation_id']
                     && $calendar->day?->toDateString() === $data['check_in'];
-
                 $room = $this->reservationRoomRepository->store([
                     'reservation_hotel_id' => $hotel->id,
                     'room_number' => $index + 1,
@@ -121,14 +118,14 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             return $reservation;
         });
 
-        // Commit status 2 before any network I/O. Network failures must keep the ticket.
-        $this->reservationRepository->update($reservation->id, ['status' => ReservationStatus::RESERVED]);
+        // Network work is OUTSIDE the insert transaction. Status 2 means a check
+        // finished without success, not merely that a request was dispatched.
         try {
             $check = $this->createValidator->validate($data);
         } catch (Throwable $exception) {
             report($exception);
             $check = [
-                'status' => ReservationStatus::RESERVED,
+                'status' => ReservationStatus::CHECKED,
                 'error' => 'Price validation could not be completed.',
                 'total' => null,
                 'rooms' => [],
@@ -161,15 +158,11 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         $data = $payload instanceof ReservationDTO
             ? $payload->toArray()
             : $this->normalisePayload($payload);
-
         unset($data['reservation_number']);
-
         if (isset($data['status']) && !ReservationStatus::isValid((int) $data['status'])) {
             throw new InvalidArgumentException('Invalid reservation status.');
         }
-
         $data['status'] ??= ReservationStatus::REQUESTED;
-
         return DB::transaction(function () use ($data): Reservation {
             $reservation = $this->reservationRepository->store($data);
             $this->reservationRepository->update($reservation->id, [
@@ -189,10 +182,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         if (!ReservationStatus::isValid($status)) {
             throw new InvalidArgumentException('Invalid reservation status.');
         }
-
-        return $this->reservationRepository->update($reservationId, [
-            'status' => $status,
-        ]);
+        return $this->reservationRepository->update($reservationId, ['status' => $status]);
     }
 
     public function addHotel(
@@ -203,18 +193,14 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         if (!ReservationHotelType::isValid($type)) {
             throw new InvalidArgumentException('Invalid reservation hotel type.');
         }
-
         if ($this->reservationRepository->find($reservationId) === null) {
             throw new InvalidArgumentException('Reservation not found.');
         }
-
         $existing = $this->reservationHotelRepository
             ->findByReservationAndAccommodation($reservationId, $accommodationId);
-
         if ($existing !== null) {
             return $existing;
         }
-
         return $this->reservationHotelRepository->store([
             'reservation_id' => $reservationId,
             'accommodation_id' => $accommodationId,
@@ -230,20 +216,15 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             if ($this->reservationRepository->findForUpdate($reservationId) === null) {
                 throw new InvalidArgumentException('Reservation not found.');
             }
-
             $hotel = $this->reservationHotelRepository
                 ->findForReservation($reservationId, $reservationHotelId);
-
             if ($hotel === null) {
                 throw new InvalidArgumentException('Reservation hotel not found.');
             }
-
             $this->reservationHotelRepository->clearFinalByReservation($reservationId);
-
             if (!$this->reservationHotelRepository->markFinal($reservationHotelId)) {
                 throw new RuntimeException('Unable to set final reservation hotel.');
             }
-
             return $this->reservationHotelRepository
                 ->findForReservation($reservationId, $reservationHotelId)
                 ?? throw new RuntimeException('Final reservation hotel could not be loaded.');
@@ -255,13 +236,10 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         if ($this->reservationHotelRepository->find($reservationHotelId) === null) {
             throw new InvalidArgumentException('Reservation hotel not found.');
         }
-
         $data = $payload instanceof ReservationRoomDTO
             ? $payload->toArray()
             : $this->normalisePayload($payload);
-
         $data['reservation_hotel_id'] = $reservationHotelId;
-
         return $this->reservationRoomRepository->store($data);
     }
 
@@ -270,20 +248,15 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         if ($this->reservationRoomRepository->find($reservationRoomId) === null) {
             throw new InvalidArgumentException('Reservation room not found.');
         }
-
         $data = $payload instanceof ReservationPurchaseSegmentDTO
             ? $payload->toArray()
             : $this->normalisePayload($payload);
-
         $method = (int) ($data['purchase_method'] ?? PurchaseMethod::ONLINE);
-
         if (!PurchaseMethod::isValid($method)) {
             throw new InvalidArgumentException('Invalid purchase method.');
         }
-
         $data['reservation_room_id'] = $reservationRoomId;
         $data['purchase_method'] = $method;
-
         return $this->purchaseSegmentRepository->store($data);
     }
 }
