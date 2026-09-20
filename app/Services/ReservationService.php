@@ -68,22 +68,36 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                 'booker_email' => $data['email'] ?? null,
                 'acc_code' => null,
             ]);
-            // Keep legacy integrations working without inventing another reservation ID.
+            // Compatibility for existing internal consumers; the public identifier is always reservations.id.
             $this->reservationRepository->update($reservation->id, [
                 'reservation_number' => (string) $reservation->id,
             ]);
 
+            // The caller sends only calendar IDs, never accommodation/room type/rate plan/provider IDs.
+            // All selected calendars must ultimately belong to the same accommodation.
+            $selectedCalendars = [];
+            $accommodationId = null;
+            foreach ($data['hotel']['rooms'] as $index => $roomData) {
+                $calendar = $this->calendarService->show((int) $roomData['room_calendar_id']);
+                $selectedCalendars[$index] = $calendar;
+                if ($accommodationId === null && $calendar !== null) {
+                    $accommodationId = (int) $calendar->accommodation_id;
+                }
+            }
+
+            // Nullable accommodation preserves the hotel, room and guest snapshot even when
+            // every selected calendar has been pruned since Availability was shown.
             $hotel = $this->reservationHotelRepository->store([
                 'reservation_id' => $reservation->id,
-                'accommodation_id' => $data['hotel']['accommodation_id'],
+                'accommodation_id' => $accommodationId,
                 'type' => ReservationHotelType::REQUESTED,
                 'is_final' => true,
             ]);
 
             foreach ($data['hotel']['rooms'] as $index => $roomData) {
-                $calendar = $this->calendarService->show((int) $roomData['room_calendar_id']);
+                $calendar = $selectedCalendars[$index];
                 $matches = $calendar !== null
-                    && (int) $calendar->accommodation_id === (int) $data['hotel']['accommodation_id']
+                    && (int) $calendar->accommodation_id === $accommodationId
                     && $calendar->day?->toDateString() === $data['check_in'];
                 $room = $this->reservationRoomRepository->store([
                     'reservation_hotel_id' => $hotel->id,
@@ -107,7 +121,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                         'last_name' => $guestData['last_name'],
                         'gender' => $guestData['gender'] ?? null,
                         'birth_date' => $guestData['birth_date'] ?? null,
-                        'country_id' => $guestData['country_id'] ?? null,
+                        'country_id' => $guestData['country_id'],
                         'national_id' => $guestData['national_id'] ?? null,
                         'passport_number' => $guestData['passport_number'] ?? null,
                         'passport_issuer_country_id' => $guestData['passport_issuer_country_id'] ?? null,
@@ -118,8 +132,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             return $reservation;
         });
 
-        // Network work is OUTSIDE the insert transaction. Status 2 means a check
-        // finished without success, not merely that a request was dispatched.
+        // No external provider call is made while the initial database transaction is open.
         try {
             $check = $this->createValidator->validate($data);
         } catch (Throwable $exception) {
