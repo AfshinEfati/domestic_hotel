@@ -15,15 +15,20 @@ class ReservationCreateRequestTest extends TestCase
     {
         parent::setUp();
 
-        // Only the nationality lookup table is needed to exercise the actual FormRequest.
+        // The tests work with both an empty SQLite connection and migrated test databases.
         if (!Schema::hasTable('countries')) {
             Schema::create('countries', function (Blueprint $table): void {
                 $table->id();
-                $table->string('iso2', 2);
+                $table->string('fa_name', 120);
+                $table->string('iso2', 2)->nullable();
             });
         }
-        DB::table('countries')->updateOrInsert(['id' => 990001], ['iso2' => 'IR']);
-        DB::table('countries')->updateOrInsert(['id' => 990002], ['iso2' => 'TR']);
+        DB::table('countries')->updateOrInsert(['id' => 990001], [
+            'fa_name' => 'ایران', 'iso2' => 'IR',
+        ]);
+        DB::table('countries')->updateOrInsert(['id' => 990002], [
+            'fa_name' => 'ترکیه', 'iso2' => 'TR',
+        ]);
 
         Route::post('/__test/reservation-create-request', static function (StoreReservationRequest $request) {
             return response()->json($request->validated());
