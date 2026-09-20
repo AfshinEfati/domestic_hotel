@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
+use App\Models\RoomCalendar;
 use Illuminate\Support\Facades\Schedule;
 
 // Catalog sync remains separate from every provider's price refresh.
@@ -22,6 +23,11 @@ Schedule::command('grs:sync-details')
 Schedule::call(static fn (): int => app(ProviderPriceRefreshScheduler::class)->dispatch())
     ->name('hotel-provider-price-refresh')
     ->everyMinute()
+    ->withoutOverlapping();
+
+// Remove expired room-calendar days only; the current Tehran date is retained.
+Schedule::command('model:prune', ['--model' => [RoomCalendar::class]])
+    ->everyFiveMinutes()
     ->withoutOverlapping();
 
 // Manual grs:sync-prices remains available independently of scheduler_enabled.
