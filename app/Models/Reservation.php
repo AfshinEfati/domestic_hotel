@@ -7,9 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-/**
- * Represents the core reservation record managed by the domestic hotel service.
- */
+/** Represents the core reservation record managed by the domestic hotel service. */
 class Reservation extends Model
 {
     protected $fillable = [
@@ -19,6 +17,9 @@ class Reservation extends Model
         'check_in',
         'check_out',
         'sale_amount',
+        'initial_sale_amount',
+        'validated_sale_amount',
+        'validation_error',
         'tax_amount',
         'commission_amount',
         'booker_first_name',
@@ -34,6 +35,8 @@ class Reservation extends Model
         'check_in' => 'date:Y-m-d',
         'check_out' => 'date:Y-m-d',
         'sale_amount' => 'integer',
+        'initial_sale_amount' => 'integer',
+        'validated_sale_amount' => 'integer',
         'tax_amount' => 'integer',
         'commission_amount' => 'integer',
     ];
