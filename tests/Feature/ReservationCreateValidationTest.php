@@ -23,7 +23,6 @@ class ReservationCreateValidationTest extends TestCase
             'check_in' => '2027-03-04',
             'check_out' => '2027-03-05',
             'hotel' => [
-                'accommodation_id' => 123,
                 'rooms' => [[
                     'room_calendar_id' => 5480,
                     'price' => $price,
@@ -116,5 +115,33 @@ class ReservationCreateValidationTest extends TestCase
         $result = $this->validator([], false)->validate($this->requestData());
         $this->assertSame(ReservationStatus::CHECKED, $result['status']);
         $this->assertNull($result['total']);
+    }
+
+    public function test_missing_calendar_is_a_failed_check_not_a_request_validation_error(): void
+    {
+        $calendars = Mockery::mock(RoomCalendarRepositoryInterface::class);
+        $calendars->shouldReceive('find')->once()->with(5480)->andReturn(null);
+        $providers = Mockery::mock(ProviderRepositoryInterface::class);
+        $providers->shouldNotReceive('find');
+        $result = (new ReservationCreateValidator($calendars, $providers))->validate($this->requestData());
+        $this->assertSame(ReservationStatus::NO_AVAILABILITY, $result['status']);
+    }
+
+    public function test_calendars_from_different_hotels_are_rejected_without_provider_calls(): void
+    {
+        $calendars = Mockery::mock(RoomCalendarRepositoryInterface::class);
+        foreach ([[5480, 123], [5481, 124]] as [$id, $hotelId]) {
+            $calendars->shouldReceive('find')->once()->with($id)->andReturn(new RoomCalendar([
+                'id' => $id, 'accommodation_id' => $hotelId, 'day' => '2027-03-04',
+            ]));
+        }
+        $providers = Mockery::mock(ProviderRepositoryInterface::class);
+        $providers->shouldNotReceive('find');
+        $data = $this->requestData();
+        $data['hotel']['rooms'][] = [
+            'room_calendar_id' => 5481, 'price' => 25000000, 'guests' => [['type' => 1]],
+        ];
+        $result = (new ReservationCreateValidator($calendars, $providers))->validate($data);
+        $this->assertSame(ReservationStatus::NO_AVAILABILITY, $result['status']);
     }
 }
