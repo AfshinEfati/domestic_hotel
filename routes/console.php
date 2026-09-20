@@ -19,9 +19,9 @@ Schedule::command('grs:sync-details')
 // One repository read per minute for all registered providers. Each provider
 // has its own handler, settings, job, API quota and pricing implementation.
 // No database query or provider-specific condition is placed in this file.
-//Schedule::call(static fn (): int => app(ProviderPriceRefreshScheduler::class)->dispatch())
-//    ->name('hotel-provider-price-refresh')
-//    ->everyMinute()
-//    ->withoutOverlapping();
+Schedule::call(static fn (): int => app(ProviderPriceRefreshScheduler::class)->dispatch())
+    ->name('hotel-provider-price-refresh')
+    ->everyMinute()
+    ->withoutOverlapping();
 
 // Manual grs:sync-prices remains available independently of scheduler_enabled.
