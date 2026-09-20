@@ -4,8 +4,8 @@ namespace App\Support\Reservation;
 
 final class ReservationRoomType
 {
-    public const int REQUESTED = 1;
-    public const int ALTERNATIVE = 2;
+    public const REQUESTED = 1;
+    public const ALTERNATIVE = 2;
 
     public static function all(): array
     {

@@ -4,10 +4,10 @@ namespace App\Support\Reservation;
 
 final class PaymentSource
 {
-    public const int CREDIT = 1;
-    public const int GATEWAY = 2;
-    public const int CARD_TO_CARD = 3;
-    public const int CASH = 4;
+    public const CREDIT = 1;
+    public const GATEWAY = 2;
+    public const CARD_TO_CARD = 3;
+    public const CASH = 4;
 
     public static function all(): array
     {

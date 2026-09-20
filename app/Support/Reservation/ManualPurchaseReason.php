@@ -4,10 +4,10 @@ namespace App\Support\Reservation;
 
 final class ManualPurchaseReason
 {
-    public const int RULE_MATCHED = 1;
-    public const int PROVIDER_OFFLINE_ONLY = 2;
-    public const int PROVIDER_FAILURE = 3;
-    public const int OPERATOR_OVERRIDE = 4;
+    public const RULE_MATCHED = 1;
+    public const PROVIDER_OFFLINE_ONLY = 2;
+    public const PROVIDER_FAILURE = 3;
+    public const OPERATOR_OVERRIDE = 4;
 
     public static function all(): array
     {
