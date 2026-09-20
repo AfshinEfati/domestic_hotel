@@ -5,7 +5,9 @@ namespace App\Http\Requests\Reservation;
 use App\Support\Reservation\ReservationGuestGender;
 use App\Support\Reservation\ReservationGuestType;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreReservationRequest extends FormRequest
 {
@@ -25,9 +27,9 @@ class StoreReservationRequest extends FormRequest
             'mobile' => ['required', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:255'],
             'hotel' => ['required', 'array'],
-            'hotel.accommodation_id' => ['required', 'integer', 'exists:accommodations,id'],
             'hotel.rooms' => ['required', 'array', 'min:1', 'max:5'],
-            // Do not use exists here: even an expired/missing calendar must create a ticket.
+            // The existing Availability calendar ID resolves the hotel, room, rate plan and provider.
+            // A missing/pruned calendar must still produce a ticket, so do NOT use exists here.
             'hotel.rooms.*.room_calendar_id' => ['required', 'integer', 'min:1'],
             'hotel.rooms.*.price' => ['required', 'integer', 'min:0'],
             'hotel.rooms.*.guests' => ['required', 'array', 'min:1'],
@@ -36,7 +38,8 @@ class StoreReservationRequest extends FormRequest
             'hotel.rooms.*.guests.*.last_name' => ['required', 'string', 'max:100'],
             'hotel.rooms.*.guests.*.gender' => ['nullable', 'integer', Rule::in(ReservationGuestGender::all())],
             'hotel.rooms.*.guests.*.birth_date' => ['nullable', 'date', 'before:today'],
-            'hotel.rooms.*.guests.*.country_id' => ['nullable', 'integer', 'exists:countries,id'],
+            // country_id is the guest's nationality, not the passport issuing country.
+            'hotel.rooms.*.guests.*.country_id' => ['required', 'integer', 'exists:countries,id'],
             'hotel.rooms.*.guests.*.national_id' => ['nullable', 'string', 'max:32'],
             'hotel.rooms.*.guests.*.passport_number' => ['nullable', 'string', 'max:64'],
             'hotel.rooms.*.guests.*.passport_issuer_country_id' => [
@@ -46,5 +49,46 @@ class StoreReservationRequest extends FormRequest
                 'nullable', 'required_with:hotel.rooms.*.guests.*.passport_number', 'date', 'after:today',
             ],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            // Only inspect valid, existing nationality IDs; ordinary rule errors cover malformed payloads.
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $rooms = $this->input('hotel.rooms', []);
+            $countryIds = [];
+            foreach ($rooms as $room) {
+                foreach ($room['guests'] as $guest) {
+                    $countryIds[] = (int) $guest['country_id'];
+                }
+            }
+
+            // Resolve Iran using ISO-2, never a hard-coded database country ID.
+            $countryCodes = DB::table('countries')
+                ->whereIn('id', array_values(array_unique($countryIds)))
+                ->pluck('iso2', 'id');
+
+            foreach ($rooms as $roomIndex => $room) {
+                foreach ($room['guests'] as $guestIndex => $guest) {
+                    $path = "hotel.rooms.{$roomIndex}.guests.{$guestIndex}";
+                    $isIranian = strtoupper(trim((string) $countryCodes->get((int) $guest['country_id']))) === 'IR';
+                    $field = $isIranian ? 'national_id' : 'passport_number';
+                    $value = $guest[$field] ?? null;
+
+                    if (!is_string($value) || trim($value) === '') {
+                        $validator->errors()->add(
+                            "{$path}.{$field}",
+                            $isIranian
+                                ? 'National ID is required for Iranian guests.'
+                                : 'Passport number is required for non-Iranian guests.'
+                        );
+                    }
+                }
+            }
+        });
     }
 }
