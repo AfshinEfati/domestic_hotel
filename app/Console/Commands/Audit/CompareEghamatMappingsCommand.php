@@ -41,12 +41,7 @@ class CompareEghamatMappingsCommand extends Command
             true
         );
 
-
-        $properties =
-            $content['data']['value']['properties']
-            ??
-            [];
-
+        $properties = $content['data']['value']['properties'] ?? [];
 
         if (!is_array($properties)) {
             $this->error('Invalid properties format.');
@@ -54,11 +49,9 @@ class CompareEghamatMappingsCommand extends Command
             return self::FAILURE;
         }
 
-
         $this->info(
-            'Eghamat properties: '.count($properties)
+            'Eghamat properties: ' . count($properties)
         );
-
 
         $mapped = AccommodationProviderMap::query()
             ->where('provider_id', 1)
@@ -67,16 +60,15 @@ class CompareEghamatMappingsCommand extends Command
                 'provider_property_id'
             )
             ->mapWithKeys(
-                fn ($value, $key) =>
-                [(string)$key => $value]
+                fn ($value, $key) => [
+                    (string) $key => $value
+                ]
             )
             ->toArray();
 
-
         $this->info(
-            'Local mappings: '.count($mapped)
+            'Local mappings: ' . count($mapped)
         );
-
 
         $missing = [];
         $foreign = [];
@@ -88,16 +80,12 @@ class CompareEghamatMappingsCommand extends Command
         foreach ($properties as $property) {
 
             $id = (string) (
-                $property['id']
-                ??
-                ''
+                $property['id'] ?? ''
             );
-
 
             if ($id === '') {
                 continue;
             }
-
 
             $remoteIds[] = $id;
 
@@ -108,6 +96,7 @@ class CompareEghamatMappingsCommand extends Command
 
 
             $country = $property['country'] ?? null;
+
 
             $row = [
                 'provider_property_id' => $id,
@@ -130,11 +119,11 @@ class CompareEghamatMappingsCommand extends Command
                     ? ($country['id'] ?? '')
                     : '',
 
-                'province' => $this->getName(
+                'province' => $this->extractLocationName(
                     $property['province'] ?? null
                 ),
 
-                'city' => $this->getName(
+                'city' => $this->extractLocationName(
                     $property['city'] ?? null
                 ),
 
@@ -149,10 +138,7 @@ class CompareEghamatMappingsCommand extends Command
             $missing[] = $row;
 
 
-            $countryId = (int) ($row['country_id'] ?? 0);
-
-
-            if ($countryId === 1) {
+            if ((int) $row['country_id'] === 1) {
                 $domestic[] = $row;
             } else {
                 $foreign[] = $row;
@@ -162,10 +148,11 @@ class CompareEghamatMappingsCommand extends Command
 
         $extra = [];
 
+
         foreach ($mapped as $providerId => $localId) {
 
             if (!in_array(
-                (string)$providerId,
+                (string) $providerId,
                 $remoteIds,
                 true
             )) {
@@ -178,35 +165,35 @@ class CompareEghamatMappingsCommand extends Command
         }
 
 
-        $dir = 'audits/eghamat';
+        $directory = 'audits/eghamat';
 
 
         Storage::disk('local')->put(
-            $dir.'/missing-mappings.csv',
-            $this->csv($missing)
+            $directory . '/missing-mappings.csv',
+            $this->makeCsv($missing)
         );
 
 
         Storage::disk('local')->put(
-            $dir.'/missing-foreign-properties.csv',
-            $this->csv($foreign)
+            $directory . '/missing-foreign-properties.csv',
+            $this->makeCsv($foreign)
         );
 
 
         Storage::disk('local')->put(
-            $dir.'/missing-domestic-properties.csv',
-            $this->csv($domestic)
+            $directory . '/missing-domestic-properties.csv',
+            $this->makeCsv($domestic)
         );
 
 
         Storage::disk('local')->put(
-            $dir.'/extra-mappings.csv',
-            $this->csv($extra)
+            $directory . '/extra-mappings.csv',
+            $this->makeCsv($extra)
         );
 
 
         Storage::disk('local')->put(
-            $dir.'/summary.json',
+            $directory . '/summary.json',
             json_encode(
                 [
                     'eghamat_total' => count($properties),
@@ -225,19 +212,19 @@ class CompareEghamatMappingsCommand extends Command
         $this->newLine();
 
         $this->info(
-            'Missing: '.count($missing)
+            'Missing: ' . count($missing)
         );
 
         $this->info(
-            'Foreign missing: '.count($foreign)
+            'Foreign missing: ' . count($foreign)
         );
 
         $this->info(
-            'Domestic missing: '.count($domestic)
+            'Domestic missing: ' . count($domestic)
         );
 
         $this->info(
-            'Extra: '.count($extra)
+            'Extra: ' . count($extra)
         );
 
 
@@ -245,7 +232,7 @@ class CompareEghamatMappingsCommand extends Command
     }
 
 
-    private function getName($value): string
+    private function extractLocationName($value): string
     {
         if (is_array($value)) {
             return $value['name'] ?? '';
@@ -255,7 +242,7 @@ class CompareEghamatMappingsCommand extends Command
     }
 
 
-    private function csv(array $rows): string
+    private function makeCsv(array $rows): string
     {
         if (empty($rows)) {
             return '';
