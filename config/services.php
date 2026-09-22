@@ -9,9 +9,7 @@ return [
     |
     | This file is for storing the credentials for third party services such
     | as Mailgun, Postmark, AWS and more. This file provides the de facto
-    | location for this type of information, allowing packages to have
-    | a conventional file to locate the various service credentials.
-    |
+    | location for such credentials.
     */
 
     'postmark' => [
@@ -33,6 +31,15 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
+
+    // Secrets stay in the server's untracked .env, never in Git history.
+    'telegram_alert' => [
+        'url' => 'https://ehotelo.com/api/telegram/send-message',
+        'token' => env('TELEGRAM_ALERT_TOKEN'),
+        'chat_id' => env('TELEGRAM_ALERT_CHAT_ID'),
+        // Set to parse_mode only if the company proxy forwards it to Telegram.
+        'parse_mode_field' => env('TELEGRAM_ALERT_PARSE_MODE_FIELD', 'parse_mode'),
     ],
 
 ];
