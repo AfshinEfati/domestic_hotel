@@ -31,6 +31,27 @@ return Application::configure(basePath: dirname(__DIR__))
     ])
     ->withExceptions(function (Exceptions $exceptions): void {
 
+        $exceptions->report(function (\Throwable $exception): void {
+            // Provider transport errors are already captured by tagged HTTP events.
+            // Never report Telegram transport problems back to Telegram.
+            if ($exception instanceof \App\Exceptions\TelegramAlertDeliveryException
+                || $exception instanceof \Illuminate\Http\Client\RequestException
+                || $exception instanceof \Illuminate\Http\Client\ConnectionException
+                || $exception instanceof ValidationException
+                || $exception instanceof AuthenticationException
+                || $exception instanceof AuthorizationException
+                || $exception instanceof ModelNotFoundException
+                || ($exception instanceof HttpExceptionInterface && $exception->getStatusCode() < 500)) {
+                return;
+            }
+
+            try {
+                app(\App\Services\Alerts\TelegramAlertService::class)->internalFailure($exception);
+            } catch (\Throwable $alertError) {
+                error_log('Internal alert unavailable: ' . $alertError::class);
+            }
+        });
+
         $exceptions->render(function (\Throwable $exception, Request $request) {
 
             if (!$request->is('api/*')) {
