@@ -45,13 +45,32 @@ final class SendTelegramAlertJob implements ShouldQueue
             $payload[$field] = 'HTML';
         }
 
-        // The proxy is not tagged as a supplier: delivery failures cannot recurse.
-        $response = Http::asJson()
+        // This proxy request is never tagged as a provider; delivery cannot recurse.
+        $send = static fn (array $data) => Http::asJson()
             ->connectTimeout(3)
             ->timeout(8)
-            ->post((string) ($config['url'] ?? ''), $payload);
+            ->post((string) ($config['url'] ?? ''), $data);
 
-        // Laravel's HTTP client does not throw on 4xx/5xx by default.
+        $response = $send($payload);
+
+        // If the company's published four-field schema rejects parse_mode,
+        // still deliver a readable plain-text alert instead of losing it.
+        if ($field !== '' && in_array($response->status(), [400, 422], true)) {
+            unset($payload[$field]);
+            $plain = str_replace(
+                ['<pre>', '</pre>', '<br>', '<br/>', '<br />'],
+                ["\n", "\n", "\n", "\n", "\n"],
+                $this->message
+            );
+            $payload['message'] = html_entity_decode(
+                strip_tags($plain),
+                ENT_QUOTES | ENT_HTML5,
+                'UTF-8'
+            );
+            $response = $send($payload);
+        }
+
+        // The Laravel HTTP client does not throw on unsuccessful HTTP responses by default.
         $response->throw();
 
         $body = $response->json();
