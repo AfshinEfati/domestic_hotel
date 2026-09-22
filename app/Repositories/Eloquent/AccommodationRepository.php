@@ -42,15 +42,20 @@ class AccommodationRepository extends BaseRepository implements AccommodationRep
     public function getList(array $filters): iterable
     {
         $query = $this->model->query();
+
         if (isset($filters['from'], $filters['to'])) {
-            $from = (int)$filters['from'];
-            $to = (int)$filters['to'];
+            $from = (int) $filters['from'];
+            $to = (int) $filters['to'];
             $query->skip($from)->take($to);
         }
+
+        $perPage = max((int) ($filters['per_page'] ?? 20), 1);
+        $page = max((int) ($filters['page'] ?? 1), 1);
+
         return $query
             ->with(['city', 'type','facilities','facilities.group','rooms','rooms.roomTypeName','rules','childPolicy'])
             ->orderBy('id')
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
     }
 
     public function getAvailability(array $data): iterable
