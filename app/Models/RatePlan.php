@@ -18,6 +18,7 @@ class RatePlan extends Model
         'sleeps',
         'min_stay',
         'max_stay',
+        'is_foreign_guest',
         'facilities',
         'created_at',
         'updated_at',
@@ -35,6 +36,7 @@ class RatePlan extends Model
         'min_stay' => 'integer',
         'max_stay' => 'integer',
         'facilities' => 'array',
+        'is_foreign_guest'=>'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
