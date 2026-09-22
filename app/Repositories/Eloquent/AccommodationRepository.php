@@ -43,11 +43,11 @@ class AccommodationRepository extends BaseRepository implements AccommodationRep
     {
         $query = $this->model->query();
 
-        if (isset($filters['from'], $filters['to'])) {
-            $from = (int) $filters['from'];
-            $to = (int) $filters['to'];
-            $query->skip($from)->take($to);
-        }
+//        if (isset($filters['from'], $filters['to'])) {
+//            $from = (int) $filters['from'];
+//            $to = (int) $filters['to'];
+//            $query->skip($from)->take($to);
+//        }
 
         $perPage = max((int) ($filters['per_page'] ?? 20), 1);
         $page = max((int) ($filters['page'] ?? 1), 1);

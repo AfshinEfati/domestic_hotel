@@ -28,6 +28,7 @@ use App\Services\RoomTypeNameService;
 use App\Services\RoomTypeService;
 use App\Services\RuleService;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class AccommodationController extends Controller
 {
@@ -46,6 +47,18 @@ class AccommodationController extends Controller
     public function list(AccommodationListRequest $request)
     {
         $hotels = $this->accommodationService->getList($request->validated());
+        if ($hotels instanceof LengthAwarePaginator) {
+            return ApiResponseHelper::successResponse([
+                'items' => AccommodationResource::collection($hotels->items()),
+                'pagination' => [
+                    'current_page' => $hotels->currentPage(),
+                    'per_page' => $hotels->perPage(),
+                    'last_page' => $hotels->lastPage(),
+                    'total' => $hotels->total(),
+                    'has_more' => $hotels->hasMorePages(),
+                ],
+            ], 'Accommodation List Fetched Successfully');
+        }
         $hotels = AccommodationResource::collection($hotels);
         return ApiResponseHelper::successResponse($hotels, 'Accommodation List Fetched Successfully');
     }
