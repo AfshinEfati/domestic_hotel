@@ -29,7 +29,7 @@ final class NormalizeRatePlansSeeder extends Seeder
 
         $summary = DB::transaction(function () use ($mapping): array {
             $rows = DB::table('rate_plans')
-                ->select(['id', 'en_name', 'is_foreign_guest'])
+                ->select(['id','fa_name', 'en_name', 'is_foreign_guest'])
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
