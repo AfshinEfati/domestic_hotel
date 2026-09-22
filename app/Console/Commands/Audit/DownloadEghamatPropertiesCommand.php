@@ -4,6 +4,7 @@ namespace App\Console\Commands\Audit;
 
 use App\Models\Provider;
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -14,6 +15,9 @@ class DownloadEghamatPropertiesCommand extends Command
 
     protected $description = 'Download Eghamat24 properties snapshot for audit';
 
+    /**
+     * @throws ConnectionException
+     */
     public function handle(): int
     {
         $provider = Provider::find(1);
@@ -32,10 +36,9 @@ class DownloadEghamatPropertiesCommand extends Command
             $config['base_url'] ?? $config['url'] ?? '',
             '/'
         );
+        $baseUrl = $baseUrl . '/v1';
+        $this->info('Base url: ' . $baseUrl);
 
-        $token = $config['token']
-            ?? $config['api_token']
-            ?? null;
 
         if ($baseUrl === '') {
             throw new RuntimeException('Provider base URL not found.');
@@ -45,11 +48,11 @@ class DownloadEghamatPropertiesCommand extends Command
 
         $request = Http::timeout(120);
 
-        if ($token) {
-            $request = $request->withToken($token);
-        }
 
-        $response = $request->get(
+        $response = $request->withHeaders([
+            'Client-Token' => 'https://api.grschannel.com-$2y$10$/iQviVsfD1mKLS58OYdNve9',
+            'Content-type' => 'application/json'
+        ])->get(
             $baseUrl . '/properties',
             [
                 'page' => 1,
@@ -59,7 +62,7 @@ class DownloadEghamatPropertiesCommand extends Command
 
         if (!$response->successful()) {
             $this->error(
-                'Eghamat response failed: '.$response->status()
+                'Eghamat response failed: ' . $response->status()
             );
 
             return self::FAILURE;
@@ -73,7 +76,7 @@ class DownloadEghamatPropertiesCommand extends Command
         ];
 
         Storage::disk('local')->put(
-            'audits/eghamat/properties-'.now()->format('Y-m-d-H-i-s').'.json',
+            'audits/eghamat/properties-' . now()->format('Y-m-d-H-i-s') . '.json',
             json_encode(
                 $payload,
                 JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT

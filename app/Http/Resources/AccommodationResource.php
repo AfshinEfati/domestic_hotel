@@ -34,6 +34,7 @@ class AccommodationResource extends JsonResource
             'childPolicy'=> HotelChildPolicyResource::make($this->whenLoaded('childPolicy')),
             'rooms' => RoomTypeResource::collection($this->whenLoaded('rooms')),
             'facilities' => FacilityResource::collection($this->whenLoaded('facilities')),
+            'eghamat'=>$this->eghamat()
         ];
     }
 }
