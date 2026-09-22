@@ -36,7 +36,7 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
         if (!$token || !$expire || $expire->isPast()) {
             $hashedPassword = strtoupper(hash('sha512', $conf['secret_key'] ?? ''));
             $authUrl = $this->baseUrl . '/Authenticate/CreateSession';
-            $response = Http::withHeaders([
+            $response = $this->client()->withHeaders([
                 'Accept' => 'application/json',
             ])->post($authUrl, [
                 'OfficeId' => $conf['access_key'] ?? '',
@@ -94,16 +94,12 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
             'id'                   => (string) ($city['Id'] ?? ''),
             'name'                 => $city['NameFa'] ?? null,
             'name_ar'              => null,
-            'name_en'              => $city['Name'] ?? null,
-
+            'name_en'              => null,
             'province_id'          => null,
             'province_name'        => $city['province_name'] ?? null,
-            'province_name_ar'     => null,
             'province_name_en'     => $city['province_name_en'] ?? null,
-
             'country_id'           => null,
             'country_name'         => $city['country_name'] ?? null,
-            'country_name_ar'      => null,
             'country_name_en'      => $city['country_name_en'] ?? null,
             'country_code_alpha_2' => $city['country_code_alpha_2'] ?? 'IR',
             'country_code_alpha_3' => $city['country_code_alpha_3'] ?? 'IRN',
@@ -338,7 +334,6 @@ class PartoAdapter extends BaseAdapter implements ProviderAdapterInterface
         return [
             'ok' => true,
             'reserve_id' => (string)data_get($val, 'reserveId', $reserveId),
-            'status' => data_get($val, 'status'),
             'property_id' => (string)data_get($val, 'propertyId'),
             'room_type_id' => (string)data_get($val, 'roomTypeId'),
             'rate_plan_id' => (string)data_get($val, 'ratePlanId'),
