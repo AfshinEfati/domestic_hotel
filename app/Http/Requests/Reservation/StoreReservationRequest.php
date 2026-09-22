@@ -5,7 +5,6 @@ namespace App\Http\Requests\Reservation;
 use App\Support\Reservation\ReservationGuestGender;
 use App\Support\Reservation\ReservationGuestType;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -54,28 +53,15 @@ class StoreReservationRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            // Only inspect valid, existing nationality IDs; ordinary rule errors cover malformed payloads.
+            // Check identity only after basic nationality and guest data validation.
             if ($validator->errors()->isNotEmpty()) {
                 return;
             }
 
-            $rooms = $this->input('hotel.rooms', []);
-            $countryIds = [];
-            foreach ($rooms as $room) {
-                foreach ($room['guests'] as $guest) {
-                    $countryIds[] = (int) $guest['country_id'];
-                }
-            }
-
-            // Resolve Iran using ISO-2, never a hard-coded database country ID.
-            $countryCodes = DB::table('countries')
-                ->whereIn('id', array_values(array_unique($countryIds)))
-                ->pluck('iso2', 'id');
-
-            foreach ($rooms as $roomIndex => $room) {
+            foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
                 foreach ($room['guests'] as $guestIndex => $guest) {
                     $path = "hotel.rooms.{$roomIndex}.guests.{$guestIndex}";
-                    $isIranian = strtoupper(trim((string) $countryCodes->get((int) $guest['country_id']))) === 'IR';
+                    $isIranian = (int) $guest['country_id'] === 1;
                     $field = $isIranian ? 'national_id' : 'passport_number';
                     $value = $guest[$field] ?? null;
 
