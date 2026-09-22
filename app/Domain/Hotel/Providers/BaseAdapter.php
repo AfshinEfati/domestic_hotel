@@ -30,6 +30,7 @@ abstract class BaseAdapter
     protected function client(): PendingRequest
     {
         return Http::withHeaders($this->headers)
+            ->withAttributes(['domestic_provider' => ['code' => (string) $this->provider->code]])
             ->baseUrl($this->baseUrl)
             ->timeout(30);
     }
