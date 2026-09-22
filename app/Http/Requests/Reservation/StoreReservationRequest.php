@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Reservation;
 
+use App\Models\Country;
 use App\Support\Reservation\ReservationGuestGender;
 use App\Support\Reservation\ReservationGuestType;
 use Illuminate\Foundation\Http\FormRequest;
@@ -10,6 +11,37 @@ use Illuminate\Validation\Validator;
 
 class StoreReservationRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $countries = Country::query()
+            ->select('id', 'iso3')
+            ->get()
+            ->keyBy('iso3');
+        $rooms = $this->input('hotel.rooms', []);
+        foreach ($rooms as $roomIndex => &$room) {
+
+            foreach ($room['guests'] ?? [] as $guestIndex => &$guest) {
+
+                $nationality = strtoupper(
+                    trim($guest['nationality'] ?? '')
+                );
+                if ($nationality && isset($countries[$nationality])) {
+                    $countryId = $countries[$nationality]->id;
+                    $guest['country_id'] = $countryId;
+                    $guest['passport_issuer_country_id'] = $countryId;
+                }
+            }
+        }
+
+
+        $this->merge([
+            'hotel' => [
+                'rooms' => $rooms
+            ]
+        ]);
+    }
+
+
     public function authorize(): bool
     {
         return true;
@@ -39,7 +71,7 @@ class StoreReservationRequest extends FormRequest
             'hotel.rooms.*.guests.*.birth_date' => ['nullable', 'date', 'before:today'],
             // country_id is the guest's nationality, not the passport issuing country.
             'hotel.rooms.*.guests.*.country_id' => ['required', 'integer', 'exists:countries,id'],
-            'hotel.rooms.*.guests.*.national_id' => ['nullable', 'string', 'max:32'],
+            'hotel.rooms.*.guests.*.national_id' => ['nullable', 'string', 'digits:10'],
             'hotel.rooms.*.guests.*.passport_number' => ['nullable', 'string', 'max:64'],
             'hotel.rooms.*.guests.*.passport_issuer_country_id' => [
                 'nullable', 'required_with:hotel.rooms.*.guests.*.passport_number', 'integer', 'exists:countries,id',
@@ -61,7 +93,7 @@ class StoreReservationRequest extends FormRequest
             foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
                 foreach ($room['guests'] as $guestIndex => $guest) {
                     $path = "hotel.rooms.{$roomIndex}.guests.{$guestIndex}";
-                    $isIranian = (int) $guest['country_id'] === 1;
+                    $isIranian = (int)$guest['country_id'] === 1;
                     $field = $isIranian ? 'national_id' : 'passport_number';
                     $value = $guest[$field] ?? null;
 

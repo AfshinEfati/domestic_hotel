@@ -1,0 +1,92 @@
+fa_name,en_name,is_foreign_guest,review_status,source_record_count,notes
+اقامت با صبحانه,breakfast,0,safe_from_name,1236,
+اقامت بدون صبحانه,room_only,0,partial_meal_conflict,356,Source meal_type conflicts with fa_name in the listed IDs; manual confirmation required before correcting meal_type.
+اقامت باصبحانه,breakfast,0,safe_from_name,154,
+فولبرد,full_board,0,partial_meal_conflict,121,Source meal_type conflicts with fa_name in the listed IDs; manual confirmation required before correcting meal_type.
+مهمان خارجی,foreign_unspecified,1,manual,98,Foreign eligibility known; meal coverage unspecified.
+اقامت تک,stay_only,0,manual,69,Confirm اقامت تک means room-only; not safely equivalent by name alone.
+اقامت,stay_unspecified,0,manual,52,Generic اقامت: meal/booking content unspecified.
+مهمان خارجی(باصبحانه),foreign_breakfast,1,safe_from_name,25,
+مهمان خارجی(بدون صبحانه),foreign_room_only,1,safe_from_name,25,
+فولبرد(انتخابی),full_board_selectable,0,verify_amenity,18,
+مهمان خارجی(صبحانه),foreign_breakfast,1,safe_from_name,18,
+هافبرد,half_board,0,safe_from_name,18,
+اقامت صبحانه,breakfast,0,safe_from_name,16,
+اقامت با  صبحانه,breakfast,0,safe_from_name,13,
+اقامت با صبحانه(b2b),b2b_breakfast,0,safe_from_name,11,
+اقامت بدون صبحانه (خارجی),foreign_room_only,1,safe_from_name,10,
+اقامت با صبحانه (خارجی),foreign_breakfast,1,safe_from_name,8,
+بدون صبحانه,room_only,0,safe_from_name,7,
+فولبرد(بوفه),full_board_buffet,0,verify_amenity,7,
+مهمان خارجی(با صبحانه),foreign_breakfast,1,safe_from_name,5,
+مهمان خارجی(فولبرد),foreign_full_board,1,safe_from_name,5,
+اقامت  با صبحانه,breakfast,0,safe_from_name,4,
+اقامت بدون صبحانه(خارجی),foreign_room_only,1,safe_from_name,4,
+مهمان خارجی با صبحانه,foreign_breakfast,1,safe_from_name,4,
+مهمان خارجی(اقامت تک),foreign_stay_only,1,manual,3,Confirm اقامت تک means room-only; not safely equivalent by name alone.; Source meal_type conflicts with fa_name in the listed IDs; manual confirmation required before correcting meal_type.
+اقامت  با  صبحانه,breakfast,0,safe_from_name,2,
+اقامت  بدون صبحانه,room_only,0,safe_from_name,2,
+اقامت با صبحانه(خارجی),foreign_breakfast,1,safe_from_name,2,
+اقامت با صبحانهb2b,b2b_breakfast,0,safe_from_name,2,
+اقامت باصبحانه(b2b),b2b_breakfast,0,safe_from_name,2,
+اقامت بدون  صبحانه,room_only,0,safe_from_name,2,
+اقامت بدون صبحانه (ایرانی),iranian_room_only,0,safe_from_name,2,
+اقامت ده ساعته (بدون صبحانه),day_use_10_hours_room_only,0,manual,2,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت شش ساعته (بدون صبحانه),day_use_6_hours_room_only,0,manual,2,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(10 الی18),day_use_10_18,0,manual,2,Review day-use duration/window and booking support; do not merge unlike time windows.
+فولبرد انتخابی,full_board_selectable,0,verify_amenity,2,
+مهمان خارجی (با صبحانه),foreign_breakfast,1,safe_from_name,2,
+مهمان خارجی بدون صبحانه,foreign_room_only,1,safe_from_name,2,
+مهمان خارجی(اقامت باصبحانه),foreign_breakfast,1,safe_from_name,2,
+مهمان خارجی(هافبرد),foreign_half_board,1,safe_from_name,2,
+4 ساعته انتخابی,day_use_4_hours_selectable,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت 6 ساعت(بین 6 الی16),day_use_6_hours_06_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت 6 ساعته (12 الی 18),day_use_6_hours_12_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت با صبحانه (B2B),b2b_breakfast,0,safe_from_name,1,
+اقامت با صبحانه (سلف سرویس),breakfast_buffet,0,verify_amenity,1,
+اقامت باصبحانه (خارجی),foreign_breakfast,1,safe_from_name,1,
+اقامت بدون صبحانه(b2b),b2b_room_only,0,safe_from_name,1,
+اقامت فولبرد,full_board,0,safe_from_name,1,
+اقامت کوتاه مدت ( 10 الی 16),day_use_10_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت (10 الی 18),day_use_10_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت (10 الی16),day_use_10_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت (12 الی18),day_use_12_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت( 6ساعته),day_use_6_hours,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت( 7ساعته),day_use_7_hours,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(10 الی 16),day_use_10_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(10 الی16),day_use_10_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(10الی18),day_use_10_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(12 الی18 عصر),day_use_12_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(12 الی18),day_use_12_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(13 الی 18),day_use_13_18,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(7ساعت),day_use_7_hours,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(7ساعت)(b2b),day_use_7_hours_b2b,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(9 الی16),day_use_09_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت(بین 9 الی16),day_use_09_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت کوتاه مدت7ساعت(8 الی 20),day_use_7_hours_08_20,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+اقامت6ساعته ( 9 الی16),day_use_6_hours_09_16,0,manual,1,Review day-use duration/window and booking support; do not merge unlike time windows.
+باصبحانه,breakfast,0,safe_from_name,1,
+بدون صبحانه (خارجی),foreign_room_only,1,safe_from_name,1,
+بدون صبحانه انتخابی (ایرانی),iranian_room_only_selectable,0,manual,1,Confirm meaning of انتخابی on without-breakfast plan.
+صبحانه (ایرانی),iranian_breakfast,0,safe_from_name,1,
+فولبرد ( انتخابی),full_board_selectable,0,verify_amenity,1,
+فولبرد ( منو انتخابی ),full_board_selectable,0,verify_amenity,1,
+فولبرد ( منو انتخابی),full_board_selectable,0,verify_amenity,1,
+فولبرد (انتخابی),full_board_selectable,0,verify_amenity,1,
+فولبرد (بوفه),full_board_buffet,0,verify_amenity,1,
+فولبرد(b2b),b2b_full_board,0,safe_from_name,1,
+مهمان خارجی ( اقامت با صبحانه ),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی ( باصبحانه),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی (اقامت با صبحانه),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی (باصبحانه),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی (بدون صبحانه),foreign_room_only,1,safe_from_name,1,
+مهمان خارجی (صبحانه),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی (فولبرد),foreign_full_board,1,safe_from_name,1,
+مهمان خارجی(اقامت با صبحانه),foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی(باصبحانهb2b),b2b_foreign_breakfast,1,safe_from_name,1,
+مهمان خارجی(فولبرد(انتخابی)),foreign_full_board_selectable,1,verify_amenity,1,
+مهمان غیرایرانی,foreign_unspecified,1,manual,1,Foreign eligibility known; meal coverage unspecified.
+میهمان خارجی,foreign_unspecified,1,manual,1,Foreign eligibility known; meal coverage unspecified.
+میهمان خارجی (اقامت با صبحانه),foreign_breakfast,1,safe_from_name,1,
+هافبرد(b2b),b2b_half_board,0,safe_from_name,1,
+هافبرد(بوفه),half_board_buffet,0,verify_amenity,1,

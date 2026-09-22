@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Accommodation extends Model
 {
+
     protected $fillable = [
         'id',
         'city_id',
@@ -42,6 +43,13 @@ class Accommodation extends Model
         'updated_at' => 'datetime',
     ];
 
+    public function eghamat()
+    {
+        return $this->hasMany(AccommodationProviderMap::class, 'accommodation_id', 'id')
+            ->where('provider_id', 1)
+            ->value('provider_property_id');
+    }
+
     public function city(): BelongsTo
     {
         return $this->belongsTo(City::class);
@@ -51,6 +59,7 @@ class Accommodation extends Model
     {
         return $this->belongsTo(AccommodationType::class, 'accommodation_type_id');
     }
+
     public function facilities(): BelongsToMany
     {
         return $this->belongsToMany(Facility::class, 'accommodation_facility')
@@ -66,10 +75,12 @@ class Accommodation extends Model
     {
         return $this->hasOne(HotelChildPolicy::class, 'accommodation_id');
     }
+
     public function rooms(): HasMany
     {
         return $this->hasMany(RoomType::class);
     }
+
     public function rate_plans(): HasMany
     {
         return $this->hasMany(RatePlan::class);
