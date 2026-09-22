@@ -17,7 +17,7 @@ final class SendTelegramAlertJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
-    public int $timeout = 15;
+    public int $timeout = 25;
 
     public function __construct(public readonly string $message) {}
 
