@@ -32,6 +32,7 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
                 'hotels.accommodation',
                 'hotels.rooms.roomType',
                 'hotels.rooms.ratePlan',
+                'hotels.rooms.nights',
                 'hotels.rooms.guests.country',
                 'hotels.rooms.guests.passportIssuerCountry',
                 'hotels.purchases.provider',

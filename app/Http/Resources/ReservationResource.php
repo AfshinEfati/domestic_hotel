@@ -13,8 +13,8 @@ class ReservationResource extends JsonResource
         return [
             'id' => $this->id,
             'agency_id' => $this->agency_id,
-            'status' => (int) $this->status,
-            'status_detail' => ReservationStatus::get((int) $this->status),
+            'status' => (int)$this->status,
+            'status_detail' => ReservationStatus::get((int)$this->status),
             'check_in' => $this->check_in?->format('Y-m-d'),
             'check_out' => $this->check_out?->format('Y-m-d'),
             'price' => $this->sale_amount,
@@ -40,22 +40,37 @@ class ReservationResource extends JsonResource
                         'id' => $hotel->id,
                         'accommodation_id' => $hotel->accommodation_id,
                         'type' => $hotel->type,
-                        'is_final' => (bool) $hotel->is_final,
+                        'is_final' => (bool)$hotel->is_final,
                         'rooms' => $hotel->relationLoaded('rooms')
                             ? $hotel->rooms->map(function ($room) {
                                 return [
                                     'id' => $room->id,
                                     'room_number' => $room->room_number,
                                     'type' => $room->type,
-                                    'is_final' => (bool) $room->is_final,
+                                    'is_final' => (bool)$room->is_final,
                                     'room_calendar_id' => $room->room_calendar_id,
                                     'room_type_id' => $room->room_type_id,
                                     'rate_plan_id' => $room->rate_plan_id,
                                     'room_name' => $room->room_name,
                                     'initial_price' => $room->initial_price,
                                     'validated_price' => $room->validated_price,
+                                    'price_change' => $room->initial_price !== null
+                                        && $room->validated_price !== null
+                                        && $room->validated_price > $room->initial_price,
+                                    'nights' => $room->relationLoaded('nights')
+                                        ? $room->nights->sortBy('date')->values()->map(fn($night) => [
+                                            'id' => $night->id,
+                                            'date' => $night->date?->format('Y-m-d'),
+                                            'room_calendar_id' => $night->room_calendar_id,
+                                            'initial_price' => $night->initial_price,
+                                            'validated_price' => $night->validated_price,
+                                            'price_change' => $night->initial_price !== null
+                                                && $night->validated_price !== null
+                                                && $night->validated_price > $night->initial_price,
+                                        ])->values()
+                                        : [],
                                     'guests' => $room->relationLoaded('guests')
-                                        ? $room->guests->map(fn ($guest) => [
+                                        ? $room->guests->map(fn($guest) => [
                                             'id' => $guest->id,
                                             'type' => $guest->type,
                                             'first_name' => $guest->first_name,
