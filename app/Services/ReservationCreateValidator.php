@@ -96,14 +96,8 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
-            // Re-validated here (creation time), not in StoreReservationRequest: this is the
-            // single place age is checked, reusing the already-loaded accommodation->childPolicy
-            // relation below — no second query — and it runs before any provider call, so an
-            // invalid declaration never burns a rate-limited request.
-            $ageError = $this->validateGuestAges($calendar, $roomSelection['guests']);
-            if ($ageError !== null) {
-                return $failure(ReservationStatus::CHECKED, $ageError);
-            }
+            // Guest type (child/infant/adult) is resolved from age inside calculateSelectedPrice
+            // below, not validated here — see normalizeGuestCounts for why.
 
             $key = $provider->id . ':' . $calendar->provider_property_id;
             if (!array_key_exists($key, $cachedAvailability)) {
@@ -175,85 +169,56 @@ readonly class ReservationCreateValidator
         ];
     }
 
-    /**
-     * The declared guest `type` (1 adult / 2 child / 3 infant) must be consistent with the
-     * guest's age under the hotel's own child policy — a 50-year-old cannot be booked as a
-     * "child" just by sending that type, and a 9-year-old cannot be booked as a "child" once
-     * the policy's max_child_age is lower. Uses the same accommodation->childPolicy relation
-     * calculateSelectedPrice() below reads, so this adds no extra query.
-     */
-    private function validateGuestAges(RoomCalendar $calendar, array $guests): ?string
-    {
-        $policy = $calendar->accommodation?->childPolicy;
-        if (!$policy || !$policy->status) {
-            return null;
-        }
-
-        foreach ($guests as $guest) {
-            $age = $guest['age'] ?? null;
-            // Guests with no computable age (no/invalid birthday) are not checked here.
-            if ($age === null) {
-                continue;
-            }
-            $age = (int) $age;
-            $type = (int) ($guest['type'] ?? 0);
-
-            $isInfantAge = $age <= $policy->max_infant_age;
-            $isChildAge = $age > $policy->max_infant_age && $age <= $policy->max_child_age;
-            $isAdultAge = $age > $policy->max_child_age;
-
-            $valid = match ($type) {
-                ReservationGuestType::INFANT => $isInfantAge,
-                ReservationGuestType::CHILD => $isChildAge,
-                ReservationGuestType::ADULT => $isAdultAge,
-                default => true,
-            };
-
-            if (!$valid) {
-                return "Guest age ({$age}) does not match declared type under this hotel's child policy.";
-            }
-        }
-
-        return null;
-    }
 
     /**
-     * Mirrors AvailabilityFilterService::normalizePassengers's coverage allocation, applied
-     * to already-declared (and age-validated) guest types instead of re-deriving type from
-     * age. max_children_covered is a shared pool for child+infant; max_infants_covered is a
-     * further infant-only sub-cap within that pool. Beyond the covered slots, guests are
-     * priced/bedded as adults — their declared type is still stored as-is in the database,
-     * this only affects this per-room price/capacity calculation. A null cap means that cap
-     * itself is absent, not that the other cap is ignored.
-     *
-     * @return array{0:int,1:int,2:int} [adult, child, infant]
+     * @param array $guests
+     * @param HotelChildPolicy|null $policy
+     * @param CarbonImmutable $checkIn
+     * @return int[]
      */
-    private function normalizeGuestCounts(array $guests, ?HotelChildPolicy $policy): array
+    private function normalizeGuestCounts(array $guests, ?HotelChildPolicy $policy, CarbonImmutable $checkIn): array
     {
         $adult = 0;
         $candidates = [];
+
         foreach ($guests as $index => $guest) {
-            $type = (int) ($guest['type'] ?? 0);
-            if ($type === ReservationGuestType::CHILD || $type === ReservationGuestType::INFANT) {
-                $isInfant = $type === ReservationGuestType::INFANT;
-                $candidates[] = [
-                    'index' => $index,
-                    'age' => (int) ($guest['age'] ?? 0),
-                    'infant' => $isInfant,
-                    'discount' => $this->policyDiscountPriority(
-                        $isInfant ? $policy?->infant_pricing_type : $policy?->child_pricing_type,
-                        $isInfant ? $policy?->infant_pricing_value : $policy?->child_pricing_value,
-                    ),
-                ];
+            $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
+            if ($age === null) {
+                $adult++;
                 continue;
             }
-            $adult++;
-        }
 
-        if ($policy === null) {
-            $child = count(array_filter($candidates, static fn (array $c): bool => !$c['infant']));
-            $infant = count($candidates) - $child;
-            return [$adult, $child, $infant];
+            // No active child policy for this hotel: nobody gets a discount or a bed exemption.
+            if ($policy === null) {
+                $adult++;
+                continue;
+            }
+
+            $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
+            // Age must be known to grant any non-adult treatment; unknown age defaults to adult.
+            if ($age === null) {
+                $adult++;
+                continue;
+            }
+
+            $infantEligible = (int) $policy->max_infant_age > 0 && $age < (int) $policy->max_infant_age;
+            $childEligible = (int) $policy->max_child_age > 0 && $age <= (int) $policy->max_child_age;
+
+            if (!$infantEligible && !$childEligible) {
+                $adult++;
+                continue;
+            }
+
+            $candidates[] = [
+                'index' => $index,
+                'age' => $age,
+                'infant_eligible' => $infantEligible,
+                'child_eligible' => $childEligible,
+                'discount' => $this->policyDiscountPriority(
+                    $infantEligible ? $policy->infant_pricing_type : $policy->child_pricing_type,
+                    $infantEligible ? $policy->infant_pricing_value : $policy->child_pricing_value,
+                ),
+            ];
         }
 
         // For a shared cap, prioritize the larger known discount so that guest ordering
@@ -277,7 +242,7 @@ readonly class ReservationCreateValidator
                 continue;
             }
 
-            if ($candidate['infant']) {
+            if ($candidate['infant_eligible']) {
                 $infantLimitAvailable = $policy->max_infants_covered === null
                     || $coveredInfants < (int) $policy->max_infants_covered;
 
@@ -290,7 +255,7 @@ readonly class ReservationCreateValidator
 
                 // The infant-only cap is full, but the shared child cap may
                 // still have room for this infant to use the child policy.
-                if ($policy->infant_when_disabled === 'as_child') {
+                if ($policy->infant_when_disabled === 'as_child' && $candidate['child_eligible']) {
                     $child++;
                     $coveredTotal++;
                     continue;
@@ -305,6 +270,18 @@ readonly class ReservationCreateValidator
         }
 
         return [$adult, $child, $infant];
+    }
+
+    private function calculateGuestAge(?string $birthday, CarbonImmutable $reference): ?int
+    {
+        if (!$birthday) {
+            return null;
+        }
+        $birth = CarbonImmutable::createFromFormat('Y-m-d', $birthday);
+        if (!$birth instanceof CarbonImmutable) {
+            return null;
+        }
+        return max(0, (int) $birth->diffInYears($reference));
     }
 
     /**
@@ -335,7 +312,7 @@ readonly class ReservationCreateValidator
         if ($policy && !$policy->status) {
             $policy = null;
         }
-        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy);
+        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy, CarbonImmutable::parse($days[0]));
         $beds = $adult
             + ($policy?->child_service_condition === 'with_service' ? $child : 0)
             + ($policy?->infant_service_condition === 'with_service' ? $infant : 0);
