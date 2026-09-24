@@ -73,6 +73,8 @@ class ReservationCreateValidatorChildPolicyTest extends TestCase
 
     public function test_nine_year_old_is_recalculated_from_birthday_and_becomes_adult_when_policy_ends_at_seven(): void
     {
+        CarbonImmutable::setTestNow('2026-09-24 12:00:00');
+
         $validator = $this->validator();
         $method = new ReflectionMethod($validator, 'normalizeGuestCounts');
 
@@ -91,8 +93,10 @@ class ReservationCreateValidatorChildPolicyTest extends TestCase
                 ],
             ],
             $this->policy(),
-            CarbonImmutable::parse('2026-09-26')
+            CarbonImmutable::parse('2026-09-24')
         );
+
+        CarbonImmutable::setTestNow();
 
         $this->assertSame([2, 0, 0], $result);
     }
