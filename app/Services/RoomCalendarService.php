@@ -123,6 +123,7 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
 
                             'calendar' => $ratePlanCalendars
                                 ->map(fn ($calendar) => [
+                                    'id'=>$calendar->id,
                                     'day' => $calendar->day?->format('Y-m-d'),
                                     'inventory' => $calendar->inventory,
                                     'provider_id' => $calendar->provider_id,

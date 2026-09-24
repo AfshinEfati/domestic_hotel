@@ -8,18 +8,26 @@ use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
+use Error;
 use Illuminate\Support\Collection;
 use Throwable;
 
-/** Checks the exact calendars offered to the customer; never searches for another provider. */
-class ReservationCreateValidator
+/** Checks the exact calendars offered to the customer, night by night; never searches for another provider. */
+readonly class ReservationCreateValidator
 {
     public function __construct(
-        private readonly RoomCalendarRepositoryInterface $calendars,
-        private readonly ProviderRepositoryInterface $providers,
+        private RoomCalendarRepositoryInterface $calendars,
+        private ProviderRepositoryInterface     $providers,
     ) {}
 
-    /** @return array{status:int,error:?string,total:?int,rooms:array<int,array{price:int,provider_id:int}>} */
+    /**
+     * @return array{
+     *     status:int,
+     *     error:?string,
+     *     total:?int,
+     *     rooms:array<int,array{price:int,provider_id:int,nights:array<int,array{date:string,price:int}>}>
+     * }
+     */
     public function validate(array $data): array
     {
         $failure = static fn (int $status, string $error): array => [
@@ -36,29 +44,44 @@ class ReservationCreateValidator
             return $failure(ReservationStatus::CHECKED, 'Invalid stay dates.');
         }
 
-        // Resolve the accommodation exclusively from existing calendar IDs. Validate the
-        // entire selection before contacting any provider: a reservation cannot mix hotels.
-        $selectedCalendars = [];
-        $accommodationId = null;
-        foreach ($data['hotel']['rooms'] as $index => $selection) {
-            $calendar = $this->calendars->find((int) $selection['room_calendar_id']);
-            if ($calendar === null || $calendar->day?->toDateString() !== $data['check_in']) {
-                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendar is no longer available for check-in.');
+        $accommodationId = (int) $data['hotel']['accommodation_id'];
+
+        // Resolve and validate every night's calendar before contacting any provider:
+        // a reservation cannot mix hotels, and every room must offer one consistent
+        // provider/room type/rate plan across its whole stay.
+        $selectedCalendarsByRoom = [];
+        foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
+            $byDate = [];
+            foreach ($roomSelection['calendar'] as $night) {
+                $calendar = $this->calendars->find((int) $night['calendar_id']);
+                if ($calendar === null || $calendar->day?->toDateString() !== $night['date']) {
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendar is no longer available for its night.');
+                }
+                if ((int) $calendar->accommodation_id !== $accommodationId) {
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendar does not belong to the requested hotel.');
+                }
+                $byDate[$night['date']] = $calendar;
             }
-            if ($accommodationId === null) {
-                $accommodationId = (int) $calendar->accommodation_id;
-            } elseif ((int) $calendar->accommodation_id !== $accommodationId) {
-                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendars belong to different hotels.');
+
+            $first = $byDate[$days[0]];
+            foreach ($byDate as $calendar) {
+                if ((int) $calendar->provider_id !== (int) $first->provider_id
+                    || (int) $calendar->room_type_id !== (int) $first->room_type_id
+                    || (int) $calendar->rate_plan_id !== (int) $first->rate_plan_id) {
+                    return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendars for a room must share one offer across every night.');
+                }
             }
-            $selectedCalendars[$index] = $calendar;
+
+            $selectedCalendarsByRoom[$index] = $byDate;
         }
 
         $results = [];
         $cachedAvailability = [];
         $inventoryUsed = [];
 
-        foreach ($data['hotel']['rooms'] as $index => $selection) {
-            $calendar = $selectedCalendars[$index];
+        foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
+            $byDate = $selectedCalendarsByRoom[$index];
+            $calendar = $byDate[$days[0]];
             $provider = $this->providers->find((int) $calendar->provider_id);
             if (!$provider || !$provider->is_active || !$provider->is_online) {
                 return $failure(ReservationStatus::CHECKED, 'Selected provider cannot validate prices online.');
@@ -122,11 +145,15 @@ class ReservationCreateValidator
                 $live->put($day, $fresh);
             }
 
-            $price = $this->calculateSelectedPrice($roomType, $calendar, $selection['guests'], $live);
-            if ($price === null) {
+            $nightly = $this->calculateSelectedPrice($roomType, $calendar, $roomSelection['guests'], $days, $live);
+            if ($nightly === null) {
                 return $failure(ReservationStatus::CHECKED, 'Cannot calculate the selected room price.');
             }
-            $results[$index] = ['price' => $price, 'provider_id' => (int) $provider->id];
+            $results[$index] = [
+                'price' => array_sum(array_column($nightly, 'price')),
+                'provider_id' => (int) $provider->id,
+                'nights' => $nightly,
+            ];
         }
 
         return [
@@ -137,8 +164,11 @@ class ReservationCreateValidator
         ];
     }
 
-    /** Mirrors AvailabilityFilterService's per-night room/child/extra-bed total. */
-    private function calculateSelectedPrice($room, RoomCalendar $selected, array $guests, Collection $live): ?int
+    /**
+     * Mirrors AvailabilityFilterService's per-night room/child/extra-bed total.
+     * @return array<int,array{date:string,price:int}>|null
+     */
+    private function calculateSelectedPrice($room, RoomCalendar $selected, array $guests, array $days, Collection $live): ?array
     {
         $capacity = (int) $room->capacity;
         if ($capacity < 1) {
@@ -161,19 +191,21 @@ class ReservationCreateValidator
             return null;
         }
         $extra = max(0, $beds - $capacity);
-        $total = 0;
-        foreach ($live as $day) {
-            $base = (int) $day->daily_rate;
+        $nightly = [];
+        foreach ($days as $day) {
+            $calendar = $live->get($day);
+            $base = (int) $calendar->daily_rate;
             $childRate = $this->policyRate($base, $capacity, $policy?->child_pricing_type ?? 'adult', $policy?->child_pricing_value);
             $infantRate = $this->policyRate($base, $capacity, $policy?->infant_pricing_type ?? 'adult', $policy?->infant_pricing_value);
             if ($childRate === null || $infantRate === null) {
                 return null;
             }
             $extraRate = (int) $room->extra_capacity > 0
-                ? (int) ($day->extend_bed_daily_rate ?? round($base / $capacity)) : 0;
-            $total += $base + $child * $childRate + $infant * $infantRate + $extra * $extraRate;
+                ? (int) ($calendar->extend_bed_daily_rate ?? round($base / $capacity)) : 0;
+            $total = $base + $child * $childRate + $infant * $infantRate + $extra * $extraRate;
+            $nightly[] = ['date' => $day, 'price' => $total];
         }
-        return $total;
+        return $nightly;
     }
 
     private function policyRate(int $base, int $capacity, string $type, ?int $value): ?int

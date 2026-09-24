@@ -5,6 +5,7 @@ namespace App\Http\Requests\Reservation;
 use App\Models\Country;
 use App\Support\Reservation\ReservationGuestGender;
 use App\Support\Reservation\ReservationGuestType;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -16,29 +17,62 @@ class StoreReservationRequest extends FormRequest
         $countries = Country::query()
             ->select('id', 'iso3')
             ->get()
-            ->keyBy('iso3');
+            ->keyBy(
+                fn (Country $country): string => strtoupper($country->iso3)
+            );
+
         $rooms = $this->input('hotel.rooms', []);
-        foreach ($rooms as $roomIndex => &$room) {
 
-            foreach ($room['guests'] ?? [] as $guestIndex => &$guest) {
+        foreach ($rooms as $roomIndex => $room) {
 
-                $nationality = strtoupper(
-                    trim($guest['nationality'] ?? '')
+            if (!isset($room['guests']) || !is_array($room['guests'])) {
+                continue;
+            }
+
+            foreach ($room['guests'] as $guestIndex => $guest) {
+
+                $guest['country_code'] = strtoupper(
+                    trim($guest['country_code'] ?? '')
                 );
-                if ($nationality && isset($countries[$nationality])) {
-                    $countryId = $countries[$nationality]->id;
-                    $guest['country_id'] = $countryId;
-                    $guest['passport_issuer_country_id'] = $countryId;
+
+                $guest['country_id'] = $this->resolveCountryId(
+                    $guest['country_code'],
+                    $countries
+                );
+
+                if (array_key_exists('passport_issuer_country_code', $guest)) {
+
+                    $guest['passport_issuer_country_code'] = strtoupper(
+                        trim($guest['passport_issuer_country_code'] ?? '')
+                    );
+
+                    $guest['passport_issuer_country_id'] = $this->resolveCountryId(
+                        $guest['passport_issuer_country_code'],
+                        $countries
+                    );
                 }
+
+                // نوشتن مقدار اصلاح‌شده به آرایه‌ی اصلی
+                $rooms[$roomIndex]['guests'][$guestIndex] = $guest;
             }
         }
 
-
         $this->merge([
             'hotel' => [
-                'rooms' => $rooms
-            ]
+                'accommodation_id' => $this->input('hotel.accommodation_id'),
+                'rooms' => $rooms,
+            ],
         ]);
+    }
+
+
+    private function resolveCountryId(?string $code, $countries): ?int
+    {
+        $code = strtoupper(trim((string) $code));
+
+        return $code !== '' && isset($countries[$code])
+            ? $countries[$code]->id
+            : null;
     }
 
 
@@ -47,66 +81,401 @@ class StoreReservationRequest extends FormRequest
         return true;
     }
 
+
     public function rules(): array
     {
         return [
-            'agency_id' => ['required', 'integer', 'min:1'],
-            'check_in' => ['required', 'date_format:Y-m-d'],
-            'check_out' => ['required', 'date_format:Y-m-d', 'after:check_in'],
-            'first_name' => ['required', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
-            'mobile' => ['required', 'string', 'max:32'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'hotel' => ['required', 'array'],
-            'hotel.rooms' => ['required', 'array', 'min:1', 'max:5'],
-            // The existing Availability calendar ID resolves the hotel, room, rate plan and provider.
-            // A missing/pruned calendar must still produce a ticket, so do NOT use exists here.
-            'hotel.rooms.*.room_calendar_id' => ['required', 'integer', 'min:1'],
-            'hotel.rooms.*.price' => ['required', 'integer', 'min:0'],
-            'hotel.rooms.*.guests' => ['required', 'array', 'min:1'],
-            'hotel.rooms.*.guests.*.type' => ['required', 'integer', Rule::in(ReservationGuestType::all())],
-            'hotel.rooms.*.guests.*.first_name' => ['required', 'string', 'max:100'],
-            'hotel.rooms.*.guests.*.last_name' => ['required', 'string', 'max:100'],
-            'hotel.rooms.*.guests.*.gender' => ['nullable', 'integer', Rule::in(ReservationGuestGender::all())],
-            'hotel.rooms.*.guests.*.birth_date' => ['nullable', 'date', 'before:today'],
-            // country_id is the guest's nationality, not the passport issuing country.
-            'hotel.rooms.*.guests.*.country_id' => ['required', 'integer', 'exists:countries,id'],
-            'hotel.rooms.*.guests.*.national_id' => ['nullable', 'string', 'digits:10'],
-            'hotel.rooms.*.guests.*.passport_number' => ['nullable', 'string', 'max:64'],
-            'hotel.rooms.*.guests.*.passport_issuer_country_id' => [
-                'nullable', 'required_with:hotel.rooms.*.guests.*.passport_number', 'integer', 'exists:countries,id',
+            'agency_id' => [
+                'required',
+                'integer',
+                'min:1'
             ],
+
+            'check_in' => [
+                'required',
+                'date_format:Y-m-d'
+            ],
+
+            'check_out' => [
+                'required',
+                'date_format:Y-m-d',
+                'after:check_in'
+            ],
+
+            'first_name' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
+            'last_name' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
+            'mobile' => [
+                'required',
+                'string',
+                'max:32'
+            ],
+
+            'email' => [
+                'nullable',
+                'email',
+                'max:255'
+            ],
+
+            'expected_total_price' => [
+                'required',
+                'integer',
+                'min:0'
+            ],
+
+
+            'hotel' => [
+                'required',
+                'array'
+            ],
+
+            'hotel.accommodation_id' => [
+                'required',
+                'integer',
+                'min:1',
+                'exists:accommodations,id'
+            ],
+
+            'hotel.rooms' => [
+                'required',
+                'array',
+                'min:1',
+                'max:5'
+            ],
+
+
+            'hotel.rooms.*.room_number' => [
+                'required',
+                'integer',
+                'min:1',
+                'distinct'
+            ],
+
+
+            'hotel.rooms.*.expected_total_price' => [
+                'required',
+                'integer',
+                'min:0'
+            ],
+
+
+            'hotel.rooms.*.calendar' => [
+                'required',
+                'array',
+                'min:1'
+            ],
+
+            'hotel.rooms.*.calendar.*.calendar_id' => [
+                'required',
+                'integer',
+                'min:1'
+            ],
+
+            'hotel.rooms.*.calendar.*.date' => [
+                'required',
+                'date_format:Y-m-d'
+            ],
+
+            'hotel.rooms.*.calendar.*.expected_price' => [
+                'required',
+                'integer',
+                'min:0'
+            ],
+
+
+            'hotel.rooms.*.guests' => [
+                'required',
+                'array',
+                'min:1'
+            ],
+
+            'hotel.rooms.*.guests.*.type' => [
+                'required',
+                'integer',
+                Rule::in(ReservationGuestType::all())
+            ],
+
+            'hotel.rooms.*.guests.*.first_name' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
+            'hotel.rooms.*.guests.*.last_name' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
+            'hotel.rooms.*.guests.*.gender' => [
+                'nullable',
+                'integer',
+                Rule::in(ReservationGuestGender::all())
+            ],
+
+            'hotel.rooms.*.guests.*.birth_date' => [
+                'nullable',
+                'date',
+                'before:today'
+            ],
+
+
+            'hotel.rooms.*.guests.*.country_code' => [
+                'required',
+                'string',
+                'size:3',
+                Rule::exists('countries', 'iso3')
+            ],
+
+            'hotel.rooms.*.guests.*.country_id' => [
+                'required',
+                'integer',
+                'exists:countries,id'
+            ],
+
+
+            'hotel.rooms.*.guests.*.national_id' => [
+                'nullable',
+                'string',
+                'digits:10'
+            ],
+
+            'hotel.rooms.*.guests.*.passport_number' => [
+                'nullable',
+                'string',
+                'max:64'
+            ],
+
+
+            'hotel.rooms.*.guests.*.passport_issuer_country_code' => [
+                'nullable',
+                'string',
+                'size:3',
+                Rule::exists('countries', 'iso3')
+            ],
+
+            'hotel.rooms.*.guests.*.passport_issuer_country_id' => [
+                'nullable',
+                'integer',
+                'exists:countries,id'
+            ],
+
             'hotel.rooms.*.guests.*.passport_expiry_date' => [
-                'nullable', 'required_with:hotel.rooms.*.guests.*.passport_number', 'date', 'after:today',
+                'nullable',
+                'date',
+                'after:today'
             ],
         ];
     }
 
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            // Check identity only after basic nationality and guest data validation.
+
             if ($validator->errors()->isNotEmpty()) {
                 return;
             }
 
-            foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
-                foreach ($room['guests'] as $guestIndex => $guest) {
-                    $path = "hotel.rooms.{$roomIndex}.guests.{$guestIndex}";
-                    $isIranian = (int)$guest['country_id'] === 1;
-                    $field = $isIranian ? 'national_id' : 'passport_number';
-                    $value = $guest[$field] ?? null;
+            $this->validateCalendarCoverage($validator);
 
-                    if (!is_string($value) || trim($value) === '') {
+            $this->validatePriceTotals($validator);
+
+            $this->validateGuestIdentity($validator);
+        });
+    }
+
+
+    private function validateCalendarCoverage(Validator $validator): void
+    {
+        $checkIn = CarbonImmutable::createFromFormat(
+            'Y-m-d',
+            (string) $this->input('check_in')
+        );
+
+        $checkOut = CarbonImmutable::createFromFormat(
+            'Y-m-d',
+            (string) $this->input('check_out')
+        );
+
+
+        $expectedDates = [];
+
+        for (
+            $date = $checkIn;
+            $date->lessThan($checkOut);
+            $date = $date->addDay()
+        ) {
+            $expectedDates[] = $date->toDateString();
+        }
+
+        $expectedDates = array_flip($expectedDates);
+
+
+        foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
+
+            $seen = [];
+
+            foreach ($room['calendar'] ?? [] as $nightIndex => $night) {
+
+                $date = $night['date'] ?? null;
+
+                $path =
+                    "hotel.rooms.{$roomIndex}.calendar.{$nightIndex}.date";
+
+
+                if (!isset($expectedDates[$date])) {
+
+                    $validator->errors()->add(
+                        $path,
+                        'Calendar date is outside the stay range.'
+                    );
+
+                    continue;
+                }
+
+
+                if (isset($seen[$date])) {
+
+                    $validator->errors()->add(
+                        $path,
+                        'Calendar date is duplicated.'
+                    );
+
+                    continue;
+                }
+
+
+                $seen[$date] = true;
+            }
+
+
+            if (count($seen) !== count($expectedDates)) {
+
+                $validator->errors()->add(
+                    "hotel.rooms.{$roomIndex}.calendar",
+                    'Calendar must contain one row for every night.'
+                );
+            }
+        }
+    }
+
+
+    private function validatePriceTotals(Validator $validator): void
+    {
+        $roomsTotal = 0;
+
+
+        foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
+
+            $calendarTotal = array_sum(
+                array_column(
+                    $room['calendar'] ?? [],
+                    'expected_price'
+                )
+            );
+
+
+            $roomTotal = (int) ($room['expected_total_price'] ?? 0);
+
+
+            if ($calendarTotal !== $roomTotal) {
+
+                $validator->errors()->add(
+                    "hotel.rooms.{$roomIndex}.expected_total_price",
+                    'Room total does not match calendar prices.'
+                );
+            }
+
+
+            $roomsTotal += $roomTotal;
+        }
+
+
+        if (
+            $roomsTotal !==
+            (int) $this->input('expected_total_price', 0)
+        ) {
+
+            $validator->errors()->add(
+                'expected_total_price',
+                'Reservation total does not match rooms total.'
+            );
+        }
+    }
+
+
+    private function validateGuestIdentity(Validator $validator): void
+    {
+        foreach ($this->input('hotel.rooms', []) as $roomIndex => $room) {
+
+            foreach ($room['guests'] ?? [] as $guestIndex => $guest) {
+
+                $path =
+                    "hotel.rooms.{$roomIndex}.guests.{$guestIndex}";
+
+
+                if (empty($guest['country_id'])) {
+
+                    $validator->errors()->add(
+                        "{$path}.country_code",
+                        'Invalid country code.'
+                    );
+
+                    continue;
+                }
+
+
+                $isIranian =
+                    strtoupper($guest['country_code']) === 'IRN';
+
+
+                if ($isIranian) {
+
+                    if (empty($guest['national_id'])) {
+
+                        $validator->errors()->add(
+                            "{$path}.national_id",
+                            'National ID is required for Iranian guests.'
+                        );
+                    }
+
+                    continue;
+                }
+
+
+                foreach (
+                    [
+                        'passport_number' =>
+                            'Passport number is required for foreign guests.',
+
+                        'passport_expiry_date' =>
+                            'Passport expiry date is required for foreign guests.',
+
+                        'passport_issuer_country_id' =>
+                            'Passport issuer country is required for foreign guests.',
+                    ]
+                    as $field => $message
+                ) {
+
+                    if (empty($guest[$field])) {
+
                         $validator->errors()->add(
                             "{$path}.{$field}",
-                            $isIranian
-                                ? 'National ID is required for Iranian guests.'
-                                : 'Passport number is required for non-Iranian guests.'
+                            $message
                         );
                     }
                 }
             }
-        });
+        }
     }
 }

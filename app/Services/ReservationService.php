@@ -13,6 +13,7 @@ use App\Repositories\Contracts\ReservationGuestRepositoryInterface;
 use App\Repositories\Contracts\ReservationHotelRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseSegmentRepositoryInterface;
 use App\Repositories\Contracts\ReservationRepositoryInterface;
+use App\Repositories\Contracts\ReservationRoomNightRepositoryInterface;
 use App\Repositories\Contracts\ReservationRoomRepositoryInterface;
 use App\Services\Contracts\ReservationServiceInterface;
 use App\Services\Contracts\RoomCalendarServiceInterface;
@@ -31,6 +32,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         private readonly ReservationRepositoryInterface $reservationRepository,
         private readonly ReservationHotelRepositoryInterface $reservationHotelRepository,
         private readonly ReservationRoomRepositoryInterface $reservationRoomRepository,
+        private readonly ReservationRoomNightRepositoryInterface $reservationRoomNightRepository,
         private readonly ReservationGuestRepositoryInterface $reservationGuestRepository,
         private readonly ReservationPurchaseSegmentRepositoryInterface $purchaseSegmentRepository,
         private readonly RoomCalendarServiceInterface $calendarService,
@@ -47,12 +49,15 @@ class ReservationService extends BaseService implements ReservationServiceInterf
      */
     public function createRequest(array $data): Reservation
     {
-        $originalTotal = array_sum(array_map(
-            static fn (array $room): int => (int) $room['price'], $data['hotel']['rooms']
-        ));
+        $originalTotal = (int) $data['expected_total_price'];
+        $accommodationId = (int) $data['hotel']['accommodation_id'];
         $roomIds = [];
+        // date => calendar_id => night-row id, per room index; used to update validated_price per night.
+        $nightIdsByRoom = [];
 
-        $reservation = DB::transaction(function () use ($data, $originalTotal, &$roomIds): Reservation {
+        $reservation = DB::transaction(function () use (
+            $data, $originalTotal, $accommodationId, &$roomIds, &$nightIdsByRoom
+        ): Reservation {
             $reservation = $this->reservationRepository->store([
                 'agency_id' => $data['agency_id'],
                 'status' => ReservationStatus::REQUESTED,
@@ -73,18 +78,6 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                 'reservation_number' => (string) $reservation->id,
             ]);
 
-            // The caller sends only calendar IDs, never accommodation/room type/rate plan/provider IDs.
-            // All selected calendars must ultimately belong to the same accommodation.
-            $selectedCalendars = [];
-            $accommodationId = null;
-            foreach ($data['hotel']['rooms'] as $index => $roomData) {
-                $calendar = $this->calendarService->show((int) $roomData['room_calendar_id']);
-                $selectedCalendars[$index] = $calendar;
-                if ($accommodationId === null && $calendar !== null) {
-                    $accommodationId = (int) $calendar->accommodation_id;
-                }
-            }
-
             // Nullable accommodation preserves the hotel, room and guest snapshot even when
             // every selected calendar has been pruned since Availability was shown.
             $hotel = $this->reservationHotelRepository->store([
@@ -95,23 +88,40 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             ]);
 
             foreach ($data['hotel']['rooms'] as $index => $roomData) {
-                $calendar = $selectedCalendars[$index];
+                // The first calendar entry belonging to check_in is the snapshot that used
+                // to be the sole room_calendar_id; it still identifies the room/rate/provider.
+                $firstNight = collect($roomData['calendar'])
+                    ->firstWhere('date', $data['check_in']);
+                $firstCalendarId = (int) ($firstNight['calendar_id'] ?? $roomData['calendar'][0]['calendar_id']);
+                $calendar = $this->calendarService->show($firstCalendarId);
                 $matches = $calendar !== null
                     && (int) $calendar->accommodation_id === $accommodationId
                     && $calendar->day?->toDateString() === $data['check_in'];
+
                 $room = $this->reservationRoomRepository->store([
                     'reservation_hotel_id' => $hotel->id,
-                    'room_number' => $index + 1,
+                    'room_number' => $roomData['room_number'],
                     'type' => ReservationRoomType::REQUESTED,
                     'is_final' => true,
-                    'room_calendar_id' => (int) $roomData['room_calendar_id'],
+                    'room_calendar_id' => $firstCalendarId,
                     'provider_id' => $matches ? (int) $calendar->provider_id : null,
                     'room_type_id' => $matches ? $calendar->room_type_id : null,
                     'rate_plan_id' => $matches ? $calendar->rate_plan_id : null,
                     'room_name' => $matches ? $calendar->roomType?->fa_name : null,
-                    'initial_price' => (int) $roomData['price'],
+                    'initial_price' => (int) $roomData['expected_total_price'],
                 ]);
                 $roomIds[$index] = $room->id;
+
+                $nightIdsByRoom[$index] = [];
+                foreach ($roomData['calendar'] as $night) {
+                    $nightRow = $this->reservationRoomNightRepository->store([
+                        'reservation_room_id' => $room->id,
+                        'date' => $night['date'],
+                        'room_calendar_id' => (int) $night['calendar_id'],
+                        'initial_price' => (int) $night['expected_price'],
+                    ]);
+                    $nightIdsByRoom[$index][$night['date']] = $nightRow->id;
+                }
 
                 foreach ($roomData['guests'] as $guestData) {
                     $this->reservationGuestRepository->store([
@@ -145,12 +155,20 @@ class ReservationService extends BaseService implements ReservationServiceInterf
             ];
         }
 
-        DB::transaction(function () use ($reservation, $check, $roomIds, $originalTotal): void {
+        DB::transaction(function () use ($reservation, $check, $roomIds, $nightIdsByRoom, $originalTotal): void {
             foreach ($check['rooms'] as $index => $room) {
                 $this->reservationRoomRepository->update($roomIds[$index], [
                     'validated_price' => $room['price'],
                     'provider_id' => $room['provider_id'],
                 ]);
+                foreach ($room['nights'] as $night) {
+                    $nightId = $nightIdsByRoom[$index][$night['date']] ?? null;
+                    if ($nightId !== null) {
+                        $this->reservationRoomNightRepository->update($nightId, [
+                            'validated_price' => $night['price'],
+                        ]);
+                    }
+                }
             }
             $validated = $check['total'];
             $this->reservationRepository->update($reservation->id, [
