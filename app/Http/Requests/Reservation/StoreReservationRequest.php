@@ -111,9 +111,7 @@ class StoreReservationRequest extends FormRequest
         if (!$birth instanceof CarbonImmutable) {
             return null;
         }
-
         $age = $birth->diffInYears($reference);
-
         return max(0, (int) $age);
     }
 
