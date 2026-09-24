@@ -21,6 +21,9 @@ class StoreReservationRequest extends FormRequest
                 fn (Country $country): string => strtoupper($country->iso3)
             );
 
+        // مرجع محاسبه سن = تاریخ ورود
+        $checkIn = $this->parseDate($this->input('check_in'));
+
         $rooms = $this->input('hotel.rooms', []);
 
         foreach ($rooms as $roomIndex => $room) {
@@ -52,6 +55,12 @@ class StoreReservationRequest extends FormRequest
                     );
                 }
 
+                // محاسبه سن نسبت به تاریخ ورود
+                $guest['age'] = $this->calculateAge(
+                    $guest['birthday'] ?? null,
+                    $checkIn
+                );
+
                 // نوشتن مقدار اصلاح‌شده به آرایه‌ی اصلی
                 $rooms[$roomIndex]['guests'][$guestIndex] = $guest;
             }
@@ -73,6 +82,39 @@ class StoreReservationRequest extends FormRequest
         return $code !== '' && isset($countries[$code])
             ? $countries[$code]->id
             : null;
+    }
+
+
+    private function parseDate(?string $value): ?CarbonImmutable
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $date = CarbonImmutable::createFromFormat('Y-m-d', $value);
+
+        return $date instanceof CarbonImmutable ? $date : null;
+    }
+
+
+    private function calculateAge(
+        ?string $birthDate,
+        ?CarbonImmutable $reference
+    ): ?int {
+
+        if (!$birthDate || !$reference) {
+            return null;
+        }
+
+        $birth = CarbonImmutable::createFromFormat('Y-m-d', $birthDate);
+
+        if (!$birth instanceof CarbonImmutable) {
+            return null;
+        }
+
+        $age = $birth->diffInYears($reference);
+
+        return max(0, (int) $age);
     }
 
 
@@ -222,12 +264,19 @@ class StoreReservationRequest extends FormRequest
                 Rule::in(ReservationGuestGender::all())
             ],
 
-            'hotel.rooms.*.guests.*.birth_date' => [
-                'nullable',
+            'hotel.rooms.*.guests.*.birthday' => [
+                'required',
                 'date',
                 'before:today'
             ],
 
+            // سن به صورت خودکار از birthday و check_in محاسبه می‌شود
+            'hotel.rooms.*.guests.*.age' => [
+                'nullable',
+                'integer',
+                'min:0',
+                'max:120'
+            ],
 
             'hotel.rooms.*.guests.*.country_code' => [
                 'required',
