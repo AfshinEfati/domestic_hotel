@@ -12,6 +12,7 @@ use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
 use Error;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /** Checks the exact calendars offered to the customer, night by night; never searches for another provider. */
@@ -169,6 +170,79 @@ readonly class ReservationCreateValidator
         ];
     }
 
+
+    /**
+     * Validate the selected hotel/room against the actual guest configuration before
+     * creating any reservation rows. This is local business validation and must not
+     * depend on the external provider validation step.
+     *
+     * @throws ValidationException
+     */
+    public function validateGuestSelection(array $data): void
+    {
+        $errors = [];
+        $checkIn = CarbonImmutable::parse($data['check_in']);
+        $accommodationId = (int) $data['hotel']['accommodation_id'];
+        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
+
+        foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
+            $roomKey = "hotel.rooms.$index.guests";
+            $calendarEntry = collect($roomSelection['calendar'] ?? [])
+                ->firstWhere('date', $data['check_in']);
+
+            if ($calendarEntry === null) {
+                $errors[$roomKey][] = 'Selected room does not contain a calendar entry for check-in date.';
+                continue;
+            }
+
+            $calendar = $this->calendars->find((int) $calendarEntry['calendar_id']);
+            if ($calendar === null) {
+                $errors[$roomKey][] = 'Selected room calendar is no longer available.';
+                continue;
+            }
+            if ((int) $calendar->accommodation_id !== $accommodationId) {
+                $errors[$roomKey][] = 'Selected room does not belong to the selected hotel.';
+                continue;
+            }
+            if ($calendar->day?->toDateString() !== $checkIn->toDateString()) {
+                $errors[$roomKey][] = 'Selected room calendar does not match the check-in date.';
+                continue;
+            }
+
+            $room = $calendar->roomType;
+            if (!$room || (int) $room->accommodation_id !== $accommodationId || $room->out_of_service) {
+                $errors[$roomKey][] = 'Selected room is not available in the selected hotel.';
+                continue;
+            }
+
+            $policy = $calendar->accommodation?->childPolicy;
+            if ($policy && !$policy->status) {
+                $policy = null;
+            }
+
+            [$adult, $child, $infant] = $this->normalizeGuestCounts(
+                $roomSelection['guests'] ?? [],
+                $policy,
+                $reservationDate,
+            );
+
+            $guestCount = $adult + $child + $infant;
+            $maxOccupancy = (int) $room->capacity + (int) $room->extra_capacity;
+            if ($guestCount > $maxOccupancy) {
+                $errors[$roomKey][] = sprintf(
+                    'Selected guests do not fit this room. %d guests are required after applying the hotel child policy, but the room allows %d guests (%d base capacity + %d extra capacity).',
+                    $guestCount,
+                    $maxOccupancy,
+                    (int) $room->capacity,
+                    (int) $room->extra_capacity,
+                );
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
 
     /**
      * @param array $guests
