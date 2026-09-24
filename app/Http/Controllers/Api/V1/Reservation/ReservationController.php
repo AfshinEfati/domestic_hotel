@@ -24,4 +24,20 @@ class ReservationController
             201
         );
     }
+    public function show(string $reservationNumber): JsonResponse
+    {
+        $reservation = $this->service
+            ->findByReservationNumber($reservationNumber);
+
+        if (!$reservation) {
+            return StatusHelper::notFound(
+                'reservation not found'
+            );
+        }
+
+        return StatusHelper::successResponse(
+            new ReservationResource($reservation),
+            'reservation detail'
+        );
+    }
 }
