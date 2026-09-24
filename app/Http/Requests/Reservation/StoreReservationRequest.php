@@ -20,7 +20,6 @@ class StoreReservationRequest extends FormRequest
             ->keyBy(
                 fn (Country $country): string => strtoupper($country->iso3)
             );
-
         // مرجع محاسبه سن = تاریخ ورود
         $checkIn = $this->parseDate($this->input('check_in'));
 
