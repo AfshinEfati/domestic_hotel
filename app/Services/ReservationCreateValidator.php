@@ -202,7 +202,9 @@ readonly class ReservationCreateValidator
             }
 
             $infantEligible = (int) $policy->max_infant_age > 0 && $age < (int) $policy->max_infant_age;
-            $childEligible = (int) $policy->max_child_age > 0 && $age <= (int) $policy->max_child_age;
+            $childEligible = (int) $policy->max_child_age > 0
+                && $age > (int) $policy->max_infant_age
+                && $age <= (int) $policy->max_child_age;
 
             if (!$infantEligible && !$childEligible) {
                 $adult++;
@@ -312,7 +314,10 @@ readonly class ReservationCreateValidator
         if ($policy && !$policy->status) {
             $policy = null;
         }
-        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy, CarbonImmutable::parse($days[0]));
+        // Age is evaluated at reservation creation time. The client-provided age and
+        // guest type are never trusted for pricing or capacity decisions.
+        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
+        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy, $reservationDate);
         // The room base price already covers the room's normal capacity.
         // A covered child/infant occupying an existing bed must not create a
         // second charge. Child/infant policy pricing applies only to guests
