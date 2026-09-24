@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
+use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
 use Error;
@@ -94,6 +96,15 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
+            // Re-validated here (creation time), not in StoreReservationRequest: this is the
+            // single place age is checked, reusing the already-loaded accommodation->childPolicy
+            // relation below — no second query — and it runs before any provider call, so an
+            // invalid declaration never burns a rate-limited request.
+            $ageError = $this->validateGuestAges($calendar, $roomSelection['guests']);
+            if ($ageError !== null) {
+                return $failure(ReservationStatus::CHECKED, $ageError);
+            }
+
             $key = $provider->id . ':' . $calendar->provider_property_id;
             if (!array_key_exists($key, $cachedAvailability)) {
                 try {
@@ -165,6 +176,152 @@ readonly class ReservationCreateValidator
     }
 
     /**
+     * The declared guest `type` (1 adult / 2 child / 3 infant) must be consistent with the
+     * guest's age under the hotel's own child policy — a 50-year-old cannot be booked as a
+     * "child" just by sending that type, and a 9-year-old cannot be booked as a "child" once
+     * the policy's max_child_age is lower. Uses the same accommodation->childPolicy relation
+     * calculateSelectedPrice() below reads, so this adds no extra query.
+     */
+    private function validateGuestAges(RoomCalendar $calendar, array $guests): ?string
+    {
+        $policy = $calendar->accommodation?->childPolicy;
+        if (!$policy || !$policy->status) {
+            return null;
+        }
+
+        foreach ($guests as $guest) {
+            $age = $guest['age'] ?? null;
+            // Guests with no computable age (no/invalid birthday) are not checked here.
+            if ($age === null) {
+                continue;
+            }
+            $age = (int) $age;
+            $type = (int) ($guest['type'] ?? 0);
+
+            $isInfantAge = $age <= $policy->max_infant_age;
+            $isChildAge = $age > $policy->max_infant_age && $age <= $policy->max_child_age;
+            $isAdultAge = $age > $policy->max_child_age;
+
+            $valid = match ($type) {
+                ReservationGuestType::INFANT => $isInfantAge,
+                ReservationGuestType::CHILD => $isChildAge,
+                ReservationGuestType::ADULT => $isAdultAge,
+                default => true,
+            };
+
+            if (!$valid) {
+                return "Guest age ({$age}) does not match declared type under this hotel's child policy.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Mirrors AvailabilityFilterService::normalizePassengers's coverage allocation, applied
+     * to already-declared (and age-validated) guest types instead of re-deriving type from
+     * age. max_children_covered is a shared pool for child+infant; max_infants_covered is a
+     * further infant-only sub-cap within that pool. Beyond the covered slots, guests are
+     * priced/bedded as adults — their declared type is still stored as-is in the database,
+     * this only affects this per-room price/capacity calculation. A null cap means that cap
+     * itself is absent, not that the other cap is ignored.
+     *
+     * @return array{0:int,1:int,2:int} [adult, child, infant]
+     */
+    private function normalizeGuestCounts(array $guests, ?HotelChildPolicy $policy): array
+    {
+        $adult = 0;
+        $candidates = [];
+        foreach ($guests as $index => $guest) {
+            $type = (int) ($guest['type'] ?? 0);
+            if ($type === ReservationGuestType::CHILD || $type === ReservationGuestType::INFANT) {
+                $isInfant = $type === ReservationGuestType::INFANT;
+                $candidates[] = [
+                    'index' => $index,
+                    'age' => (int) ($guest['age'] ?? 0),
+                    'infant' => $isInfant,
+                    'discount' => $this->policyDiscountPriority(
+                        $isInfant ? $policy?->infant_pricing_type : $policy?->child_pricing_type,
+                        $isInfant ? $policy?->infant_pricing_value : $policy?->child_pricing_value,
+                    ),
+                ];
+                continue;
+            }
+            $adult++;
+        }
+
+        if ($policy === null) {
+            $child = count(array_filter($candidates, static fn (array $c): bool => !$c['infant']));
+            $infant = count($candidates) - $child;
+            return [$adult, $child, $infant];
+        }
+
+        // For a shared cap, prioritize the larger known discount so that guest ordering
+        // in the request cannot make a free infant lose a covered slot to a half-rate child.
+        usort($candidates, static function (array $a, array $b): int {
+            return ($b['discount'] <=> $a['discount'])
+                ?: ($a['age'] <=> $b['age'])
+                    ?: ($a['index'] <=> $b['index']);
+        });
+
+        $child = 0;
+        $infant = 0;
+        $coveredTotal = 0;
+        $coveredInfants = 0;
+
+        foreach ($candidates as $candidate) {
+            // Exhausting the shared allowance always means adult pricing.
+            // Never cascade a second infant into a half-rate child here.
+            if ($policy->max_children_covered !== null && $coveredTotal >= (int) $policy->max_children_covered) {
+                $adult++;
+                continue;
+            }
+
+            if ($candidate['infant']) {
+                $infantLimitAvailable = $policy->max_infants_covered === null
+                    || $coveredInfants < (int) $policy->max_infants_covered;
+
+                if ($infantLimitAvailable) {
+                    $infant++;
+                    $coveredInfants++;
+                    $coveredTotal++;
+                    continue;
+                }
+
+                // The infant-only cap is full, but the shared child cap may
+                // still have room for this infant to use the child policy.
+                if ($policy->infant_when_disabled === 'as_child') {
+                    $child++;
+                    $coveredTotal++;
+                    continue;
+                }
+
+                $adult++;
+                continue;
+            }
+
+            $child++;
+            $coveredTotal++;
+        }
+
+        return [$adult, $child, $infant];
+    }
+
+    /**
+     * Only relative-rate discounts can be ordered without knowing the room rate.
+     * Fixed child amounts have no universal discount ordering: they use stable age/order.
+     */
+    private function policyDiscountPriority(?string $type, ?int $value): float
+    {
+        return match ($type) {
+            'free' => 1.0,
+            'half' => 0.5,
+            'percent' => $value === null ? 0.0 : 1.0 - $value / 100.0,
+            default => 0.0,
+        };
+    }
+
+    /**
      * Mirrors AvailabilityFilterService's per-night room/child/extra-bed total.
      * @return array<int,array{date:string,price:int}>|null
      */
@@ -178,12 +335,7 @@ readonly class ReservationCreateValidator
         if ($policy && !$policy->status) {
             $policy = null;
         }
-        $adult = $child = $infant = 0;
-        foreach ($guests as $guest) {
-            match ((int) $guest['type']) {
-                1 => $adult++, 2 => $child++, 3 => $infant++, default => null,
-            };
-        }
+        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy);
         $beds = $adult
             + ($policy?->child_service_condition === 'with_service' ? $child : 0)
             + ($policy?->infant_service_condition === 'with_service' ? $infant : 0);
