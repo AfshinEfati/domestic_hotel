@@ -130,7 +130,9 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                         'first_name' => $guestData['first_name'],
                         'last_name' => $guestData['last_name'],
                         'gender' => $guestData['gender'] ?? null,
-                        'birth_date' => $guestData['birth_date'] ?? null,
+                        // The API contract receives birthday. Keep the immutable
+                        // guest snapshot; pricing never trusts the submitted age/type.
+                        'birth_date' => $guestData['birthday'] ?? $guestData['birth_date'] ?? null,
                         'country_id' => $guestData['country_id'],
                         'national_id' => $guestData['national_id'] ?? null,
                         'passport_number' => $guestData['passport_number'] ?? null,
