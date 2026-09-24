@@ -84,17 +84,6 @@ class StoreReservationRequest extends FormRequest
     }
 
 
-    private function parseDate(?string $value): ?CarbonImmutable
-    {
-        if (!$value) {
-            return null;
-        }
-
-        $date = CarbonImmutable::createFromFormat('Y-m-d', $value);
-
-        return $date instanceof CarbonImmutable ? $date : null;
-    }
-
 
     private function calculateAge(
         ?string $birthDate,
