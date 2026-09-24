@@ -193,17 +193,8 @@ readonly class ReservationCreateValidator
                 $adult++;
                 continue;
             }
-
-            $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
-            // Age must be known to grant any non-adult treatment; unknown age defaults to adult.
-            if ($age === null) {
-                $adult++;
-                continue;
-            }
-
-            $infantEligible = (int) $policy->max_infant_age > 0 && $age < (int) $policy->max_infant_age;
-            $childEligible = (int) $policy->max_child_age > 0 && $age <= (int) $policy->max_child_age;
-
+            $infantEligible = (int) $policy->max_infant_age > 0 && $age <= (int) $policy->max_infant_age;
+            $childEligible = (int) $policy->max_child_age > 0 && $age > (int) $policy->max_infant_age && $age <= (int) $policy->max_child_age;
             if (!$infantEligible && !$childEligible) {
                 $adult++;
                 continue;
