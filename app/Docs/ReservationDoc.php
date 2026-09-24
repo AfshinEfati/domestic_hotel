@@ -466,4 +466,56 @@ class ReservationDoc
     public function postApiV1FrontReservationsCreate(): void
     {
     }
+    /**
+     * @OA\Get(
+     *     path="/api/v1/front/reservations/{reservation_number}",
+     *     summary="Get reservation detail",
+     *     tags={"Reservation"},
+     *
+     *     @OA\Parameter(
+     *         name="reservation_number",
+     *         in="path",
+     *         required=true,
+     *
+     *         @OA\Schema(
+     *             type="string",
+     *             example="8451"
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Reservation detail",
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *
+     *             @OA\Property(
+     *                 property="success",
+     *                 type="boolean",
+     *                 example=true
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="message",
+     *                 type="string",
+     *                 example="reservation detail"
+     *             ),
+     *
+     *             @OA\Property(
+     *                 property="data",
+     *                 ref="#/components/schemas/ReservationCreateResponse"
+     *             )
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=404,
+     *         description="Reservation not found"
+     *     )
+     * )
+     */
+    public function getReservationDetail(): void
+    {
+    }
 }
