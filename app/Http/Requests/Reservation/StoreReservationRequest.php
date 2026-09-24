@@ -20,8 +20,8 @@ class StoreReservationRequest extends FormRequest
             ->keyBy(
                 fn (Country $country): string => strtoupper($country->iso3)
             );
-        // مرجع محاسبه سن = تاریخ ورود
-        $checkIn = $this->parseDate($this->input('check_in'));
+        // مرجع محاسبه سن = تاریخ ثبت رزرو؛ سن ارسالی کاربر قابل اعتماد نیست.
+        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
 
         $rooms = $this->input('hotel.rooms', []);
 
@@ -57,7 +57,7 @@ class StoreReservationRequest extends FormRequest
                 // محاسبه سن نسبت به تاریخ ورود
                 $guest['age'] = $this->calculateAge(
                     $guest['birthday'] ?? null,
-                    $checkIn
+                    $reservationDate
                 );
 
                 // نوشتن مقدار اصلاح‌شده به آرایه‌ی اصلی
