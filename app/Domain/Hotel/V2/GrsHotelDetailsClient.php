@@ -21,7 +21,21 @@ class GrsHotelDetailsClient
             throw new RuntimeException('GRS details require a configured API and a numeric mapped property ID.');
         }
 
-        $response = Http::withAttributes(['domestic_provider' => ['code' => 'grs']])
+        $response = Http::withAttributes([
+            'domestic_provider' => [
+                'id' => (int) $provider->id,
+                'code' => 'grs',
+                'log' => [
+                    'enabled' => true,
+                    'reservation_id' => null,
+                    'handler_class' => self::class,
+                    'handler_method' => __FUNCTION__,
+                    'attempt' => 1,
+                    'started_at' => now()->toISOString(),
+                    'started_microtime' => microtime(true),
+                ],
+            ],
+        ])
             ->withHeaders([
                 'Client-Token' => $token,
                 'Content-Type' => 'application/json',
