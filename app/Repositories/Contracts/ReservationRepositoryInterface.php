@@ -16,5 +16,7 @@ interface ReservationRepositoryInterface extends BaseRepositoryInterface
 
     public function findForUpdate(int $id): ?Reservation;
 
-    public function findByReservationNumberForPurchase(string $reservationNumber, bool $lockForUpdate = false): ?Reservation;
+    public function findWithDetails(int $reservationId): ?Reservation;
+
+    public function findForPurchase(int $reservationId, bool $lockForUpdate = false): ?Reservation;
 }
