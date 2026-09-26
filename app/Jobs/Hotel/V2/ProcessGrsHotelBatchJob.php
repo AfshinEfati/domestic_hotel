@@ -34,6 +34,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
     {
         $facilityLookup = $this->loadFacilities();
         $errors = 0;
+        $firstError = null;
         $mapped = 0;
         $created = 0;
         $skipped = 0;
@@ -60,6 +61,11 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                 }
             } catch (Throwable $e) {
                 $errors++;
+                $firstError ??= [
+                    'property_id' => $propertyId,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ];
                 Log::error('GRS hotel mapping failed', [
                     'property_id' => $propertyId,
                     'provider_id' => $this->providerId,
@@ -70,7 +76,12 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
 
         Log::info('GRS hotel mapping batch completed', compact('mapped', 'created', 'skipped', 'errors'));
         if ($errors > 0) {
-            throw new RuntimeException("GRS hotel mapping batch finished with {$errors} errors; see application logs.");
+            $propertyId = (string) ($firstError['property_id'] ?? 'unknown');
+            $message = trim((string) ($firstError['message'] ?? 'Unknown mapping error.'));
+            throw new RuntimeException(
+                "GRS hotel mapping batch finished with {$errors} error(s). "
+                ."First failure for property {$propertyId}: {$message}"
+            );
         }
     }
 
