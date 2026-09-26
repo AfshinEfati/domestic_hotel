@@ -23,4 +23,19 @@ class ReservationPurchaseSegmentRepository extends BaseRepository implements Res
         /** @var ReservationPurchaseSegment */
         return parent::store($data);
     }
+
+    public function firstOrCreateForPurchaseRoom(
+        int $reservationPurchaseId,
+        int $reservationRoomId,
+        string $fromDate,
+        string $toDate,
+    ): ReservationPurchaseSegment {
+        /** @var ReservationPurchaseSegment */
+        return $this->model->newQuery()->firstOrCreate([
+            'reservation_purchase_id' => $reservationPurchaseId,
+            'reservation_room_id' => $reservationRoomId,
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+        ]);
+    }
 }
