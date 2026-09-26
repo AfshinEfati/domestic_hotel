@@ -52,7 +52,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         // Local room/hotel/guest compatibility is a hard validation boundary.
         // It runs before the first INSERT, while provider validation remains a separate
         // post-create operational check for the agents' purchase workflow.
-        $this->createValidator->validateGuestSelection($data);
+        $data = $this->createValidator->validateGuestSelection($data);
 
         $originalTotal = (int) $data['expected_total_price'];
         $accommodationId = (int) $data['hotel']['accommodation_id'];
