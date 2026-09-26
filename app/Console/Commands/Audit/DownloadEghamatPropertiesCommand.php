@@ -46,7 +46,21 @@ class DownloadEghamatPropertiesCommand extends Command
 
         $this->info('Requesting Eghamat24 properties...');
 
-        $request = Http::timeout(120);
+        $request = Http::withAttributes([
+            'domestic_provider' => [
+                'id' => (int) $provider->id,
+                'code' => (string) $provider->code,
+                'log' => [
+                    'enabled' => true,
+                    'reservation_id' => null,
+                    'handler_class' => self::class,
+                    'handler_method' => __FUNCTION__,
+                    'attempt' => 1,
+                    'started_at' => now()->toISOString(),
+                    'started_microtime' => microtime(true),
+                ],
+            ],
+        ])->timeout(120);
 
 
         $response = $request->withHeaders([
