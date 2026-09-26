@@ -27,7 +27,7 @@ class PurchaseResolver implements PurchaseResolverInterface
         private readonly ReservationManualReasonRepositoryInterface $manualReasonRepository,
     ) {}
 
-    public function resolve(string $reservationNumber, int $providerId): PurchaseResolutionDTO
+    public function resolve(string $reservationNumber, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
     {
         $reservation = $this->reservationRepository->findByReservationNumber($reservationNumber);
 
@@ -78,11 +78,33 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
-        // A missing or never-synced credit snapshot must not be treated as sufficient.
-        // All values here are IRR. Before the provider quote exists, the reservation sale
-        // amount is the only persisted order amount; recheck the actual quote before buying.
+        // Rules apply to this concrete provider purchase amount, not blindly to the
+        // whole reservation. A global rule (all nullable dimensions) matches every purchase.
+        $orderAmount ??= (int) $reservation->sale_amount;
+
+        $rule = $this->manualRuleRepository->findMatching(
+            $providerId,
+            $hotel->accommodation_id,
+            $orderAmount,
+            now('Asia/Tehran')->format('H:i:s')
+        );
+
+        if ($rule !== null) {
+            return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
+                reservationNumber: $reservation->reservation_number,
+                reservationHotelId: $hotel->id,
+                providerId: $providerId,
+                purchaseMode: PurchaseMethod::OFFLINE,
+                manualReason: PurchaseManualReason::MATCHED_RULE,
+                manualRuleId: $rule->id,
+                manualReasonText: sprintf('خرید به دلیل اعمال قانون خرید دستی شماره %d آفلاین شد.', $rule->id),
+            );
+        }
+
+        // Credit matters only when no explicit manual rule already forced offline.
+        // All values here are IRR.
         $credit = $this->creditBalanceRepository->findByProviderId($providerId);
-        $orderAmount = (int) $reservation->sale_amount;
 
         if ($credit === null || $credit->synced_at === null) {
             return new PurchaseResolutionDTO(
@@ -105,30 +127,10 @@ class PurchaseResolver implements PurchaseResolverInterface
                 purchaseMode: PurchaseMethod::OFFLINE,
                 manualReason: PurchaseManualReason::INSUFFICIENT_CREDIT,
                 manualReasonText: sprintf(
-                    'خرید آفلاین شد؛ اعتبار تأمین‌کننده (%d ریال) از مبلغ سفارش (%d ریال) کمتر است.',
+                    'خرید آفلاین شد؛ اعتبار تأمین‌کننده (%d ریال) از مبلغ خرید (%d ریال) کمتر است.',
                     (int) $credit->balance,
                     $orderAmount,
                 ),
-            );
-        }
-
-        $rule = $this->manualRuleRepository->findMatching(
-            $providerId,
-            $hotel->accommodation_id,
-            $orderAmount,
-            now()->format('H:i:s')
-        );
-
-        if ($rule !== null) {
-            return new PurchaseResolutionDTO(
-                reservationId: (int) $reservation->id,
-                reservationNumber: $reservation->reservation_number,
-                reservationHotelId: $hotel->id,
-                providerId: $providerId,
-                purchaseMode: PurchaseMethod::OFFLINE,
-                manualReason: PurchaseManualReason::MATCHED_RULE,
-                manualRuleId: $rule->id,
-                manualReasonText: sprintf('خرید به دلیل اعمال قانون خرید دستی شماره %d آفلاین شد.', $rule->id),
             );
         }
 
@@ -147,9 +149,9 @@ class PurchaseResolver implements PurchaseResolverInterface
      * selects offline purchase records a reason; purchase orchestration must make its
      * own command idempotent before invoking this method on retried requests.
      */
-    public function resolveAndRecord(string $reservationNumber, int $providerId): PurchaseResolutionDTO
+    public function resolveAndRecord(string $reservationNumber, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
     {
-        $resolution = $this->resolve($reservationNumber, $providerId);
+        $resolution = $this->resolve($reservationNumber, $providerId, $orderAmount);
 
         if ($resolution->purchaseMode === PurchaseMethod::OFFLINE) {
             $this->manualReasonRepository->store([
