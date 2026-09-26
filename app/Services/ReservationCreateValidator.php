@@ -30,7 +30,7 @@ readonly class ReservationCreateValidator
      *     rooms:array<int,array{price:int,provider_id:int,nights:array<int,array{date:string,price:int}>}>
      * }
      */
-    public function validate(array $data): array
+    public function validate(array $data, ?int $reservationId = null): array
     {
         $failure = static fn (int $status, string $error): array => [
             'status' => $status, 'error' => $error, 'total' => null, 'rooms' => [],
@@ -104,6 +104,12 @@ readonly class ReservationCreateValidator
                 try {
                     /** @var ProviderAdapterInterface $adapter */
                     $adapter = app()->makeWith(ProviderAdapterInterface::class, ['provider' => $provider]);
+                    $adapter->withRequestLogContext(
+                        reservationId: $reservationId,
+                        handlerClass: self::class,
+                        handlerMethod: __FUNCTION__,
+                        force: true,
+                    );
                     $cachedAvailability[$key] = $adapter->fetchAvailability(
                         (string) $calendar->provider_property_id, $checkIn, $checkOut
                     );
