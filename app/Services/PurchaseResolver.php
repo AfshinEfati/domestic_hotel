@@ -27,12 +27,12 @@ class PurchaseResolver implements PurchaseResolverInterface
         private readonly ReservationManualReasonRepositoryInterface $manualReasonRepository,
     ) {}
 
-    public function resolve(string $reservationNumber, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
+    public function resolve(int $reservationId, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
     {
-        $reservation = $this->reservationRepository->findByReservationNumber($reservationNumber);
+        $reservation = $this->reservationRepository->findWithDetails($reservationId);
 
         if ($reservation === null) {
-            throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationNumber]);
+            throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationId]);
         }
 
         $finalHotels = $reservation->hotels->where('is_final', true);
@@ -65,7 +65,6 @@ class PurchaseResolver implements PurchaseResolverInterface
 
             return new PurchaseResolutionDTO(
                 reservationId: (int) $reservation->id,
-                reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
                 purchaseMode: PurchaseMethod::OFFLINE,
@@ -92,7 +91,6 @@ class PurchaseResolver implements PurchaseResolverInterface
         if ($rule !== null) {
             return new PurchaseResolutionDTO(
                 reservationId: (int) $reservation->id,
-                reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
                 purchaseMode: PurchaseMethod::OFFLINE,
@@ -109,7 +107,6 @@ class PurchaseResolver implements PurchaseResolverInterface
         if ($credit === null || $credit->synced_at === null) {
             return new PurchaseResolutionDTO(
                 reservationId: (int) $reservation->id,
-                reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
                 purchaseMode: PurchaseMethod::OFFLINE,
@@ -121,7 +118,6 @@ class PurchaseResolver implements PurchaseResolverInterface
         if ((int) $credit->balance < $orderAmount) {
             return new PurchaseResolutionDTO(
                 reservationId: (int) $reservation->id,
-                reservationNumber: $reservation->reservation_number,
                 reservationHotelId: $hotel->id,
                 providerId: $providerId,
                 purchaseMode: PurchaseMethod::OFFLINE,
@@ -149,9 +145,9 @@ class PurchaseResolver implements PurchaseResolverInterface
      * selects offline purchase records a reason; purchase orchestration must make its
      * own command idempotent before invoking this method on retried requests.
      */
-    public function resolveAndRecord(string $reservationNumber, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
+    public function resolveAndRecord(int $reservationId, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
     {
-        $resolution = $this->resolve($reservationNumber, $providerId, $orderAmount);
+        $resolution = $this->resolve($reservationId, $providerId, $orderAmount);
 
         if ($resolution->purchaseMode === PurchaseMethod::OFFLINE) {
             $this->manualReasonRepository->store([
