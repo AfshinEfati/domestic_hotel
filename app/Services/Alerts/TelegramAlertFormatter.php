@@ -28,7 +28,11 @@ final class TelegramAlertFormatter
 
         if ($snippet !== null && trim($snippet) !== '') {
             $lines[] = '🧩 جزئیات فنی';
-            $lines[] = "```\n" . $this->redact($snippet) . "\n```";
+            foreach (preg_split('/\r?\n/', $this->redact($snippet)) ?: [] as $line) {
+                if (trim($line) !== '') {
+                    $lines[] = '↳ ' . $line;
+                }
+            }
         }
 
         $lines[] = '🕒 ' . now('Asia/Tehran')->format('Y-m-d H:i:s');
@@ -39,7 +43,9 @@ final class TelegramAlertFormatter
 
     private function clean(string $value): string
     {
-        return str_replace(["\r", "\n"], [' ', ' '], strip_tags($value));
+        $value = str_replace(["\r", "\n"], [' ', ' '], strip_tags($value));
+
+        return $this->redact($value);
     }
 
     private function redact(string $snippet): string
@@ -49,6 +55,7 @@ final class TelegramAlertFormatter
         $snippet = preg_replace('~\b(?:Bearer|Client-Token|api-key|password|secret|token)\s*[:= ]\s*[^\s,;]+~iu', '[SECRET REDACTED]', $snippet) ?? '';
         $snippet = preg_replace('/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/u', '[EMAIL REDACTED]', $snippet) ?? '';
         $snippet = preg_replace('/(?<!\d)09\d{9}(?!\d)/u', '[MOBILE REDACTED]', $snippet) ?? '';
+        $snippet = preg_replace('/(?<!\d)\d{10}(?!\d)/u', '[ID REDACTED]', $snippet) ?? '';
 
         return function_exists('mb_substr')
             ? mb_substr($snippet, 0, 950, 'UTF-8')
