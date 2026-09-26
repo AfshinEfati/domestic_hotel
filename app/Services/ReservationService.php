@@ -211,9 +211,9 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         });
     }
 
-    public function findByReservationNumber(string $reservationNumber): ?Reservation
+    public function findById(int $reservationId): ?Reservation
     {
-        return $this->reservationRepository->findByReservationNumber($reservationNumber);
+        return $this->reservationRepository->findWithDetails($reservationId);
     }
 
     public function changeStatus(int $reservationId, int $status): bool
