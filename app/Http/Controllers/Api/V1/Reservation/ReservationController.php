@@ -24,10 +24,9 @@ class ReservationController
             201
         );
     }
-    public function show(string $reservationNumber): JsonResponse
+    public function show(int $reservationId): JsonResponse
     {
-        $reservation = $this->service
-            ->findByReservationNumber($reservationNumber);
+        $reservation = $this->service->findById($reservationId);
 
         if (!$reservation) {
             return StatusHelper::notFound(
