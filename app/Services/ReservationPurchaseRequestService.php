@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Reservation;
-use App\Models\ReservationPurchase;
 use App\Repositories\Contracts\ReservationManualPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseSegmentRepositoryInterface;
