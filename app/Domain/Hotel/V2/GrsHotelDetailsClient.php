@@ -2,6 +2,7 @@
 
 namespace App\Domain\Hotel\V2;
 
+use App\Exceptions\ProviderDataException;
 use App\Models\Provider;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -48,16 +49,16 @@ class GrsHotelDetailsClient
         $property = data_get($body, 'value.property');
         if ((int) data_get($body, 'code') !== 200 || !is_array($property)
             || (string) ($property['id'] ?? '') !== $propertyId) {
-            throw new RuntimeException('GRS details returned an invalid or mismatched property.');
+            throw new ProviderDataException('GRS details returned an invalid or mismatched property.');
         }
 
         // An incomplete response must not mark this hotel's details as refreshed.
         if (!isset($property['room_types']) || !is_array($property['room_types']) || $property['room_types'] === []) {
-            throw new RuntimeException('GRS property details contain no room types.');
+            throw new ProviderDataException('GRS property details contain no room types.');
         }
         foreach (['facilities', 'rules'] as $field) {
             if (!array_key_exists($field, $property) || !is_array($property[$field])) {
-                throw new RuntimeException('GRS property details missing '.$field.'.');
+                throw new ProviderDataException('GRS property details missing '.$field.'.');
             }
         }
 
