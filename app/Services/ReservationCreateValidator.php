@@ -7,6 +7,7 @@ use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
+use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -181,9 +182,10 @@ readonly class ReservationCreateValidator
      * creating any reservation rows. This is local business validation and must not
      * depend on the external provider validation step.
      *
+     * @return array Normalized reservation payload with server-resolved guest types.
      * @throws ValidationException
      */
-    public function validateGuestSelection(array $data): void
+    public function validateGuestSelection(array $data): array
     {
         $errors = [];
         $checkIn = CarbonImmutable::parse($data['check_in'])->startOfDay();
@@ -237,12 +239,19 @@ readonly class ReservationCreateValidator
                     (int) $room->capacity,
                     (int) $room->extra_capacity,
                 );
+                continue;
+            }
+
+            foreach ($plan['guest_types'] as $guestIndex => $resolvedType) {
+                $data['hotel']['rooms'][$index]['guests'][$guestIndex]['type'] = $resolvedType;
             }
         }
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }
+
+        return $data;
     }
 
     /**
@@ -265,7 +274,8 @@ readonly class ReservationCreateValidator
      *     covered_infant_extra:int,
      *     uncovered_child_extra:int,
      *     adult_extra:int,
-     *     extra_bed_count:int
+     *     extra_bed_count:int,
+     *     guest_types:array<int,int>
      * }|null
      */
     private function buildGuestPlan(
@@ -283,8 +293,10 @@ readonly class ReservationCreateValidator
 
         $adultCount = 0;
         $childCandidates = [];
+        $guestTypes = [];
 
         foreach ($guests as $index => $guest) {
+            $guestTypes[$index] = ReservationGuestType::ADULT;
             $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
 
             // Unknown birthday, no active policy, or age outside child-policy ranges
@@ -339,6 +351,13 @@ readonly class ReservationCreateValidator
         });
 
         $extraCandidates = array_slice($childCandidates, 0, $extraChildCount);
+        $baseCandidates = array_slice($childCandidates, $extraChildCount);
+
+        foreach ($baseCandidates as $candidate) {
+            $guestTypes[$candidate['index']] = $candidate['kind'] === 'infant'
+                ? ReservationGuestType::INFANT
+                : ReservationGuestType::CHILD;
+        }
 
         $coveredChildExtra = 0;
         $coveredInfantExtra = 0;
@@ -367,6 +386,7 @@ readonly class ReservationCreateValidator
                     $coveredInfantExtra++;
                     $coveredInfants++;
                     $coveredTotal++;
+                    $guestTypes[$candidate['index']] = ReservationGuestType::INFANT;
 
                     if ($policy->infant_service_condition === 'with_service') {
                         $coveredServiceBeds++;
@@ -380,6 +400,7 @@ readonly class ReservationCreateValidator
                 ) {
                     $coveredChildExtra++;
                     $coveredTotal++;
+                    $guestTypes[$candidate['index']] = ReservationGuestType::CHILD;
 
                     if ($policy->child_service_condition === 'with_service') {
                         $coveredServiceBeds++;
@@ -393,6 +414,7 @@ readonly class ReservationCreateValidator
 
             $coveredChildExtra++;
             $coveredTotal++;
+            $guestTypes[$candidate['index']] = ReservationGuestType::CHILD;
 
             if ($policy->child_service_condition === 'with_service') {
                 $coveredServiceBeds++;
@@ -408,6 +430,8 @@ readonly class ReservationCreateValidator
             return null;
         }
 
+        ksort($guestTypes);
+
         return [
             'adult_count' => $adultCount,
             'base_child_count' => count($childCandidates) - $extraChildCount,
@@ -416,6 +440,7 @@ readonly class ReservationCreateValidator
             'uncovered_child_extra' => $uncoveredChildExtra,
             'adult_extra' => $adultExtra,
             'extra_bed_count' => $extraBedCount,
+            'guest_types' => $guestTypes,
         ];
     }
 
