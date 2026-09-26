@@ -63,4 +63,9 @@ class Provider extends Model
     {
         return $this->hasOne(ProviderCreditBalance::class);
     }
+
+    public function providerRequests(): HasMany
+    {
+        return $this->hasMany(ProviderRequest::class);
+    }
 }
