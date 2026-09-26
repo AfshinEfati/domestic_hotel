@@ -7,10 +7,8 @@ use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
-use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
-use Error;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -97,8 +95,8 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
-            // Guest type (child/infant/adult) is resolved from age inside calculateSelectedPrice
-            // below, not validated here — see normalizeGuestCounts for why.
+            // Guest type/age sent by the client are not trusted for occupancy or pricing.
+            // calculateSelectedPrice resolves the guest plan from birthday at check-in.
 
             $key = $provider->id . ':' . $calendar->provider_property_id;
             if (!array_key_exists($key, $cachedAvailability)) {
