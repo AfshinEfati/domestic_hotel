@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Reservation;
 
 use App\Helpers\StatusHelper;
-use App\Http\Resources\ReservationPurchaseRequestResource;
+use App\Http\Resources\ReservationResource;
 use App\Services\Contracts\ReservationPurchaseRequestServiceInterface;
 use Illuminate\Http\JsonResponse;
 
@@ -18,7 +18,7 @@ final class ReservationPurchaseController
         $reservation = $this->service->request($reservationNumber);
 
         return StatusHelper::successResponse(
-            new ReservationPurchaseRequestResource($reservation),
+            new ReservationResource($reservation),
             'purchase request accepted',
         );
     }
