@@ -9,6 +9,7 @@ use App\Models\RoomType;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Services\ReservationCreateValidator;
+use App\Support\Reservation\ReservationGuestType;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\TestCase;
@@ -259,6 +260,59 @@ class ReservationCreateValidatorChildPolicyTest extends TestCase
 
         // First infant is free, second infant falls back to half-rate child.
         $this->assertSame(103_125_000, $result[0]['price']);
+    }
+
+    public function test_local_validation_normalizes_guest_type_from_birthday_and_policy(): void
+    {
+        $policy = $this->policy();
+        $accommodation = new Accommodation(['id' => 3]);
+        $accommodation->id = 3;
+        $accommodation->setRelation('childPolicy', $policy);
+
+        $room = new RoomType([
+            'id' => 10,
+            'accommodation_id' => 3,
+            'capacity' => 2,
+            'extra_capacity' => 0,
+            'out_of_service' => false,
+        ]);
+
+        $calendar = new RoomCalendar([
+            'id' => 11264,
+            'accommodation_id' => 3,
+            'room_type_id' => 10,
+            'day' => '2026-09-26',
+        ]);
+        $calendar->setRelation('roomType', $room);
+        $calendar->setRelation('accommodation', $accommodation);
+
+        $calendars = $this->createMock(RoomCalendarRepositoryInterface::class);
+        $calendars->method('find')->with(11264)->willReturn($calendar);
+
+        $validator = $this->validator($calendars);
+
+        $normalized = $validator->validateGuestSelection([
+            'check_in' => '2026-09-26',
+            'hotel' => [
+                'accommodation_id' => 3,
+                'rooms' => [[
+                    'calendar' => [[
+                        'calendar_id' => 11264,
+                        'date' => '2026-09-26',
+                    ]],
+                    'guests' => [
+                        $this->adult(),
+                        // Client calls this a child and sends a fake age, but birthday is 9.
+                        $this->child('2017-09-26', type: 2, age: 1),
+                    ],
+                ]],
+            ],
+        ]);
+
+        $this->assertSame(
+            ReservationGuestType::ADULT,
+            $normalized['hotel']['rooms'][0]['guests'][1]['type']
+        );
     }
 
     public function test_local_validation_rejects_incompatible_guest_mix_before_reservation_insert(): void
