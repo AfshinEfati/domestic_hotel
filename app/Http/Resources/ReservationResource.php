@@ -91,6 +91,16 @@ class ReservationResource extends JsonResource
                     ];
                 })->values();
             }),
+            'purchases' => $this->relationLoaded('hotels')
+                ? ReservationPurchaseResource::collection(
+                    $this->hotels
+                        ->flatMap(fn ($hotel) => $hotel->relationLoaded('purchases')
+                            ? $hotel->purchases
+                            : collect())
+                        ->sortBy('id')
+                        ->values()
+                )
+                : [],
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
         ];
