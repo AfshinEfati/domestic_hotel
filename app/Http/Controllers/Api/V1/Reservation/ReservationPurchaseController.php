@@ -13,9 +13,9 @@ final class ReservationPurchaseController
         private readonly ReservationPurchaseRequestServiceInterface $service
     ) {}
 
-    public function store(string $reservationNumber): JsonResponse
+    public function store(int $reservationId): JsonResponse
     {
-        $reservation = $this->service->request($reservationNumber);
+        $reservation = $this->service->request($reservationId);
 
         return StatusHelper::successResponse(
             new ReservationResource($reservation),
