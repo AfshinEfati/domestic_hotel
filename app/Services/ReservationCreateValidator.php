@@ -10,7 +10,6 @@ use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
-use Error;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -97,8 +96,8 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
-            // Guest type (child/infant/adult) is resolved from age inside calculateSelectedPrice
-            // below, not validated here — see normalizeGuestCounts for why.
+            // Guest type/age sent by the client are not trusted for occupancy or pricing.
+            // calculateSelectedPrice resolves the guest plan from birthday at check-in.
 
             $key = $provider->id . ':' . $calendar->provider_property_id;
             if (!array_key_exists($key, $cachedAvailability)) {
@@ -151,7 +150,14 @@ readonly class ReservationCreateValidator
                 $live->put($day, $fresh);
             }
 
-            $nightly = $this->calculateSelectedPrice($roomType, $calendar, $roomSelection['guests'], $days, $live);
+            $nightly = $this->calculateSelectedPrice(
+                $roomType,
+                $calendar,
+                $roomSelection['guests'],
+                $days,
+                $live,
+                $checkIn,
+            );
             if ($nightly === null) {
                 return $failure(ReservationStatus::CHECKED, 'Cannot calculate the selected room price.');
             }
@@ -176,14 +182,14 @@ readonly class ReservationCreateValidator
      * creating any reservation rows. This is local business validation and must not
      * depend on the external provider validation step.
      *
+     * @return array Normalized reservation payload with server-resolved guest types.
      * @throws ValidationException
      */
-    public function validateGuestSelection(array $data): void
+    public function validateGuestSelection(array $data): array
     {
         $errors = [];
-        $checkIn = CarbonImmutable::parse($data['check_in']);
+        $checkIn = CarbonImmutable::parse($data['check_in'])->startOfDay();
         $accommodationId = (int) $data['hotel']['accommodation_id'];
-        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
 
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
             $roomKey = "hotel.rooms.$index.guests";
@@ -220,132 +226,216 @@ readonly class ReservationCreateValidator
                 $policy = null;
             }
 
-            [$adult, $child, $infant] = $this->normalizeGuestCounts(
+            $plan = $this->buildGuestPlan(
+                $room,
                 $roomSelection['guests'] ?? [],
                 $policy,
-                $reservationDate,
+                $checkIn,
             );
 
-            $guestCount = $adult + $child + $infant;
-            $maxOccupancy = (int) $room->capacity + (int) $room->extra_capacity;
-            if ($guestCount > $maxOccupancy) {
+            if ($plan === null) {
                 $errors[$roomKey][] = sprintf(
-                    'Selected guests do not fit this room. %d guests are required after applying the hotel child policy, but the room allows %d guests (%d base capacity + %d extra capacity).',
-                    $guestCount,
-                    $maxOccupancy,
+                    'Selected guests do not fit this room after applying guest ages, hotel child policy and service conditions. Room capacity is %d + %d extra.',
                     (int) $room->capacity,
                     (int) $room->extra_capacity,
                 );
+                continue;
+            }
+
+            foreach ($plan['guest_types'] as $guestIndex => $resolvedType) {
+                $data['hotel']['rooms'][$index]['guests'][$guestIndex]['type'] = $resolvedType;
             }
         }
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }
+
+        return $data;
     }
 
     /**
-     * @param array $guests
-     * @param HotelChildPolicy|null $policy
-     * @param CarbonImmutable $checkIn
-     * @return int[]
+     * Build the occupancy/pricing plan from birthdays and the active hotel child policy.
+     *
+     * Important business rules:
+     * - request guest.type and guest.age never decide child/adult treatment;
+     * - age is calculated at check-in;
+     * - normal room capacity is already paid for, so children/infants that fit in
+     *   unused base capacity do not add a child/infant charge;
+     * - child-policy coverage limits are applied only to child/infant guests that
+     *   are beyond normal room capacity;
+     * - an extra child/infant outside the policy allowance is treated as a full
+     *   adult-priced/service guest.
+     *
+     * @return array{
+     *     adult_count:int,
+     *     base_child_count:int,
+     *     covered_child_extra:int,
+     *     covered_infant_extra:int,
+     *     uncovered_child_extra:int,
+     *     adult_extra:int,
+     *     extra_bed_count:int,
+     *     guest_types:array<int,int>
+     * }|null
      */
-    private function normalizeGuestCounts(array $guests, ?HotelChildPolicy $policy, CarbonImmutable $checkIn): array
-    {
-        $adult = 0;
-        $candidates = [];
+    private function buildGuestPlan(
+        $room,
+        array $guests,
+        ?HotelChildPolicy $policy,
+        CarbonImmutable $checkIn
+    ): ?array {
+        $capacity = (int) $room->capacity;
+        $extraCapacity = max(0, (int) $room->extra_capacity);
+
+        if ($capacity < 1 || $guests === []) {
+            return null;
+        }
+
+        $adultCount = 0;
+        $childCandidates = [];
+        $guestTypes = [];
 
         foreach ($guests as $index => $guest) {
+            $guestTypes[$index] = ReservationGuestType::ADULT;
             $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
-            if ($age === null) {
-                $adult++;
+
+            // Unknown birthday, no active policy, or age outside child-policy ranges
+            // means full adult treatment. The request type is intentionally ignored.
+            if ($age === null || $policy === null) {
+                $adultCount++;
                 continue;
             }
 
-            // No active child policy for this hotel: nobody gets a discount or a bed exemption.
-            if ($policy === null) {
-                $adult++;
-                continue;
-            }
+            $infantEligible = (int) $policy->max_infant_age > 0
+                && $age < (int) $policy->max_infant_age;
 
-            $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
-            // Age must be known to grant any non-adult treatment; unknown age defaults to adult.
-            if ($age === null) {
-                $adult++;
-                continue;
-            }
-
-            $infantEligible = (int) $policy->max_infant_age > 0 && $age < (int) $policy->max_infant_age;
+            // The exact infant upper boundary belongs to child range. This avoids
+            // losing age == max_infant_age between infant and child categories.
             $childEligible = (int) $policy->max_child_age > 0
-                && $age > (int) $policy->max_infant_age
                 && $age <= (int) $policy->max_child_age;
 
             if (!$infantEligible && !$childEligible) {
-                $adult++;
+                $adultCount++;
                 continue;
             }
 
-            $candidates[] = [
+            $kind = $infantEligible ? 'infant' : 'child';
+            $guestTypes[$index] = $kind === 'infant'
+                ? ReservationGuestType::INFANT
+                : ReservationGuestType::CHILD;
+
+            $pricingType = $kind === 'infant'
+                ? $policy->infant_pricing_type
+                : $policy->child_pricing_type;
+            $pricingValue = $kind === 'infant'
+                ? $policy->infant_pricing_value
+                : $policy->child_pricing_value;
+
+            $childCandidates[] = [
                 'index' => $index,
                 'age' => $age,
-                'infant_eligible' => $infantEligible,
+                'kind' => $kind,
                 'child_eligible' => $childEligible,
-                'discount' => $this->policyDiscountPriority(
-                    $infantEligible ? $policy->infant_pricing_type : $policy->child_pricing_type,
-                    $infantEligible ? $policy->infant_pricing_value : $policy->child_pricing_value,
-                ),
+                'discount' => $this->policyDiscountPriority($pricingType, $pricingValue),
             ];
         }
 
-        // For a shared cap, prioritize the larger known discount so that guest ordering
-        // in the request cannot make a free infant lose a covered slot to a half-rate child.
-        usort($candidates, static function (array $a, array $b): int {
+        $adultExtra = max(0, $adultCount - $capacity);
+        $baseSlotsForChildren = max(0, $capacity - $adultCount);
+        $extraChildCount = max(0, count($childCandidates) - $baseSlotsForChildren);
+
+        // Guests that must be outside normal room capacity should be the guests with
+        // the best applicable child-policy discount. This keeps base room capacity
+        // from consuming a free/half-rate entitlement while a more expensive child
+        // is left outside it.
+        usort($childCandidates, static function (array $a, array $b): int {
             return ($b['discount'] <=> $a['discount'])
                 ?: ($a['age'] <=> $b['age'])
-                    ?: ($a['index'] <=> $b['index']);
+                ?: ($a['index'] <=> $b['index']);
         });
 
-        $child = 0;
-        $infant = 0;
+        $extraCandidates = array_slice($childCandidates, 0, $extraChildCount);
+
+        $coveredChildExtra = 0;
+        $coveredInfantExtra = 0;
+        $uncoveredChildExtra = 0;
         $coveredTotal = 0;
         $coveredInfants = 0;
+        $coveredServiceBeds = 0;
 
-        foreach ($candidates as $candidate) {
-            // Exhausting the shared allowance always means adult pricing.
-            // Never cascade a second infant into a half-rate child here.
-            if ($policy->max_children_covered !== null && $coveredTotal >= (int) $policy->max_children_covered) {
-                $adult++;
+        foreach ($extraCandidates as $candidate) {
+            $sharedLimitAvailable = $policy !== null
+                && (
+                    $policy->max_children_covered === null
+                    || $coveredTotal < (int) $policy->max_children_covered
+                );
+
+            if (!$sharedLimitAvailable) {
+                $uncoveredChildExtra++;
                 continue;
             }
 
-            if ($candidate['infant_eligible']) {
+            if ($candidate['kind'] === 'infant') {
                 $infantLimitAvailable = $policy->max_infants_covered === null
                     || $coveredInfants < (int) $policy->max_infants_covered;
 
                 if ($infantLimitAvailable) {
-                    $infant++;
+                    $coveredInfantExtra++;
                     $coveredInfants++;
                     $coveredTotal++;
+
+                    if ($policy->infant_service_condition === 'with_service') {
+                        $coveredServiceBeds++;
+                    }
                     continue;
                 }
 
-                // The infant-only cap is full, but the shared child cap may
-                // still have room for this infant to use the child policy.
-                if ($policy->infant_when_disabled === 'as_child' && $candidate['child_eligible']) {
-                    $child++;
+                if (
+                    $policy->infant_when_disabled === 'as_child'
+                    && $candidate['child_eligible']
+                ) {
+                    $coveredChildExtra++;
                     $coveredTotal++;
+
+                    if ($policy->child_service_condition === 'with_service') {
+                        $coveredServiceBeds++;
+                    }
                     continue;
                 }
 
-                $adult++;
+                $uncoveredChildExtra++;
                 continue;
             }
 
-            $child++;
+            $coveredChildExtra++;
             $coveredTotal++;
+
+            if ($policy->child_service_condition === 'with_service') {
+                $coveredServiceBeds++;
+            }
         }
 
-        return [$adult, $child, $infant];
+        // Adults beyond base capacity and children outside policy allowance require
+        // full extra service. Covered child/infant guests require an extra bed only
+        // when the hotel's policy explicitly says "with_service".
+        $extraBedCount = $adultExtra + $uncoveredChildExtra + $coveredServiceBeds;
+
+        if ($extraBedCount > $extraCapacity) {
+            return null;
+        }
+
+        ksort($guestTypes);
+
+        return [
+            'adult_count' => $adultCount,
+            'base_child_count' => count($childCandidates) - $extraChildCount,
+            'covered_child_extra' => $coveredChildExtra,
+            'covered_infant_extra' => $coveredInfantExtra,
+            'uncovered_child_extra' => $uncoveredChildExtra,
+            'adult_extra' => $adultExtra,
+            'extra_bed_count' => $extraBedCount,
+            'guest_types' => $guestTypes,
+        ];
     }
 
     private function calculateGuestAge(?string $birthday, CarbonImmutable $reference): ?int
@@ -375,58 +465,85 @@ readonly class ReservationCreateValidator
     }
 
     /**
-     * Mirrors AvailabilityFilterService's per-night room/child/extra-bed total.
+     * Recalculates the selected reservation price from live rates and the
+     * server-resolved guest plan. Base room capacity is already paid for.
+     *
      * @return array<int,array{date:string,price:int}>|null
      */
-    private function calculateSelectedPrice($room, RoomCalendar $selected, array $guests, array $days, Collection $live): ?array
-    {
+    private function calculateSelectedPrice(
+        $room,
+        RoomCalendar $selected,
+        array $guests,
+        array $days,
+        Collection $live,
+        CarbonImmutable $checkIn
+    ): ?array {
         $capacity = (int) $room->capacity;
         if ($capacity < 1) {
             return null;
         }
+
         $policy = $selected->accommodation?->childPolicy;
         if ($policy && !$policy->status) {
             $policy = null;
         }
-        // Age is evaluated at reservation creation time. The client-provided age and
-        // guest type are never trusted for pricing or capacity decisions.
-        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
-        [$adult, $child, $infant] = $this->normalizeGuestCounts($guests, $policy, $reservationDate);
-        // The room base price already covers the room's normal capacity.
-        // A covered child/infant occupying an existing bed must not create a
-        // second charge. Child/infant policy pricing applies only to guests
-        // that exceed the room's normal capacity and therefore need extra service.
-        $guestCount = $adult + $child + $infant;
-        if ($guestCount > $capacity + (int) $room->extra_capacity) {
+
+        $plan = $this->buildGuestPlan($room, $guests, $policy, $checkIn);
+        if ($plan === null) {
             return null;
         }
-        $extra = max(0, $guestCount - $capacity);
 
-        // Adults consume normal room capacity first. Remaining normal beds are
-        // then occupied by covered children/infants without a separate charge.
-        $remainingAfterAdults = max(0, $capacity - $adult);
-        $childIncludedInBase = min($child, $remainingAfterAdults);
-        $remainingAfterChildren = max(0, $remainingAfterAdults - $childIncludedInBase);
-        $infantIncludedInBase = min($infant, $remainingAfterChildren);
-        $pricedChild = $child - $childIncludedInBase;
-        $pricedInfant = $infant - $infantIncludedInBase;
         $nightly = [];
+
         foreach ($days as $day) {
             $calendar = $live->get($day);
-            $base = (int) $calendar->daily_rate;
-            $childRate = $this->policyRate($base, $capacity, $policy?->child_pricing_type ?? 'adult', $policy?->child_pricing_value);
-            $infantRate = $this->policyRate($base, $capacity, $policy?->infant_pricing_type ?? 'adult', $policy?->infant_pricing_value);
-            if ($childRate === null || $infantRate === null) {
+            if (!$calendar || $calendar->daily_rate === null) {
                 return null;
             }
-            $extraRate = (int) $room->extra_capacity > 0
-                ? (int) ($calendar->extend_bed_daily_rate ?? round($base / $capacity)) : 0;
+
+            $base = (int) $calendar->daily_rate;
+
+            $childRate = $this->policyRate(
+                $base,
+                $capacity,
+                $policy?->child_pricing_type ?? 'adult',
+                $policy?->child_pricing_value
+            );
+            $infantRate = $this->policyRate(
+                $base,
+                $capacity,
+                $policy?->infant_pricing_type ?? 'adult',
+                $policy?->infant_pricing_value
+            );
+
+            if (
+                ($plan['covered_child_extra'] > 0 && $childRate === null)
+                || ($plan['covered_infant_extra'] > 0 && $infantRate === null)
+            ) {
+                return null;
+            }
+
+            $childRate ??= 0;
+            $infantRate ??= 0;
+
+            $extraRate = $plan['extra_bed_count'] > 0
+                ? (int) (
+                    $calendar->extend_bed_daily_rate
+                    ?? round($base / $capacity)
+                )
+                : 0;
+
             $total = $base
-                + $pricedChild * $childRate
-                + $pricedInfant * $infantRate
-                + $extra * $extraRate;
-            $nightly[] = ['date' => $day, 'price' => $total];
+                + $plan['covered_child_extra'] * $childRate
+                + $plan['covered_infant_extra'] * $infantRate
+                + $plan['extra_bed_count'] * $extraRate;
+
+            $nightly[] = [
+                'date' => $day,
+                'price' => $total,
+            ];
         }
+
         return $nightly;
     }
 
