@@ -34,6 +34,8 @@ class ProviderRequest extends Model
     protected $casts = [
         'provider_id' => 'integer',
         'reservation_id' => 'integer',
+        'request_body' => 'array',
+        'response_body' => 'array',
         'http_status' => 'integer',
         'status' => 'integer',
         'attempt' => 'integer',
