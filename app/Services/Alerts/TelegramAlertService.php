@@ -17,15 +17,24 @@ final class TelegramAlertService
         string $kind,
         ?int $httpStatus = null,
         ?string $errorCode = null,
+        ?string $reason = null,
     ): void {
         $description = match ($kind) {
-            'connection' => 'ارتباط با تأمین‌کننده برقرار نشد یا درخواست Timeout شد.',
-            'business' => 'تأمین‌کننده پاسخ ناموفق برگرداند.',
-            'invalid_response' => 'پاسخ تأمین‌کننده قابل پردازش نیست.',
-            default => 'در ارتباط با تأمین‌کننده خطای HTTP رخ داد.',
+            'connection' => 'ارتباط شبکه‌ای با تأمین‌کننده برقرار نشد یا درخواست Timeout شد.',
+            'business' => 'تأمین‌کننده پاسخ کسب‌وکاری ناموفق برگرداند.',
+            'invalid_response' => 'ساختار پاسخ تأمین‌کننده قابل پردازش نیست.',
+            default => 'تأمین‌کننده پاسخ HTTP ناموفق برگرداند.',
+        };
+
+        $category = match ($kind) {
+            'connection' => 'Network / provider connection',
+            'business' => 'Provider business error',
+            'invalid_response' => 'Provider response format',
+            default => 'Provider HTTP error',
         };
 
         $fields = [
+            'دسته' => $category,
             'تأمین‌کننده' => $provider,
             'عملیات' => $operation,
         ];
@@ -34,6 +43,9 @@ final class TelegramAlertService
         }
         if ($errorCode !== null && preg_match('/^[A-Za-z0-9_.:-]{1,48}$/D', $errorCode)) {
             $fields['کد خطا'] = $errorCode;
+        }
+        if ($reason !== null && trim($reason) !== '') {
+            $fields['علت'] = $reason;
         }
 
         $technical = $httpStatus === null
@@ -45,7 +57,7 @@ final class TelegramAlertService
             $description,
             $fields,
             $technical,
-            implode('|', [$provider, $operation, $kind, $httpStatus, $errorCode]),
+            implode('|', [$provider, $operation, $kind, $httpStatus, $errorCode, $reason]),
         );
     }
 
