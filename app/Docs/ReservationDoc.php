@@ -406,6 +406,86 @@ class ReservationDoc
      *             )
      *         )
      *     ),
+     *     @OA\Property(
+     *         property="purchases",
+     *         type="array",
+     *         description="Unified procurement timeline for this reservation. Empty before purchase is requested.",
+     *         @OA\Items(
+     *             type="object",
+     *             @OA\Property(property="id", type="integer", example=12),
+     *             @OA\Property(property="reservation_hotel_id", type="integer", example=40),
+     *             @OA\Property(
+     *                 property="provider",
+     *                 type="object",
+     *                 @OA\Property(property="id", type="integer", example=1),
+     *                 @OA\Property(property="code", type="string", example="grs"),
+     *                 @OA\Property(property="fa_name", type="string", nullable=true, example="GRS"),
+     *                 @OA\Property(property="en_name", type="string", nullable=true, example="GRS")
+     *             ),
+     *             @OA\Property(
+     *                 property="quoted_provider",
+     *                 type="object",
+     *                 @OA\Property(property="id", type="integer", nullable=true, example=1),
+     *                 @OA\Property(property="code", type="string", nullable=true, example="grs"),
+     *                 @OA\Property(property="fa_name", type="string", nullable=true, example="GRS"),
+     *                 @OA\Property(property="en_name", type="string", nullable=true, example="GRS")
+     *             ),
+     *             @OA\Property(property="status", type="integer", example=5),
+     *             @OA\Property(property="status_detail", type="object", nullable=true),
+     *             @OA\Property(property="purchase_mode", type="object", nullable=true),
+     *             @OA\Property(property="manual_reason", type="object", nullable=true),
+     *             @OA\Property(property="manual_rule_id", type="integer", nullable=true, example=1),
+     *             @OA\Property(property="provider_quoted_amount", type="integer", format="int64", nullable=true, example=151250000),
+     *             @OA\Property(property="purchase_amount", type="integer", format="int64", nullable=true, example=null),
+     *             @OA\Property(property="confirmation_code", type="string", nullable=true, example=null),
+     *             @OA\Property(property="provider_status", type="string", nullable=true, example=null),
+     *             @OA\Property(property="expires_at", ref="#/components/schemas/ReservationDateMeta"),
+     *             @OA\Property(property="issued_at", ref="#/components/schemas/ReservationDateMeta"),
+     *             @OA\Property(
+     *                 property="manual_purchase",
+     *                 type="object",
+     *                 nullable=true,
+     *                 @OA\Property(property="id", type="integer", example=7),
+     *                 @OA\Property(property="acc_code", type="string", nullable=true, example=null),
+     *                 @OA\Property(property="purchased_at", ref="#/components/schemas/ReservationDateMeta"),
+     *                 @OA\Property(property="description", type="string", nullable=true, example=null)
+     *             ),
+     *             @OA\Property(
+     *                 property="segments",
+     *                 type="array",
+     *                 @OA\Items(
+     *                     type="object",
+     *                     @OA\Property(property="id", type="integer", example=30),
+     *                     @OA\Property(property="reservation_room_id", type="integer", example=46),
+     *                     @OA\Property(property="from_date", type="string", format="date", example="2026-09-27"),
+     *                     @OA\Property(property="to_date", type="string", format="date", example="2026-09-28"),
+     *                     @OA\Property(property="nightly_purchase_amount", type="integer", format="int64", nullable=true),
+     *                     @OA\Property(property="nightly_extra_bed_purchase_amount", type="integer", format="int64", nullable=true),
+     *                     @OA\Property(property="nightly_child_purchase_amount", type="integer", format="int64", nullable=true),
+     *                     @OA\Property(property="nightly_infant_purchase_amount", type="integer", format="int64", nullable=true)
+     *                 )
+     *             ),
+     *             @OA\Property(
+     *                 property="payments",
+     *                 type="array",
+     *                 @OA\Items(
+     *                     type="object",
+     *                     @OA\Property(property="id", type="integer", example=5),
+     *                     @OA\Property(property="amount", type="integer", format="int64", example=50000000),
+     *                     @OA\Property(property="source", type="object", nullable=true),
+     *                     @OA\Property(property="bank_account_id", type="integer", nullable=true),
+     *                     @OA\Property(property="card_id", type="integer", nullable=true),
+     *                     @OA\Property(property="paid_at", ref="#/components/schemas/ReservationDateMeta"),
+     *                     @OA\Property(property="reference", type="string", nullable=true),
+     *                     @OA\Property(property="receipt_document_id", type="string", nullable=true),
+     *                     @OA\Property(property="status", type="integer", nullable=true),
+     *                     @OA\Property(property="description", type="string", nullable=true)
+     *                 )
+     *             ),
+     *             @OA\Property(property="created_at", ref="#/components/schemas/ReservationDateMeta"),
+     *             @OA\Property(property="updated_at", ref="#/components/schemas/ReservationDateMeta")
+     *         )
+     *     ),
      *     @OA\Property(property="created_at", ref="#/components/schemas/ReservationDateMeta"),
      *     @OA\Property(property="updated_at", ref="#/components/schemas/ReservationDateMeta")
      * )
@@ -532,51 +612,12 @@ class ReservationDoc
      *     ),
      *     @OA\Response(
      *         response=200,
-     *         description="Purchase request accepted",
+     *         description="Purchase request accepted. Returns the same reservation aggregate used by create/detail endpoints, with purchases populated.",
      *         @OA\JsonContent(
      *             type="object",
      *             @OA\Property(property="success", type="boolean", example=true),
      *             @OA\Property(property="message", type="string", example="purchase request accepted"),
-     *             @OA\Property(
-     *                 property="data",
-     *                 type="object",
-     *                 @OA\Property(property="reservation_id", type="integer", example=40),
-     *                 @OA\Property(property="reservation_number", type="string", example="40"),
-     *                 @OA\Property(property="status", type="integer", example=5),
-     *                 @OA\Property(
-     *                     property="status_detail",
-     *                     type="object",
-     *                     @OA\Property(property="name", type="string", example="book_requested"),
-     *                     @OA\Property(property="fa_name", type="string", example="پرداخت و درخواست خرید"),
-     *                     @OA\Property(property="code", type="integer", example=5)
-     *                 ),
-     *                 @OA\Property(
-     *                     property="purchases",
-     *                     type="array",
-     *                     @OA\Items(
-     *                         type="object",
-     *                         @OA\Property(property="id", type="integer", example=12),
-     *                         @OA\Property(property="reservation_hotel_id", type="integer", example=40),
-     *                         @OA\Property(property="provider_id", type="integer", example=1),
-     *                         @OA\Property(property="provider_code", type="string", example="grs"),
-     *                         @OA\Property(property="status", type="integer", example=5),
-     *                         @OA\Property(
-     *                             property="purchase_mode",
-     *                             type="object",
-     *                             @OA\Property(property="name", type="string", example="offline"),
-     *                             @OA\Property(property="fa_name", type="string", example="آفلاین"),
-     *                             @OA\Property(property="code", type="integer", example=2)
-     *                         ),
-     *                         @OA\Property(property="manual_rule_id", type="integer", nullable=true, example=1),
-     *                         @OA\Property(property="provider_quoted_amount", type="integer", format="int64", example=151250000),
-     *                         @OA\Property(
-     *                             property="room_ids",
-     *                             type="array",
-     *                             @OA\Items(type="integer", example=46)
-     *                         )
-     *                     )
-     *                 )
-     *             )
+     *             @OA\Property(property="data", ref="#/components/schemas/ReservationCreateResponse")
      *         )
      *     ),
      *     @OA\Response(response=404, description="Reservation not found"),
