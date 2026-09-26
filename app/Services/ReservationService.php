@@ -132,6 +132,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
                     $this->reservationGuestRepository->store([
                         'reservation_room_id' => $room->id,
                         'type' => $guestData['type'],
+                        'service' => $guestData['service'],
                         'first_name' => $guestData['first_name'],
                         'last_name' => $guestData['last_name'],
                         'gender' => $guestData['gender'] ?? null,
