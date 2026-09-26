@@ -114,7 +114,6 @@ class ReservationResource extends JsonResource
             ReservationStatus::UNDER_REVIEW => 'pending',
 
             ReservationStatus::ISSUE_SUCCESS,
-            ReservationStatus::ISSUE_FAILED,
             ReservationStatus::PAYMENT_REQUIRED,
             ReservationStatus::COMPLETED => 'confirmed',
 

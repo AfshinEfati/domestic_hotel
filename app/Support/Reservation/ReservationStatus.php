@@ -10,6 +10,9 @@ final class ReservationStatus
     public const READY_FOR_PAYMENT = 4;
     public const BOOK_REQUESTED = 5;
     public const ISSUE_SUCCESS = 6;
+
+    // وضعیت ۷ فقط از پنل انجام میشه . این وضعیت یعنی خرید کلا ریجکت شده .
+    // نه به صورت آنلاین و نه آفلاین این وضعیت قابل تغییر نیست و خرید کنسل باید بشه
     public const ISSUE_FAILED = 7;
     public const PAYMENT_REQUIRED = 8;
     public const COMPLETED = 9;
