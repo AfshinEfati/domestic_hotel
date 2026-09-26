@@ -25,14 +25,14 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
         private PurchaseResolverInterface $resolver,
     ) {}
 
-    public function request(string $reservationNumber): Reservation
+    public function request(int $reservationId): Reservation
     {
-        return DB::transaction(function () use ($reservationNumber): Reservation {
+        return DB::transaction(function () use ($reservationId): Reservation {
             $reservation = $this->reservations
-                ->findByReservationNumberForPurchase($reservationNumber, true);
+                ->findForPurchase($reservationId, true);
 
             if ($reservation === null) {
-                throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationNumber]);
+                throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationId]);
             }
 
             $finalHotels = $reservation->hotels->where('is_final', true);
@@ -50,7 +50,7 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
             // A repeated whitelist callback after a successful first request must be harmless.
             if ((int) $reservation->status === ReservationStatus::BOOK_REQUESTED
                 && $hotel->purchases->isNotEmpty()) {
-                return $this->reload($reservationNumber);
+                return $this->reload($reservationId);
             }
 
             if ((int) $reservation->status !== ReservationStatus::READY_FOR_PAYMENT) {
@@ -88,7 +88,7 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
 
                 if ($purchase === null) {
                     $resolution = $this->resolver->resolveAndRecord(
-                        $reservationNumber,
+                        $reservationId,
                         $providerId,
                         $quotedAmount,
                     );
@@ -128,13 +128,13 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
                 'status' => ReservationStatus::BOOK_REQUESTED,
             ]);
 
-            return $this->reload($reservationNumber);
+            return $this->reload($reservationId);
         });
     }
 
-    private function reload(string $reservationNumber): Reservation
+    private function reload(int $reservationId): Reservation
     {
-        return $this->reservations->findByReservationNumberForPurchase($reservationNumber)
-            ?? throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationNumber]);
+        return $this->reservations->findForPurchase($reservationId)
+            ?? throw (new ModelNotFoundException())->setModel(Reservation::class, [$reservationId]);
     }
 }
