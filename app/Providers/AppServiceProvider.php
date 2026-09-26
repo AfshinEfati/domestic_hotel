@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Listeners\ProviderHttpAlertListener;
+use App\Listeners\ProviderHttpRequestListener;
 use App\Support\Queue\ResilientCallQueuedHandler;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\ResponseReceived;
@@ -27,5 +28,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Event::listen(ResponseReceived::class, [ProviderHttpAlertListener::class, 'response']);
         Event::listen(ConnectionFailed::class, [ProviderHttpAlertListener::class, 'connectionFailed']);
+        Event::listen(ResponseReceived::class, [ProviderHttpRequestListener::class, 'response']);
+        Event::listen(ConnectionFailed::class, [ProviderHttpRequestListener::class, 'connectionFailed']);
     }
 }
