@@ -332,6 +332,14 @@ class ReservationDoc
      *         @OA\Property(property="fa_name", type="string", example="آماده پرداخت"),
      *         @OA\Property(property="code", type="integer", example=4)
      *     ),
+     *     @OA\Property(
+     *         property="purchase_status",
+     *         type="string",
+     *         nullable=true,
+     *         enum={"pending","rejected","confirmed"},
+     *         example=null,
+     *         description="Front-facing purchase state derived from reservation status without changing the database status. Statuses 5 and 10 return pending; statuses 6, 7, 8 and 9 return confirmed; before purchase starts it is null. rejected is reserved for an explicit purchase rejection state."
+     *     ),
      *     @OA\Property(property="check_in", type="string", format="date", nullable=true, example="2027-03-04"),
      *     @OA\Property(property="check_out", type="string", format="date", nullable=true, example="2027-03-06"),
      *     @OA\Property(property="price", type="integer", format="int64", nullable=true, example=148000000),
