@@ -151,7 +151,7 @@ class ReservationService extends BaseService implements ReservationServiceInterf
 
         // No external provider call is made while the initial database transaction is open.
         try {
-            $check = $this->createValidator->validate($data);
+            $check = $this->createValidator->validate($data, $reservation->id);
         } catch (Throwable $exception) {
             report($exception);
             $check = [
