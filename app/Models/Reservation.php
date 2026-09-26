@@ -60,4 +60,9 @@ class Reservation extends Model
     {
         return $this->hasMany(ReservationManualReason::class);
     }
+
+    public function providerRequests(): HasMany
+    {
+        return $this->hasMany(ProviderRequest::class);
+    }
 }
