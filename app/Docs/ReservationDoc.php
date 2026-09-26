@@ -311,7 +311,12 @@ class ReservationDoc
      * @OA\Schema(
      *     schema="ReservationCreateResponse",
      *     type="object",
-     *     @OA\Property(property="id", type="integer", example=8451),
+     *     @OA\Property(
+     *         property="id",
+     *         type="integer",
+     *         example=8451,
+     *         description="Primary reservation identifier from reservations.id. This is the ID used by reservation detail and purchase endpoints."
+     *     ),
      *     @OA\Property(property="agency_id", type="integer", example=1),
      *     @OA\Property(
      *         property="status",
@@ -548,18 +553,20 @@ class ReservationDoc
     }
     /**
      * @OA\Get(
-     *     path="/api/v1/front/reservations/{reservation_number}",
+     *     path="/api/v1/front/reservations/{reservation_id}",
      *     summary="Get reservation detail",
      *     tags={"Reservation"},
      *
      *     @OA\Parameter(
-     *         name="reservation_number",
+     *         name="reservation_id",
      *         in="path",
      *         required=true,
      *
      *         @OA\Schema(
-     *             type="string",
-     *             example="8451"
+     *             type="integer",
+     *             format="int64",
+     *             minimum=1,
+     *             example=8451
      *         )
      *     ),
      *
@@ -600,15 +607,16 @@ class ReservationDoc
     }
     /**
      * @OA\Post(
-     *     path="/api/v1/front/reservations/{reservation_number}/purchase",
+     *     path="/api/v1/front/reservations/{reservation_id}/purchase",
      *     summary="Submit paid reservation for purchase",
-     *     description="Called by the whitelist after customer payment is confirmed. The service locks the reservation, groups final rooms by their validated provider, evaluates purchase_manual_rules and online eligibility per provider purchase, creates reservation purchase records and room segments idempotently, and moves the reservation to book_requested. Offline decisions create a reservation_manual_purchases row for operator processing. This endpoint does not execute online provider booking yet.",
+     *     description="Called by the whitelist after customer payment is confirmed. reservation_id is the primary reservations.id returned when the ticket is created. The service locks that reservation, groups final rooms by their validated provider, evaluates purchase_manual_rules and online eligibility per provider purchase, creates reservation purchase records and room segments idempotently, and moves the reservation to book_requested. Offline decisions create a reservation_manual_purchases row for operator processing. This endpoint does not execute online provider booking yet.",
      *     tags={"Reservation"},
      *     @OA\Parameter(
-     *         name="reservation_number",
+     *         name="reservation_id",
      *         in="path",
      *         required=true,
-     *         @OA\Schema(type="string", example="40")
+     *         description="Primary key of the reservation (reservations.id).",
+     *         @OA\Schema(type="integer", format="int64", minimum=1, example=40)
      *     ),
      *     @OA\Response(
      *         response=200,
