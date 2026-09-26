@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
+use App\Models\ProviderRequest;
 use App\Models\RoomCalendar;
 use Illuminate\Support\Facades\Schedule;
 
@@ -25,8 +26,8 @@ Schedule::command('grs:sync-details')
 //    ->everyMinute()
 //    ->withoutOverlapping();
 
-// Remove expired room-calendar days only; the current Tehran date is retained.
-Schedule::command('model:prune', ['--model' => [RoomCalendar::class]])
+// Remove expired room-calendar days and provider request logs past their retention deadline.
+Schedule::command('model:prune', ['--model' => [RoomCalendar::class, ProviderRequest::class]])
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
