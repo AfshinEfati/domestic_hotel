@@ -465,7 +465,9 @@ readonly class ReservationCreateValidator
     }
 
     /**
-     * Mirrors AvailabilityFilterService's per-night room/child/extra-bed total.
+     * Recalculates the selected reservation price from live rates and the
+     * server-resolved guest plan. Base room capacity is already paid for.
+     *
      * @return array<int,array{date:string,price:int}>|null
      */
     private function calculateSelectedPrice(
