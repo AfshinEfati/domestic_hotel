@@ -12,8 +12,8 @@ use App\Services\ReservationCreateValidator;
 use App\Support\Reservation\ReservationGuestType;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
-use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use Tests\TestCase;
 
 class ReservationCreateValidatorChildPolicyTest extends TestCase
 {
