@@ -3,6 +3,7 @@
 namespace App\Services\Alerts;
 
 use App\Jobs\SendTelegramAlertJob;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -48,17 +49,49 @@ final class TelegramAlertService
         );
     }
 
+    public function providerDataIssue(
+        string $provider,
+        string $operation,
+        string $resourceId,
+        string $reason,
+    ): void {
+        $this->enqueue(
+            'داده ناقص تأمین‌کننده',
+            'پاسخ تأمین‌کننده برای این هتل ناقص بود؛ هتل skip شد و پردازش بقیه ادامه پیدا کرد.',
+            [
+                'دسته' => 'Provider data',
+                'تأمین‌کننده' => $provider,
+                'عملیات' => $operation,
+                'شناسه' => $resourceId,
+                'علت' => $reason,
+                'اقدام' => 'skip hotel / continue job',
+            ],
+            null,
+            implode('|', ['provider-data', $provider, $operation, $resourceId, $reason]),
+        );
+    }
+
     public function internalFailure(Throwable $exception): void
     {
-        // Exception messages may contain SQL bindings, tokens and passenger data.
         $class = $exception::class;
         $location = basename($exception->getFile()) . ':' . $exception->getLine();
+        $category = $exception instanceof QueryException
+            ? 'Database'
+            : ($exception instanceof \TypeError || $exception instanceof \Error
+                ? 'Application code'
+                : 'Application runtime');
+
         $this->enqueue(
             'خطای داخلی سرویس',
-            'یک خطای غیرمنتظره در Domestic Hotel ثبت شد؛ جزئیات کامل در لاگ سرور است.',
-            ['نوع خطا' => $class, 'محل' => $location],
-            "Exception: {$class}\nLocation: {$location}",
-            "internal|{$class}|{$location}",
+            'یک خطای واقعی در اجرای Domestic Hotel رخ داده است.',
+            [
+                'دسته' => $category,
+                'نوع خطا' => $class,
+                'علت' => $exception->getMessage(),
+                'محل' => $location,
+            ],
+            "Exception: {$class}\nMessage: {$exception->getMessage()}\nLocation: {$location}",
+            "internal|{$class}|{$location}|".$exception->getMessage(),
         );
     }
 
