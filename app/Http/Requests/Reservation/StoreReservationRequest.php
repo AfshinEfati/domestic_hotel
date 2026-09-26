@@ -20,8 +20,16 @@ class StoreReservationRequest extends FormRequest
             ->keyBy(
                 fn (Country $country): string => strtoupper($country->iso3)
             );
-        // مرجع محاسبه سن = تاریخ ثبت رزرو؛ سن ارسالی کاربر قابل اعتماد نیست.
-        $reservationDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
+        // سن ارسالی کاربر قابل اعتماد نیست؛ مرجع قطعی سن، تاریخ ورود است.
+        $ageReference = null;
+        try {
+            $ageReference = CarbonImmutable::createFromFormat(
+                'Y-m-d',
+                (string) $this->input('check_in')
+            )?->startOfDay();
+        } catch (\Throwable) {
+            // Invalid check_in is reported by the normal request validation rules.
+        }
 
         $rooms = $this->input('hotel.rooms', []);
 
@@ -57,7 +65,7 @@ class StoreReservationRequest extends FormRequest
                 // محاسبه سن نسبت به تاریخ ورود
                 $guest['age'] = $this->calculateAge(
                     $guest['birthday'] ?? null,
-                    $reservationDate
+                    $ageReference
                 );
 
                 // نوشتن مقدار اصلاح‌شده به آرایه‌ی اصلی
