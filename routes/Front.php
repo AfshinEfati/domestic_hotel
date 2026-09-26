@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Front\AccommodationController;
 use App\Http\Controllers\Api\V1\Reservation\ReservationController;
+use App\Http\Controllers\Api\V1\Reservation\ReservationPurchaseController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'front'], function () {
@@ -16,6 +17,7 @@ Route::group(['prefix' => 'front'], function () {
 
     Route::group(['prefix' => 'reservations'], function () {
         Route::post('create', [ReservationController::class, 'store']);
+        Route::post('{reservation_number}/purchase', [ReservationPurchaseController::class, 'store']);
         Route::get('{reservation_number}', [ReservationController::class,'show']);
     });
 
