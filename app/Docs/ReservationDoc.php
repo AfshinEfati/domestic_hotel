@@ -518,4 +518,73 @@ class ReservationDoc
     public function getReservationDetail(): void
     {
     }
+    /**
+     * @OA\Post(
+     *     path="/api/v1/front/reservations/{reservation_number}/purchase",
+     *     summary="Submit paid reservation for purchase",
+     *     description="Called by the whitelist after customer payment is confirmed. The service locks the reservation, groups final rooms by their validated provider, evaluates purchase_manual_rules and online eligibility per provider purchase, creates reservation purchase records and room segments idempotently, and moves the reservation to book_requested. Offline decisions create a reservation_manual_purchases row for operator processing. This endpoint does not execute online provider booking yet.",
+     *     tags={"Reservation"},
+     *     @OA\Parameter(
+     *         name="reservation_number",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="string", example="40")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Purchase request accepted",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="purchase request accepted"),
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="object",
+     *                 @OA\Property(property="reservation_id", type="integer", example=40),
+     *                 @OA\Property(property="reservation_number", type="string", example="40"),
+     *                 @OA\Property(property="status", type="integer", example=5),
+     *                 @OA\Property(
+     *                     property="status_detail",
+     *                     type="object",
+     *                     @OA\Property(property="name", type="string", example="book_requested"),
+     *                     @OA\Property(property="fa_name", type="string", example="پرداخت و درخواست خرید"),
+     *                     @OA\Property(property="code", type="integer", example=5)
+     *                 ),
+     *                 @OA\Property(
+     *                     property="purchases",
+     *                     type="array",
+     *                     @OA\Items(
+     *                         type="object",
+     *                         @OA\Property(property="id", type="integer", example=12),
+     *                         @OA\Property(property="reservation_hotel_id", type="integer", example=40),
+     *                         @OA\Property(property="provider_id", type="integer", example=1),
+     *                         @OA\Property(property="provider_code", type="string", example="grs"),
+     *                         @OA\Property(property="status", type="integer", example=5),
+     *                         @OA\Property(
+     *                             property="purchase_mode",
+     *                             type="object",
+     *                             @OA\Property(property="name", type="string", example="offline"),
+     *                             @OA\Property(property="fa_name", type="string", example="آفلاین"),
+     *                             @OA\Property(property="code", type="integer", example=2)
+     *                         ),
+     *                         @OA\Property(property="manual_rule_id", type="integer", nullable=true, example=1),
+     *                         @OA\Property(property="provider_quoted_amount", type="integer", format="int64", example=151250000),
+     *                         @OA\Property(
+     *                             property="room_ids",
+     *                             type="array",
+     *                             @OA\Items(type="integer", example=46)
+     *                         )
+     *                     )
+     *                 )
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Reservation not found"),
+     *     @OA\Response(response=422, description="Reservation is not ready for purchase or purchase data is incomplete")
+     * )
+     */
+    public function postApiV1FrontReservationPurchase(): void
+    {
+    }
+
 }
