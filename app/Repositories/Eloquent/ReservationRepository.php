@@ -69,7 +69,12 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
         $query = $this->model
             ->newQuery()
             ->with([
-                'hotels.rooms',
+                'hotels.accommodation',
+                'hotels.rooms.roomType',
+                'hotels.rooms.ratePlan',
+                'hotels.rooms.nights',
+                'hotels.rooms.guests.country',
+                'hotels.rooms.guests.passportIssuerCountry',
                 'hotels.purchases.provider',
                 'hotels.purchases.quotedProvider',
                 'hotels.purchases.segments',
