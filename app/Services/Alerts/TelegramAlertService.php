@@ -93,17 +93,21 @@ final class TelegramAlertService
                 ? 'Application code'
                 : 'Application runtime');
 
+        $message = $exception instanceof QueryException
+            ? 'Database query failed; SQL and bindings are intentionally hidden from Telegram.'
+            : $exception->getMessage();
+
         $this->enqueue(
             'خطای داخلی سرویس',
             'یک خطای واقعی در اجرای Domestic Hotel رخ داده است.',
             [
                 'دسته' => $category,
                 'نوع خطا' => $class,
-                'علت' => $exception->getMessage(),
+                'علت' => $message,
                 'محل' => $location,
             ],
-            "Exception: {$class}\nMessage: {$exception->getMessage()}\nLocation: {$location}",
-            "internal|{$class}|{$location}|".$exception->getMessage(),
+            "Exception: {$class}\nMessage: {$message}\nLocation: {$location}",
+            "internal|{$class}|{$location}|".$message,
         );
     }
 
