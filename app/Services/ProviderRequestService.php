@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\Response;
+use JsonException;
 
 readonly class ProviderRequestService implements ProviderRequestServiceInterface
 {
@@ -43,8 +44,8 @@ readonly class ProviderRequestService implements ProviderRequestServiceInterface
             'handler_method' => $context['handler_method'],
             'http_method' => strtoupper($request->method()),
             'url' => $request->url(),
-            'request_body' => $this->nullableBody($request->body()),
-            'response_body' => $this->nullableBody($response->body()),
+            'request_body' => $this->payload($request->body()),
+            'response_body' => $this->payload($response->body()),
             'http_status' => $httpStatus,
             'status' => $httpStatus >= 400
                 ? ProviderRequestStatus::HTTP_FAILED
@@ -82,7 +83,7 @@ readonly class ProviderRequestService implements ProviderRequestServiceInterface
             'handler_method' => $context['handler_method'],
             'http_method' => strtoupper($request->method()),
             'url' => $request->url(),
-            'request_body' => $this->nullableBody($request->body()),
+            'request_body' => $this->payload($request->body()),
             'response_body' => null,
             'http_status' => null,
             'status' => ProviderRequestStatus::CONNECTION_FAILED,
@@ -158,8 +159,20 @@ readonly class ProviderRequestService implements ProviderRequestServiceInterface
         return max(0, (int) round((microtime(true) - $context['started_microtime']) * 1000));
     }
 
-    private function nullableBody(string $body): ?string
+    private function payload(string $body): ?array
     {
-        return $body === '' ? null : $body;
+        if (trim($body) === '') {
+            return null;
+        }
+
+        try {
+            $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+
+            return is_array($decoded)
+                ? $decoded
+                : ['_value' => $decoded];
+        } catch (JsonException) {
+            return ['_raw' => $body];
+        }
     }
 }
