@@ -15,6 +15,7 @@ class ReservationResource extends JsonResource
             'agency_id' => $this->agency_id,
             'status' => (int)$this->status,
             'status_detail' => ReservationStatus::get((int)$this->status),
+            'purchase_status' => $this->purchaseStatus(),
             'check_in' => $this->check_in?->format('Y-m-d'),
             'check_out' => $this->check_out?->format('Y-m-d'),
             'price' => $this->sale_amount,
@@ -104,5 +105,20 @@ class ReservationResource extends JsonResource
             'created_at' => StatusHelper::formatDates($this->created_at),
             'updated_at' => StatusHelper::formatDates($this->updated_at),
         ];
+    }
+
+    private function purchaseStatus(): ?string
+    {
+        return match ((int) $this->status) {
+            ReservationStatus::BOOK_REQUESTED,
+            ReservationStatus::UNDER_REVIEW => 'pending',
+
+            ReservationStatus::ISSUE_SUCCESS,
+            ReservationStatus::ISSUE_FAILED,
+            ReservationStatus::PAYMENT_REQUIRED,
+            ReservationStatus::COMPLETED => 'confirmed',
+
+            default => null,
+        };
     }
 }
