@@ -320,6 +320,10 @@ readonly class ReservationCreateValidator
             }
 
             $kind = $infantEligible ? 'infant' : 'child';
+            $guestTypes[$index] = $kind === 'infant'
+                ? ReservationGuestType::INFANT
+                : ReservationGuestType::CHILD;
+
             $pricingType = $kind === 'infant'
                 ? $policy->infant_pricing_type
                 : $policy->child_pricing_type;
@@ -351,13 +355,6 @@ readonly class ReservationCreateValidator
         });
 
         $extraCandidates = array_slice($childCandidates, 0, $extraChildCount);
-        $baseCandidates = array_slice($childCandidates, $extraChildCount);
-
-        foreach ($baseCandidates as $candidate) {
-            $guestTypes[$candidate['index']] = $candidate['kind'] === 'infant'
-                ? ReservationGuestType::INFANT
-                : ReservationGuestType::CHILD;
-        }
 
         $coveredChildExtra = 0;
         $coveredInfantExtra = 0;
@@ -386,7 +383,6 @@ readonly class ReservationCreateValidator
                     $coveredInfantExtra++;
                     $coveredInfants++;
                     $coveredTotal++;
-                    $guestTypes[$candidate['index']] = ReservationGuestType::INFANT;
 
                     if ($policy->infant_service_condition === 'with_service') {
                         $coveredServiceBeds++;
@@ -400,7 +396,6 @@ readonly class ReservationCreateValidator
                 ) {
                     $coveredChildExtra++;
                     $coveredTotal++;
-                    $guestTypes[$candidate['index']] = ReservationGuestType::CHILD;
 
                     if ($policy->child_service_condition === 'with_service') {
                         $coveredServiceBeds++;
@@ -414,7 +409,6 @@ readonly class ReservationCreateValidator
 
             $coveredChildExtra++;
             $coveredTotal++;
-            $guestTypes[$candidate['index']] = ReservationGuestType::CHILD;
 
             if ($policy->child_service_condition === 'with_service') {
                 $coveredServiceBeds++;
