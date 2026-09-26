@@ -28,7 +28,14 @@ final class ProviderHttpAlertListener
             $operation = $this->operation($event->request);
 
             if ($status >= 400) {
-                $this->alerts->providerFailure($provider, $operation, 'http', $status);
+                $this->alerts->providerFailure(
+                    $provider,
+                    $operation,
+                    'http',
+                    $status,
+                    null,
+                    $this->responseReason($event->response->body()),
+                );
                 return;
             }
 
@@ -66,7 +73,14 @@ final class ProviderHttpAlertListener
 
             $code = $data['error_code'] ?? $data['code'] ?? null;
             $code = is_string($code) || is_int($code) ? (string) $code : null;
-            $this->alerts->providerFailure($provider, $operation, 'business', $status, $code);
+            $this->alerts->providerFailure(
+                $provider,
+                $operation,
+                'business',
+                $status,
+                $code,
+                $this->responseReason($event->response->body()),
+            );
         } catch (Throwable $exception) {
             // Monitoring must not change the result of the original provider call.
             error_log('Provider HTTP alert observer unavailable: ' . $exception::class);
@@ -85,6 +99,40 @@ final class ProviderHttpAlertListener
         } catch (Throwable $exception) {
             error_log('Provider connection alert observer unavailable: ' . $exception::class);
         }
+    }
+
+    private function responseReason(string $body): ?string
+    {
+        if ($body === '' || strlen($body) > 8192) {
+            return null;
+        }
+
+        $data = json_decode($body, true);
+        if (!is_array($data)) {
+            return null;
+        }
+
+        foreach ([
+            $data['message'] ?? null,
+            $data['error_message'] ?? null,
+            $data['detail'] ?? null,
+            is_array($data['error'] ?? null) ? ($data['error']['message'] ?? null) : ($data['error'] ?? null),
+        ] as $candidate) {
+            if (!is_scalar($candidate)) {
+                continue;
+            }
+
+            $message = trim((string) $candidate);
+            if ($message === '') {
+                continue;
+            }
+
+            return function_exists('mb_substr')
+                ? mb_substr($message, 0, 300, 'UTF-8')
+                : substr($message, 0, 300);
+        }
+
+        return null;
     }
 
     private function provider(Request $request): ?string
