@@ -17,8 +17,8 @@ Route::group(['prefix' => 'front'], function () {
 
     Route::group(['prefix' => 'reservations'], function () {
         Route::post('create', [ReservationController::class, 'store']);
-        Route::post('{reservation_number}/purchase', [ReservationPurchaseController::class, 'store']);
-        Route::get('{reservation_number}', [ReservationController::class,'show']);
+        Route::post('{reservation_id}/purchase', [ReservationPurchaseController::class, 'store']);
+        Route::get('{reservation_id}', [ReservationController::class,'show']);
     });
 
     Route::group(['prefix' => 'facility-groups'], function () {
