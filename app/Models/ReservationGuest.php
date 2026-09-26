@@ -13,6 +13,7 @@ class ReservationGuest extends Model
     protected $fillable = [
         'reservation_room_id',
         'type',
+        'service',
         'first_name',
         'last_name',
         'gender',
@@ -27,6 +28,7 @@ class ReservationGuest extends Model
     protected $casts = [
         'reservation_room_id' => 'integer',
         'type' => 'integer',
+        'service' => 'string',
         'gender' => 'integer',
         'birth_date' => 'date:Y-m-d',
         'country_id' => 'integer',
