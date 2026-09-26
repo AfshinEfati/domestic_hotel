@@ -36,7 +36,10 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
                 'hotels.rooms.guests.country',
                 'hotels.rooms.guests.passportIssuerCountry',
                 'hotels.purchases.provider',
+                'hotels.purchases.quotedProvider',
                 'hotels.purchases.segments',
+                'hotels.purchases.manualPurchase',
+                'hotels.purchases.payments',
             ])
             ->where('reservation_number', $reservationNumber)
             ->first();
@@ -68,8 +71,10 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
             ->with([
                 'hotels.rooms',
                 'hotels.purchases.provider',
+                'hotels.purchases.quotedProvider',
                 'hotels.purchases.segments',
                 'hotels.purchases.manualPurchase',
+                'hotels.purchases.payments',
             ])
             ->where('reservation_number', $reservationNumber);
 
