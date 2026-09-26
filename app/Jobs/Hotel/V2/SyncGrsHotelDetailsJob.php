@@ -3,7 +3,9 @@
 namespace App\Jobs\Hotel\V2;
 
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
+use App\Exceptions\ProviderDataException;
 use App\Domain\Hotel\V2\GrsHotelDetailsClient;
+use App\Services\Alerts\TelegramAlertService;
 use App\Services\HotelChildPolicyTextParser;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
@@ -46,7 +48,8 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
     public function handle(
         GrsHotelDetailsRepository $repository,
         GrsHotelDetailsClient $client,
-        HotelChildPolicyTextParser $parser
+        HotelChildPolicyTextParser $parser,
+        TelegramAlertService $alerts
     ): void {
         $provider = $repository->grsProvider();
         if ($provider === null || (int) $provider->id !== $this->providerId
@@ -80,7 +83,27 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
         }
 
         $propertyId = trim((string) $map->provider_property_id);
-        $details = $client->fetch($provider, $propertyId);
+
+        try {
+            $details = $client->fetch($provider, $propertyId);
+        } catch (ProviderDataException $exception) {
+            Log::warning('GRS hotel details skipped because provider data is incomplete', [
+                'provider_id' => $this->providerId,
+                'accommodation_id' => $map->accommodation_id,
+                'provider_property_id' => $propertyId,
+                'reason' => $exception->getMessage(),
+            ]);
+
+            $alerts->providerDataIssue(
+                provider: 'grs',
+                operation: 'GET /v1/properties/{id}',
+                resourceId: $propertyId,
+                reason: $exception->getMessage(),
+            );
+
+            return;
+        }
+
         try {
             $repository->persist($map, $details, $parser);
         } catch (LockTimeoutException) {
