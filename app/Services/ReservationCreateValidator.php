@@ -7,6 +7,7 @@ use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
+use App\Support\Reservation\ReservationGuestService;
 use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationStatus;
 use Carbon\CarbonImmutable;
@@ -261,24 +262,26 @@ readonly class ReservationCreateValidator
     }
 
     /**
-     * Build the occupancy/pricing plan from birthdays and the active hotel child policy.
+     * Build the occupancy/pricing plan from birthdays, requested service and hotel policy.
      *
-     * Important business rules:
-     * - request guest.type and guest.age never decide child/adult treatment;
+     * Business rules:
+     * - request guest.type and guest.age never decide child/adult classification;
      * - age is calculated at check-in;
-     * - normal room capacity is already paid for, so children/infants that fit in
-     *   unused base capacity do not add a child/infant charge;
-     * - child-policy coverage limits are applied only to child/infant guests that
-     *   are beyond normal room capacity;
-     * - an extra child/infant outside the policy allowance is treated as a full
-     *   adult-priced/service guest.
+     * - child/infant with_service always requests one extra bed and is priced like
+     *   one full adult, regardless of the child/infant discount policy;
+     * - child/infant no_service uses already-paid base capacity first, then hotel
+     *   child/infant policy for guests beyond base capacity;
+     * - no_service guests outside policy coverage are full adult-priced but do not
+     *   consume an extra bed because no bed was requested;
+     * - adults beyond base room capacity consume extra-bed capacity as before.
      *
      * @return array{
      *     adult_count:int,
      *     base_child_count:int,
      *     covered_child_extra:int,
      *     covered_infant_extra:int,
-     *     uncovered_child_extra:int,
+     *     uncovered_no_service_extra:int,
+     *     with_service_guest_count:int,
      *     adult_extra:int,
      *     extra_bed_count:int,
      *     guest_types:array<int,int>
@@ -298,15 +301,16 @@ readonly class ReservationCreateValidator
         }
 
         $adultCount = 0;
-        $childCandidates = [];
+        $withServiceGuestCount = 0;
+        $noServiceCandidates = [];
         $guestTypes = [];
 
         foreach ($guests as $index => $guest) {
             $guestTypes[$index] = ReservationGuestType::ADULT;
             $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
 
-            // Unknown birthday, no active policy, or age outside child-policy ranges
-            // means full adult treatment. The request type is intentionally ignored.
+            // Without a valid birthday/policy range the guest cannot safely receive
+            // child pricing, so it keeps full adult treatment.
             if ($age === null || $policy === null) {
                 $adultCount++;
                 continue;
@@ -315,8 +319,6 @@ readonly class ReservationCreateValidator
             $infantEligible = (int) $policy->max_infant_age > 0
                 && $age < (int) $policy->max_infant_age;
 
-            // The exact infant upper boundary belongs to child range. This avoids
-            // losing age == max_infant_age between infant and child categories.
             $childEligible = (int) $policy->max_child_age > 0
                 && $age <= (int) $policy->max_child_age;
 
@@ -330,6 +332,16 @@ readonly class ReservationCreateValidator
                 ? ReservationGuestType::INFANT
                 : ReservationGuestType::CHILD;
 
+            $service = $guest['service'] ?? ReservationGuestService::NO_SERVICE;
+
+            // Requested service is authoritative for bed usage. A child/infant that
+            // explicitly requests service always consumes an extra bed and is not
+            // eligible for free/half child pricing.
+            if ($service === ReservationGuestService::WITH_SERVICE) {
+                $withServiceGuestCount++;
+                continue;
+            }
+
             $pricingType = $kind === 'infant'
                 ? $policy->infant_pricing_type
                 : $policy->child_pricing_type;
@@ -337,7 +349,7 @@ readonly class ReservationCreateValidator
                 ? $policy->infant_pricing_value
                 : $policy->child_pricing_value;
 
-            $childCandidates[] = [
+            $noServiceCandidates[] = [
                 'index' => $index,
                 'age' => $age,
                 'kind' => $kind,
@@ -347,27 +359,25 @@ readonly class ReservationCreateValidator
         }
 
         $adultExtra = max(0, $adultCount - $capacity);
-        $baseSlotsForChildren = max(0, $capacity - $adultCount);
-        $extraChildCount = max(0, count($childCandidates) - $baseSlotsForChildren);
 
-        // Guests that must be outside normal room capacity should be the guests with
-        // the best applicable child-policy discount. This keeps base room capacity
-        // from consuming a free/half-rate entitlement while a more expensive child
-        // is left outside it.
-        usort($childCandidates, static function (array $a, array $b): int {
+        // with_service children/infants deliberately request a separate extra bed,
+        // so they never consume an otherwise-unused normal bed.
+        $baseSlotsForNoService = max(0, $capacity - $adultCount);
+        $extraNoServiceCount = max(0, count($noServiceCandidates) - $baseSlotsForNoService);
+
+        usort($noServiceCandidates, static function (array $a, array $b): int {
             return ($b['discount'] <=> $a['discount'])
                 ?: ($a['age'] <=> $b['age'])
                 ?: ($a['index'] <=> $b['index']);
         });
 
-        $extraCandidates = array_slice($childCandidates, 0, $extraChildCount);
+        $extraCandidates = array_slice($noServiceCandidates, 0, $extraNoServiceCount);
 
         $coveredChildExtra = 0;
         $coveredInfantExtra = 0;
-        $uncoveredChildExtra = 0;
+        $uncoveredNoServiceExtra = 0;
         $coveredTotal = 0;
         $coveredInfants = 0;
-        $coveredServiceBeds = 0;
 
         foreach ($extraCandidates as $candidate) {
             $sharedLimitAvailable = $policy !== null
@@ -377,54 +387,47 @@ readonly class ReservationCreateValidator
                 );
 
             if (!$sharedLimitAvailable) {
-                $uncoveredChildExtra++;
+                $uncoveredNoServiceExtra++;
                 continue;
             }
 
             if ($candidate['kind'] === 'infant') {
+                $infantPolicyAllowsNoService = $policy->infant_service_condition !== ReservationGuestService::WITH_SERVICE;
                 $infantLimitAvailable = $policy->max_infants_covered === null
                     || $coveredInfants < (int) $policy->max_infants_covered;
 
-                if ($infantLimitAvailable) {
+                if ($infantPolicyAllowsNoService && $infantLimitAvailable) {
                     $coveredInfantExtra++;
                     $coveredInfants++;
                     $coveredTotal++;
-
-                    if ($policy->infant_service_condition === 'with_service') {
-                        $coveredServiceBeds++;
-                    }
                     continue;
                 }
 
+                $childPolicyAllowsNoService = $policy->child_service_condition !== ReservationGuestService::WITH_SERVICE;
                 if (
                     $policy->infant_when_disabled === 'as_child'
                     && $candidate['child_eligible']
+                    && $childPolicyAllowsNoService
                 ) {
                     $coveredChildExtra++;
                     $coveredTotal++;
-
-                    if ($policy->child_service_condition === 'with_service') {
-                        $coveredServiceBeds++;
-                    }
                     continue;
                 }
 
-                $uncoveredChildExtra++;
+                $uncoveredNoServiceExtra++;
+                continue;
+            }
+
+            if ($policy->child_service_condition === ReservationGuestService::WITH_SERVICE) {
+                $uncoveredNoServiceExtra++;
                 continue;
             }
 
             $coveredChildExtra++;
             $coveredTotal++;
-
-            if ($policy->child_service_condition === 'with_service') {
-                $coveredServiceBeds++;
-            }
         }
 
-        // Adults beyond base capacity and children outside policy allowance require
-        // full extra service. Covered child/infant guests require an extra bed only
-        // when the hotel's policy explicitly says "with_service".
-        $extraBedCount = $adultExtra + $uncoveredChildExtra + $coveredServiceBeds;
+        $extraBedCount = $adultExtra + $withServiceGuestCount;
 
         if ($extraBedCount > $extraCapacity) {
             return null;
@@ -434,10 +437,11 @@ readonly class ReservationCreateValidator
 
         return [
             'adult_count' => $adultCount,
-            'base_child_count' => count($childCandidates) - $extraChildCount,
+            'base_child_count' => count($noServiceCandidates) - $extraNoServiceCount,
             'covered_child_extra' => $coveredChildExtra,
             'covered_infant_extra' => $coveredInfantExtra,
-            'uncovered_child_extra' => $uncoveredChildExtra,
+            'uncovered_no_service_extra' => $uncoveredNoServiceExtra,
+            'with_service_guest_count' => $withServiceGuestCount,
             'adult_extra' => $adultExtra,
             'extra_bed_count' => $extraBedCount,
             'guest_types' => $guestTypes,
@@ -532,17 +536,21 @@ readonly class ReservationCreateValidator
             $childRate ??= 0;
             $infantRate ??= 0;
 
-            $extraRate = $plan['extra_bed_count'] > 0
-                ? (int) (
-                    $calendar->extend_bed_daily_rate
-                    ?? round($base / $capacity)
-                )
+            $adultRate = (int) round($base / $capacity);
+
+            // Adult guests beyond normal capacity keep the provider/hotel extra-bed
+            // tariff when one exists. Child/infant with_service is explicitly priced
+            // like one full adult, as requested by the reservation contract.
+            $adultExtraRate = $plan['adult_extra'] > 0
+                ? (int) ($calendar->extend_bed_daily_rate ?? $adultRate)
                 : 0;
 
             $total = $base
                 + $plan['covered_child_extra'] * $childRate
                 + $plan['covered_infant_extra'] * $infantRate
-                + $plan['extra_bed_count'] * $extraRate;
+                + $plan['uncovered_no_service_extra'] * $adultRate
+                + $plan['with_service_guest_count'] * $adultRate
+                + $plan['adult_extra'] * $adultExtraRate;
 
             $nightly[] = [
                 'date' => $day,
