@@ -315,6 +315,64 @@ class ReservationCreateValidatorChildPolicyTest extends TestCase
         );
     }
 
+    public function test_uncovered_second_child_keeps_child_type_while_using_full_price(): void
+    {
+        $policy = $this->policy();
+        $accommodation = new Accommodation(['id' => 3]);
+        $accommodation->id = 3;
+        $accommodation->setRelation('childPolicy', $policy);
+
+        $room = new RoomType([
+            'id' => 10,
+            'accommodation_id' => 3,
+            'capacity' => 2,
+            'extra_capacity' => 1,
+            'out_of_service' => false,
+        ]);
+
+        $calendar = new RoomCalendar([
+            'id' => 11264,
+            'accommodation_id' => 3,
+            'room_type_id' => 10,
+            'day' => '2026-09-26',
+        ]);
+        $calendar->setRelation('roomType', $room);
+        $calendar->setRelation('accommodation', $accommodation);
+
+        $calendars = $this->createMock(RoomCalendarRepositoryInterface::class);
+        $calendars->method('find')->with(11264)->willReturn($calendar);
+
+        $validator = $this->validator($calendars);
+
+        $normalized = $validator->validateGuestSelection([
+            'check_in' => '2026-09-26',
+            'hotel' => [
+                'accommodation_id' => 3,
+                'rooms' => [[
+                    'calendar' => [[
+                        'calendar_id' => 11264,
+                        'date' => '2026-09-26',
+                    ]],
+                    'guests' => [
+                        $this->adult(),
+                        $this->adult('1990-01-01'),
+                        $this->child('2020-09-26'),
+                        $this->child('2021-09-26'),
+                    ],
+                ]],
+            ],
+        ]);
+
+        $this->assertSame(
+            ReservationGuestType::CHILD,
+            $normalized['hotel']['rooms'][0]['guests'][2]['type']
+        );
+        $this->assertSame(
+            ReservationGuestType::CHILD,
+            $normalized['hotel']['rooms'][0]['guests'][3]['type']
+        );
+    }
+
     public function test_local_validation_rejects_incompatible_guest_mix_before_reservation_insert(): void
     {
         $policy = $this->policy();
