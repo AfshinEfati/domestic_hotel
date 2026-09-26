@@ -47,7 +47,21 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
 
         // One request for the complete catalog, never one request per city/property.
         // HTTP errors (including 429) fail this job without automatic retry.
-        $response = Http::withAttributes(['domestic_provider' => ['code' => 'grs']])
+        $response = Http::withAttributes([
+            'domestic_provider' => [
+                'id' => (int) $provider->id,
+                'code' => 'grs',
+                'log' => [
+                    'enabled' => true,
+                    'reservation_id' => null,
+                    'handler_class' => self::class,
+                    'handler_method' => __FUNCTION__,
+                    'attempt' => 1,
+                    'started_at' => now()->toISOString(),
+                    'started_microtime' => microtime(true),
+                ],
+            ],
+        ])
             ->withHeaders(['Client-Token' => $token, 'Content-Type' => 'application/json'])
             ->baseUrl($baseUrl)
             ->timeout(55)
