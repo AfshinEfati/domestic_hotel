@@ -13,7 +13,7 @@ interface ReservationServiceInterface extends BaseServiceInterface
 
     public function store(mixed $payload): Reservation;
 
-    public function findByReservationNumber(string $reservationNumber): ?Reservation;
+    public function findById(int $reservationId): ?Reservation;
 
     public function changeStatus(int $reservationId, int $status): bool;
 
