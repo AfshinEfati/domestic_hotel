@@ -19,12 +19,14 @@ class ReservationPurchaseResource extends JsonResource
             'provider' => [
                 'id' => $this->provider_id,
                 'code' => $this->provider?->code,
-                'name' => $this->provider?->name,
+                'fa_name' => $this->provider?->fa_name,
+                'en_name' => $this->provider?->en_name,
             ],
             'quoted_provider' => [
                 'id' => $this->quoted_provider_id,
                 'code' => $this->quotedProvider?->code,
-                'name' => $this->quotedProvider?->name,
+                'fa_name' => $this->quotedProvider?->fa_name,
+                'en_name' => $this->quotedProvider?->en_name,
             ],
             'status' => (int) $this->status,
             'status_detail' => ReservationStatus::get((int) $this->status),
