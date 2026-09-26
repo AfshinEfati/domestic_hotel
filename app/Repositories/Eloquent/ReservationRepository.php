@@ -58,4 +58,25 @@ class ReservationRepository extends BaseRepository implements ReservationReposit
             ->lockForUpdate()
             ->first();
     }
+
+    public function findByReservationNumberForPurchase(
+        string $reservationNumber,
+        bool $lockForUpdate = false
+    ): ?Reservation {
+        $query = $this->model
+            ->newQuery()
+            ->with([
+                'hotels.rooms',
+                'hotels.purchases.provider',
+                'hotels.purchases.segments',
+                'hotels.purchases.manualPurchase',
+            ])
+            ->where('reservation_number', $reservationNumber);
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
 }
