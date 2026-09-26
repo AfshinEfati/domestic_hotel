@@ -36,13 +36,13 @@ return new class extends Migration
             $table->string('url', 2048)
                 ->comment('Provider endpoint URL including query string');
 
-            $table->longText('request_body')
+            $table->json('request_body')
                 ->nullable()
-                ->comment('Raw request body sent to the provider');
+                ->comment('Structured request payload sent to the provider; non-JSON bodies are stored under _raw');
 
-            $table->longText('response_body')
+            $table->json('response_body')
                 ->nullable()
-                ->comment('Raw response body returned by the provider');
+                ->comment('Structured provider response; non-JSON bodies are stored under _raw');
 
             $table->unsignedSmallInteger('http_status')
                 ->nullable()
