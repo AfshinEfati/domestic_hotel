@@ -62,7 +62,6 @@ class DownloadEghamatPropertiesCommand extends Command
             ],
         ])->timeout(120);
 
-
         $response = $request->withHeaders([
             'Client-Token' => 'https://api.grschannel.com-$2y$10$/iQviVsfD1mKLS58OYdNve9',
             'Content-type' => 'application/json'
