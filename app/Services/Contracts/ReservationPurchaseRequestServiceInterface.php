@@ -6,5 +6,5 @@ use App\Models\Reservation;
 
 interface ReservationPurchaseRequestServiceInterface
 {
-    public function request(string $reservationNumber): Reservation;
+    public function request(int $reservationId): Reservation;
 }
