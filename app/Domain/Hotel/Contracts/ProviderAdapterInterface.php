@@ -9,6 +9,14 @@ interface ProviderAdapterInterface
 {
     public function code(): string;
 
+    public function withRequestLogContext(
+        ?int $reservationId = null,
+        ?string $handlerClass = null,
+        ?string $handlerMethod = null,
+        int $attempt = 1,
+        bool $force = false,
+    ): static;
+
     /** Cities */
     public function fetchCities(): Collection; // [{id, fa_name, en_name?, country_id?, province_id?}]
 
