@@ -4,6 +4,7 @@ namespace App\Http\Requests\Reservation;
 
 use App\Models\Country;
 use App\Support\Reservation\ReservationGuestGender;
+use App\Support\Reservation\ReservationGuestService;
 use App\Support\Reservation\ReservationGuestType;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
@@ -238,6 +239,12 @@ class StoreReservationRequest extends FormRequest
                 'required',
                 'integer',
                 Rule::in(ReservationGuestType::all())
+            ],
+
+            'hotel.rooms.*.guests.*.service' => [
+                'required',
+                'string',
+                Rule::in(ReservationGuestService::all())
             ],
 
             'hotel.rooms.*.guests.*.first_name' => [
