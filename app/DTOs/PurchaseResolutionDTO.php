@@ -9,7 +9,6 @@ final readonly class PurchaseResolutionDTO
 {
     public function __construct(
         public int $reservationId,
-        public string $reservationNumber,
         public int $reservationHotelId,
         public int $providerId,
         public int $purchaseMode,
@@ -22,7 +21,6 @@ final readonly class PurchaseResolutionDTO
     {
         return [
             'reservation_id' => $this->reservationId,
-            'reservation_number' => $this->reservationNumber,
             'reservation_hotel_id' => $this->reservationHotelId,
             'provider_id' => $this->providerId,
             'purchase_mode' => PurchaseMethod::options()[$this->purchaseMode],
