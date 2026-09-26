@@ -73,6 +73,7 @@ class ReservationResource extends JsonResource
                                         ? $room->guests->map(fn($guest) => [
                                             'id' => $guest->id,
                                             'type' => $guest->type,
+                                            'service' => $guest->service,
                                             'first_name' => $guest->first_name,
                                             'last_name' => $guest->last_name,
                                             'gender' => $guest->gender,
