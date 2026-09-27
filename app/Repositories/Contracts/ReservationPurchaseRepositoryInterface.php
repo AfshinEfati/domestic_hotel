@@ -9,6 +9,8 @@ interface ReservationPurchaseRepositoryInterface extends BaseRepositoryInterface
 {
     public function store(array $data): ReservationPurchase;
 
+    public function findForReservation(int $reservationId, int $purchaseId): ?ReservationPurchase;
+
     public function findByHotelAndProvider(int $reservationHotelId, int $providerId): ?ReservationPurchase;
 
     /** @return Collection<int, ReservationPurchase> */
