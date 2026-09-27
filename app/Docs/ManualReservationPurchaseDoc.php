@@ -323,7 +323,7 @@ class ManualReservationPurchaseDoc
      * @OA\Post(
      *     path="/api/v1/admin/reservations/{reservation_id}/confirm",
      *     summary="Confirm manual reservation purchase",
-     *     description="Requires exactly one final hotel, final rooms, every guest assigned to a final room, a valid provider for every purchase and purchase_amount on every purchase. With one purchase, final room segments are rebuilt automatically. With multiple purchases, final rooms must already be assigned exactly once across purchase room_ids. If recorded payments are below purchase_amount the status becomes PAYMENT_REQUIRED (8); otherwise ISSUE_SUCCESS (6).",
+     *     description="Requires exactly one final hotel, final rooms, every guest assigned to a final room, a valid provider for every purchase and purchase_amount on every purchase. With one purchase, final room segments are rebuilt automatically. With multiple purchases, final rooms must already be assigned exactly once across purchase room_ids. Every purchase must have recorded payments totaling at least purchase_amount. If any purchase is underpaid, confirmation returns validation error 422 and no status changes are committed. A successful confirmation sets the purchase and reservation status to ISSUE_SUCCESS (6).",
      *     tags={"Admin Manual Reservation"},
      *     @OA\Parameter(name="reservation_id", in="path", required=true, @OA\Schema(type="integer")),
      *     @OA\RequestBody(
@@ -335,7 +335,7 @@ class ManualReservationPurchaseDoc
      *         )
      *     ),
      *     @OA\Response(response=200, description="Confirmed", @OA\JsonContent(@OA\Property(property="data", ref="#/components/schemas/ReservationCreateResponse"))),
-     *     @OA\Response(response=422, description="Reservation is not ready to confirm")
+     *     @OA\Response(response=422, description="Reservation is not ready to confirm or full purchase payment has not been recorded")
      * )
      */
     public function confirm(): void
