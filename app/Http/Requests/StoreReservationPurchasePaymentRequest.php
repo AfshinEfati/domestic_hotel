@@ -21,7 +21,7 @@ class StoreReservationPurchasePaymentRequest extends FormRequest
             'source' => [
                 'required',
                 'integer',
-                Rule::in(PaymentSource::manualPurchaseSources()),
+                Rule::in(PaymentSource::all()),
             ],
             'paid_at' => ['required', 'date'],
         ];
