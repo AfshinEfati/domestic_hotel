@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\Admin\FacilityGroupController;
 use App\Http\Controllers\Api\V1\Admin\ProviderCityMapController;
 use App\Http\Controllers\Api\V1\Admin\ProviderController;
 use App\Http\Controllers\Api\V1\Admin\ProviderPricingRuleController;
+use App\Http\Controllers\Api\V1\Admin\PurchaseManualRuleController;
 use App\Http\Controllers\Api\V1\Admin\RatePlanController;
 use App\Http\Controllers\Api\V1\Admin\RatePlanProviderMapController;
 use App\Http\Controllers\Api\V1\Admin\RoomCalendarController;
@@ -32,6 +33,7 @@ Route::group(['prefix' => 'v1'], function () {
         Route::post('providers/offline', [ProviderController::class, 'storeOffline']);
         Route::apiResource('providers', ProviderController::class);
         Route::apiResource('provider-pricing-rules', ProviderPricingRuleController::class);
+        Route::apiResource('purchase-manual-rules', PurchaseManualRuleController::class);
         Route::apiResource('system-settings', SystemSettingController::class);
         Route::apiResource('facility-groups', FacilityGroupController::class);
         Route::apiResource('facilities', FacilityController::class);
