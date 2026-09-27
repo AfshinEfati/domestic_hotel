@@ -7,4 +7,6 @@ use App\Models\ReservationManualPurchase;
 interface ReservationManualPurchaseRepositoryInterface extends BaseRepositoryInterface
 {
     public function firstOrCreateForPurchase(int $reservationPurchaseId): ReservationManualPurchase;
+
+    public function updateForPurchase(int $reservationPurchaseId, array $data): bool;
 }
