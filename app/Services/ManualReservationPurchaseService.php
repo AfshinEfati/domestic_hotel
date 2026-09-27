@@ -614,8 +614,8 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         }
 
         $source = (int) ($payload['source'] ?? 0);
-        if (!PaymentSource::isValidManualPurchaseSource($source)) {
-            throw new InvalidArgumentException('Invalid manual purchase payment source.');
+        if (!PaymentSource::isValid($source)) {
+            throw new InvalidArgumentException('Invalid payment source.');
         }
 
         $amount = (int) ($payload['amount'] ?? 0);
