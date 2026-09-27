@@ -481,18 +481,22 @@ class ReservationDoc
      *             @OA\Property(
      *                 property="payments",
      *                 type="array",
+     *                 description="Payments already made for this purchase. Manual purchase payments record only amount, payment method and payment date/time.",
      *                 @OA\Items(
      *                     type="object",
      *                     @OA\Property(property="id", type="integer", example=5),
      *                     @OA\Property(property="amount", type="integer", format="int64", example=50000000),
-     *                     @OA\Property(property="source", type="object", nullable=true),
-     *                     @OA\Property(property="bank_account_id", type="integer", nullable=true),
-     *                     @OA\Property(property="card_id", type="integer", nullable=true),
+     *                     @OA\Property(
+     *                         property="source",
+     *                         type="object",
+     *                         nullable=true,
+     *                         @OA\Property(property="name", type="string", example="card"),
+     *                         @OA\Property(property="fa_name", type="string", example="کارت"),
+     *                         @OA\Property(property="code", type="integer", example=3)
+     *                     ),
      *                     @OA\Property(property="paid_at", ref="#/components/schemas/ReservationDateMeta"),
-     *                     @OA\Property(property="reference", type="string", nullable=true),
-     *                     @OA\Property(property="receipt_document_id", type="string", nullable=true),
-     *                     @OA\Property(property="status", type="integer", nullable=true),
-     *                     @OA\Property(property="description", type="string", nullable=true)
+     *                     @OA\Property(property="created_at", ref="#/components/schemas/ReservationDateMeta"),
+     *                     @OA\Property(property="updated_at", ref="#/components/schemas/ReservationDateMeta")
      *                 )
      *             ),
      *             @OA\Property(property="created_at", ref="#/components/schemas/ReservationDateMeta"),
