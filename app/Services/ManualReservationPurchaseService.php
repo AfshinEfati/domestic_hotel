@@ -30,6 +30,7 @@ use App\Support\Reservation\ReservationStatus;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 final readonly class ManualReservationPurchaseService implements ManualReservationPurchaseServiceInterface
@@ -308,8 +309,6 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
                 $this->assertFinalRoomsCoveredExactlyOnce($finalRooms, $currentPurchases);
             }
 
-            $hasOutstandingPayment = false;
-
             foreach ($currentPurchases as $purchase) {
                 $purchase = $this->purchases->findForReservation($reservationId, (int) $purchase->id)
                     ?? throw new InvalidArgumentException('Reservation purchase was not found.');
@@ -324,16 +323,15 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
 
                 $paid = $this->payments->sumPaidForPurchase((int) $purchase->id);
                 $purchaseAmount = (int) $purchase->purchase_amount;
-                $status = $paid >= $purchaseAmount
-                    ? ReservationStatus::ISSUE_SUCCESS
-                    : ReservationStatus::PAYMENT_REQUIRED;
 
-                if ($status === ReservationStatus::PAYMENT_REQUIRED) {
-                    $hasOutstandingPayment = true;
+                if ($paid < $purchaseAmount) {
+                    throw ValidationException::withMessages([
+                        'payments' => ['پرداخت کامل ثبت نشده است.'],
+                    ]);
                 }
 
                 $this->purchases->update($purchase->id, [
-                    'status' => $status,
+                    'status' => ReservationStatus::ISSUE_SUCCESS,
                     'reservation_hotel_id' => $finalHotel->id,
                     'issued_at' => now(),
                 ]);
@@ -351,9 +349,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             }
 
             $this->reservations->update($reservationId, [
-                'status' => $hasOutstandingPayment
-                    ? ReservationStatus::PAYMENT_REQUIRED
-                    : ReservationStatus::ISSUE_SUCCESS,
+                'status' => ReservationStatus::ISSUE_SUCCESS,
             ]);
 
             return $this->reload($reservationId);
