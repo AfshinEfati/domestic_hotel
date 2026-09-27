@@ -8,6 +8,7 @@ use App\Repositories\Contracts\ReservationGuestRepositoryInterface;
 use App\Repositories\Contracts\ReservationHotelRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualReasonRepositoryInterface;
+use App\Repositories\Contracts\ReservationPurchasePaymentRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseSegmentRepositoryInterface;
 use App\Repositories\Contracts\ReservationRepositoryInterface;
@@ -19,16 +20,19 @@ use App\Repositories\Eloquent\ReservationGuestRepository;
 use App\Repositories\Eloquent\ReservationHotelRepository;
 use App\Repositories\Eloquent\ReservationManualPurchaseRepository;
 use App\Repositories\Eloquent\ReservationManualReasonRepository;
+use App\Repositories\Eloquent\ReservationPurchasePaymentRepository;
 use App\Repositories\Eloquent\ReservationPurchaseRepository;
 use App\Repositories\Eloquent\ReservationPurchaseSegmentRepository;
 use App\Repositories\Eloquent\ReservationRepository;
 use App\Repositories\Eloquent\ReservationRoomNightRepository;
 use App\Repositories\Eloquent\ReservationRoomRepository;
+use App\Services\Contracts\ManualReservationPurchaseServiceInterface;
 use App\Services\Contracts\PurchaseManualRuleServiceInterface;
 use App\Services\Contracts\PurchaseResolverInterface;
 use App\Services\Contracts\ReservationPurchaseRequestServiceInterface;
 use App\Services\Contracts\ReservationReferenceGeneratorInterface;
 use App\Services\Contracts\ReservationServiceInterface;
+use App\Services\ManualReservationPurchaseService;
 use App\Services\PurchaseManualRuleService;
 use App\Services\PurchaseResolver;
 use App\Services\ReservationPurchaseRequestService;
@@ -46,6 +50,7 @@ class ReservationServiceProvider extends ServiceProvider
         $this->app->bind(ReservationRoomNightRepositoryInterface::class, ReservationRoomNightRepository::class);
         $this->app->bind(ReservationGuestRepositoryInterface::class, ReservationGuestRepository::class);
         $this->app->bind(ReservationPurchaseRepositoryInterface::class, ReservationPurchaseRepository::class);
+        $this->app->bind(ReservationPurchasePaymentRepositoryInterface::class, ReservationPurchasePaymentRepository::class);
         $this->app->bind(ReservationManualPurchaseRepositoryInterface::class, ReservationManualPurchaseRepository::class);
         $this->app->bind(ReservationPurchaseSegmentRepositoryInterface::class, ReservationPurchaseSegmentRepository::class);
         $this->app->bind(PurchaseManualRuleRepositoryInterface::class, PurchaseManualRuleRepository::class);
@@ -56,5 +61,6 @@ class ReservationServiceProvider extends ServiceProvider
         $this->app->bind(ReservationServiceInterface::class, ReservationService::class);
         $this->app->bind(PurchaseResolverInterface::class, PurchaseResolver::class);
         $this->app->bind(ReservationPurchaseRequestServiceInterface::class, ReservationPurchaseRequestService::class);
+        $this->app->bind(ManualReservationPurchaseServiceInterface::class, ManualReservationPurchaseService::class);
     }
 }
