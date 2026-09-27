@@ -7,6 +7,7 @@ use App\Models\Provider;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Services\Contracts\ProviderServiceInterface;
+use App\Support\Provider\ProviderType;
 
 class ProviderService extends BaseService implements ProviderServiceInterface
 {
@@ -86,10 +87,14 @@ class ProviderService extends BaseService implements ProviderServiceInterface
 
         /** @var Provider $provider */
         $provider = $this->repository->updateOrCreate(
-            ['code' => 'hotel-'.$accommodation->id],
+            [
+                'provider_type' => ProviderType::HOTEL_DIRECT,
+                'accommodation_id' => $accommodation->id,
+            ],
             [
                 'fa_name' => $accommodation->fa_name,
                 'en_name' => $accommodation->en_name,
+                'code' => 'hotel-'.$accommodation->id,
                 'config' => null,
                 'is_active' => true,
                 'is_online' => false,
@@ -104,6 +109,7 @@ class ProviderService extends BaseService implements ProviderServiceInterface
         return $this->repository->getByDynamic([
             'is_active' => true,
             'is_online' => true,
+            'provider_type' => ProviderType::INTEGRATION,
         ]);
     }
 
