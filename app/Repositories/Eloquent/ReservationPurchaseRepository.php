@@ -19,6 +19,19 @@ class ReservationPurchaseRepository extends BaseRepository implements Reservatio
         return parent::store($data);
     }
 
+    public function findForReservation(int $reservationId, int $purchaseId): ?ReservationPurchase
+    {
+        return $this->model
+            ->newQuery()
+            ->with(['provider', 'quotedProvider', 'segments', 'manualPurchase', 'payments'])
+            ->whereKey($purchaseId)
+            ->whereHas(
+                'reservationHotel',
+                fn ($query) => $query->where('reservation_id', $reservationId)
+            )
+            ->first();
+    }
+
     public function findByHotelAndProvider(int $reservationHotelId, int $providerId): ?ReservationPurchase
     {
         return $this->model->newQuery()
