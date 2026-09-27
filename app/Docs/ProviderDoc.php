@@ -21,6 +21,16 @@ class ProviderDoc
      *     @OA\Property(property="code", type="string", example="Code"),
      *     @OA\Property(property="config", type="object", nullable=true, example="Config"),
      *     @OA\Property(property="is_active", type="integer", example=1),
+     *     @OA\Property(property="is_online", type="object", nullable=true),
+     *     @OA\Property(
+     *         property="provider_type",
+     *         type="object",
+     *         nullable=true,
+     *         @OA\Property(property="name", type="string", example="integration"),
+     *         @OA\Property(property="fa_name", type="string", example="تأمین‌کننده"),
+     *         @OA\Property(property="code", type="integer", example=1)
+     *     ),
+     *     @OA\Property(property="accommodation_id", type="integer", nullable=true, example=null),
      *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *     example={"id":1,"fa_name":"Sample Fa Name","en_name":"Sample En Name","class":"Class","code":"Code","config":"Config","is_active":"1","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
