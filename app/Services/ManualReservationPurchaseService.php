@@ -242,8 +242,12 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
 
-            $this->requiredAccCode($payload);
+            $accCode = $this->requiredAccCode($payload);
             $this->applyPayment($reservation, $purchaseId, $payload, true);
+
+            if ((int) $reservation->status === ReservationStatus::BOOK_REQUESTED) {
+                $this->markUnderReview($reservation, $accCode);
+            }
 
             return $this->reload($reservationId);
         });
@@ -310,9 +314,9 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
                 $purchase = $this->purchases->findForReservation($reservationId, (int) $purchase->id)
                     ?? throw new InvalidArgumentException('Reservation purchase was not found.');
 
-                if ($purchase->purchase_amount === null) {
+                if ($purchase->purchase_amount === null || (int) $purchase->purchase_amount <= 0) {
                     throw new InvalidArgumentException(
-                        "Purchase {$purchase->id} requires purchase_amount before confirmation."
+                        "Purchase {$purchase->id} requires a positive purchase_amount before confirmation."
                     );
                 }
 
@@ -539,6 +543,16 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             'reservation_hotel_id' => $finalHotel->id,
             'purchase_mode' => PurchaseMethod::OFFLINE,
         ];
+
+        if (
+            (bool) ($payload['use_hotel_as_provider'] ?? false)
+            && array_key_exists('provider_id', $payload)
+            && $payload['provider_id'] !== null
+        ) {
+            throw new InvalidArgumentException(
+                'provider_id and use_hotel_as_provider cannot be used together.'
+            );
+        }
 
         if ((bool) ($payload['use_hotel_as_provider'] ?? false)) {
             $hotelProvider = $this->providerService->storeOfflineByAccommodationId(
