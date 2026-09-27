@@ -8,6 +8,7 @@ use App\Domain\Hotel\Providers\PartoAdapter;
 use App\Domain\Hotel\Providers\SnappTripAdapter;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
+use App\Support\Provider\ProviderType;
 use Illuminate\Database\Seeder;
 
 class ProviderSeeder extends Seeder
@@ -32,6 +33,7 @@ class ProviderSeeder extends Seeder
                 'class' => GRSAdapter::class,
                 'config' => $grsDefaults,
                 'is_online' => true,
+                'provider_type' => ProviderType::INTEGRATION,
             ]
         );
 
@@ -65,6 +67,7 @@ class ProviderSeeder extends Seeder
                     'secret_key' => ',sXL059?mZN3',
                 ],
                 'is_online' => false,
+                'provider_type' => ProviderType::INTEGRATION,
             ]
         );
 
@@ -79,6 +82,7 @@ class ProviderSeeder extends Seeder
                     'version' => 1,
                 ],
                 'is_online' => false,
+                'provider_type' => ProviderType::INTEGRATION,
             ]
         );
 
@@ -93,6 +97,7 @@ class ProviderSeeder extends Seeder
                     'token' => '9EcxDBS7gmfvh5HaHDtjjxQhEVRHaPJP6hegUJ5FBerz8Cam3Xt6X97k8rf5GDGL',
                 ],
                 'is_online' => false,
+                'provider_type' => ProviderType::INTEGRATION,
             ]
         );
     }
