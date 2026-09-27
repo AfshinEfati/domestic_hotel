@@ -58,4 +58,14 @@ class ReservationHotelRepository extends BaseRepository implements ReservationHo
             ->whereKey($reservationHotelId)
             ->update(['is_final' => true]) === 1;
     }
+
+    public function findFinalForReservation(int $reservationId): ?ReservationHotel
+    {
+        return $this->model
+            ->newQuery()
+            ->with(['rooms.guests'])
+            ->where('reservation_id', $reservationId)
+            ->where('is_final', true)
+            ->first();
+    }
 }
