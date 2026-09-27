@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -19,6 +20,8 @@ class Provider extends Model
         'config',
         'is_active',
         'is_online',
+        'provider_type',
+        'accommodation_id',
         'created_at',
         'updated_at',
         'auth_token',
@@ -33,6 +36,8 @@ class Provider extends Model
         'config' => 'array',
         'is_active' => 'boolean',
         'is_online' => 'boolean',
+        'provider_type' => 'integer',
+        'accommodation_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -44,6 +49,11 @@ class Provider extends Model
      *
      * @return HasMany<ProviderCityMap>
      */
+    public function accommodation(): BelongsTo
+    {
+        return $this->belongsTo(Accommodation::class);
+    }
+
     public function cityMaps(): HasMany
     {
         return $this->hasMany(ProviderCityMap::class);
