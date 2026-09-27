@@ -18,7 +18,7 @@ class StorePurchaseManualRuleRequest extends FormRequest
             'provider_id' => ['nullable', 'integer', 'exists:providers,id'],
             'accommodation_id' => ['nullable', 'integer', 'exists:accommodations,id'],
             'minimum_amount' => ['nullable', 'integer', 'min:0'],
-            'maximum_amount' => ['nullable', 'integer', 'min:0', 'gte:minimum_amount'],
+            'maximum_amount' => ['nullable', 'integer', 'min:0'],
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['nullable', 'date_format:H:i'],
             'is_active' => ['required', 'boolean'],
