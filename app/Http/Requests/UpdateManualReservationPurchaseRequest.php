@@ -47,7 +47,7 @@ class UpdateManualReservationPurchaseRequest extends FormRequest
             'purchases.*.payments.*.source' => [
                 'required',
                 'integer',
-                Rule::in(PaymentSource::manualPurchaseSources()),
+                Rule::in(PaymentSource::all()),
             ],
             'purchases.*.payments.*.paid_at' => ['required', 'date'],
         ];
