@@ -16,4 +16,6 @@ interface ReservationPurchaseSegmentRepositoryInterface extends BaseRepositoryIn
         string $fromDate,
         string $toDate,
     ): ReservationPurchaseSegment;
+
+    public function deleteForPurchase(int $reservationPurchaseId): void;
 }
