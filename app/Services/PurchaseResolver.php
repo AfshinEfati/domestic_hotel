@@ -49,15 +49,26 @@ class PurchaseResolver implements PurchaseResolverInterface
             throw new InvalidArgumentException('Selected provider was not found.');
         }
 
-        // Direct-hotel providers are accounting/procurement entities only. They must
-        // belong to this accommodation and never participate in online inventory flows.
-        $isHotelProvider = (int) $provider->provider_type === ProviderType::HOTEL_DIRECT
-            && (int) $provider->accommodation_id === (int) $hotel->accommodation_id;
+        // Direct-hotel providers are accounting/procurement entities only. They belong
+        // to exactly one accommodation and must never be reused for another hotel.
+        $isDirectHotelProvider = (int) $provider->provider_type === ProviderType::HOTEL_DIRECT;
 
-        if (!$isHotelProvider && !$this->accommodationProviderMapRepository->existsForAccommodationAndProvider(
-            $hotel->accommodation_id,
-            $providerId
-        )) {
+        if (
+            $isDirectHotelProvider
+            && (int) $provider->accommodation_id !== (int) $hotel->accommodation_id
+        ) {
+            throw new InvalidArgumentException(
+                'Direct hotel provider does not belong to the reservation hotel.'
+            );
+        }
+
+        if (
+            !$isDirectHotelProvider
+            && !$this->accommodationProviderMapRepository->existsForAccommodationAndProvider(
+                $hotel->accommodation_id,
+                $providerId
+            )
+        ) {
             throw new InvalidArgumentException('Selected provider is not mapped to the reservation hotel.');
         }
 
