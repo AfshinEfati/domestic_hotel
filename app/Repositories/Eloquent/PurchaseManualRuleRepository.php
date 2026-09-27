@@ -12,6 +12,31 @@ class PurchaseManualRuleRepository extends BaseRepository implements PurchaseMan
         parent::__construct($model);
     }
 
+    public function getAll(): iterable
+    {
+        return $this->model
+            ->newQuery()
+            ->with(['provider', 'accommodation'])
+            ->latest()
+            ->get();
+    }
+
+    public function find(int|string $id): ?PurchaseManualRule
+    {
+        return $this->model
+            ->newQuery()
+            ->with(['provider', 'accommodation'])
+            ->find($id);
+    }
+
+    public function store(array $data): PurchaseManualRule
+    {
+        /** @var PurchaseManualRule $rule */
+        $rule = parent::store($data);
+
+        return $rule->load(['provider', 'accommodation']);
+    }
+
     public function findMatching(
         int $providerId,
         int $accommodationId,
