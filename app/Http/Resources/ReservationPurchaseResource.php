@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Helpers\StatusHelper;
+use App\Support\Provider\ProviderType;
 use App\Support\Reservation\PaymentSource;
 use App\Support\Reservation\PurchaseManualReason;
 use App\Support\Reservation\PurchaseMethod;
@@ -21,6 +22,10 @@ class ReservationPurchaseResource extends JsonResource
                 'code' => $this->provider?->code,
                 'fa_name' => $this->provider?->fa_name,
                 'en_name' => $this->provider?->en_name,
+                'provider_type' => $this->provider?->provider_type === null
+                    ? null
+                    : ProviderType::get((int) $this->provider->provider_type),
+                'accommodation_id' => $this->provider?->accommodation_id,
             ],
             'quoted_provider' => [
                 'id' => $this->quoted_provider_id,
@@ -71,13 +76,7 @@ class ReservationPurchaseResource extends JsonResource
                     'id' => $payment->id,
                     'amount' => $payment->amount,
                     'source' => PaymentSource::get((int) $payment->source),
-                    'bank_account_id' => $payment->bank_account_id,
-                    'card_id' => $payment->card_id,
                     'paid_at' => StatusHelper::formatDates($payment->paid_at),
-                    'reference' => $payment->reference,
-                    'receipt_document_id' => $payment->receipt_document_id,
-                    'status' => $payment->status,
-                    'description' => $payment->description,
                     'created_at' => StatusHelper::formatDates($payment->created_at),
                     'updated_at' => StatusHelper::formatDates($payment->updated_at),
                 ])->values()
