@@ -11,6 +11,7 @@ use App\Repositories\Contracts\PurchaseManualRuleRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualReasonRepositoryInterface;
 use App\Repositories\Contracts\ReservationRepositoryInterface;
 use App\Services\Contracts\PurchaseResolverInterface;
+use App\Support\Provider\ProviderType;
 use App\Support\Reservation\PurchaseManualReason;
 use App\Support\Reservation\PurchaseMethod;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -48,9 +49,10 @@ class PurchaseResolver implements PurchaseResolverInterface
             throw new InvalidArgumentException('Selected provider was not found.');
         }
 
-        // Provider flags may change. A previously online provider can be disabled without
-        // becoming a dedicated hotel-{id} provider. Validate hotel ownership separately.
-        $isHotelProvider = $provider->code === 'hotel-'.$hotel->accommodation_id;
+        // Direct-hotel providers are accounting/procurement entities only. They must
+        // belong to this accommodation and never participate in online inventory flows.
+        $isHotelProvider = (int) $provider->provider_type === ProviderType::HOTEL_DIRECT
+            && (int) $provider->accommodation_id === (int) $hotel->accommodation_id;
 
         if (!$isHotelProvider && !$this->accommodationProviderMapRepository->existsForAccommodationAndProvider(
             $hotel->accommodation_id,
@@ -60,7 +62,11 @@ class PurchaseResolver implements PurchaseResolverInterface
         }
 
         // Provider availability takes priority over credit and manual purchase rules.
-        if (!$provider->is_active || !$provider->is_online) {
+        if (
+            (int) $provider->provider_type === ProviderType::HOTEL_DIRECT
+            || !$provider->is_active
+            || !$provider->is_online
+        ) {
             $inactive = !$provider->is_active;
 
             return new PurchaseResolutionDTO(
@@ -133,7 +139,6 @@ class PurchaseResolver implements PurchaseResolverInterface
         // This is only eligibility: no reservation purchase or provider API call happens here.
         return new PurchaseResolutionDTO(
             reservationId: (int) $reservation->id,
-            reservationNumber: $reservation->reservation_number,
             reservationHotelId: $hotel->id,
             providerId: $providerId,
             purchaseMode: PurchaseMethod::ONLINE,
