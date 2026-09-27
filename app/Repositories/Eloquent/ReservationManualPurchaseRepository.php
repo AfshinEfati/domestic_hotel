@@ -19,4 +19,13 @@ class ReservationManualPurchaseRepository extends BaseRepository implements Rese
             'reservation_purchase_id' => $reservationPurchaseId,
         ]);
     }
+
+    public function updateForPurchase(int $reservationPurchaseId, array $data): bool
+    {
+        $manual = $this->model
+            ->newQuery()
+            ->firstOrCreate(['reservation_purchase_id' => $reservationPurchaseId]);
+
+        return $manual->update($data);
+    }
 }
