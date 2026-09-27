@@ -32,4 +32,38 @@ class ReservationRoomRepository extends BaseRepository implements ReservationRoo
             ->whereKey($reservationRoomId)
             ->first();
     }
+
+    public function findByHotelNumberAndType(
+        int $reservationHotelId,
+        int $roomNumber,
+        int $type
+    ): ?ReservationRoom {
+        return $this->model
+            ->newQuery()
+            ->where('reservation_hotel_id', $reservationHotelId)
+            ->where('room_number', $roomNumber)
+            ->where('type', $type)
+            ->first();
+    }
+
+    public function clearFinalByHotelAndNumber(int $reservationHotelId, int $roomNumber): void
+    {
+        $this->model
+            ->newQuery()
+            ->where('reservation_hotel_id', $reservationHotelId)
+            ->where('room_number', $roomNumber)
+            ->where('is_final', true)
+            ->update(['is_final' => false]);
+    }
+
+    public function getFinalByHotel(int $reservationHotelId): iterable
+    {
+        return $this->model
+            ->newQuery()
+            ->with(['guests'])
+            ->where('reservation_hotel_id', $reservationHotelId)
+            ->where('is_final', true)
+            ->orderBy('room_number')
+            ->get();
+    }
 }
