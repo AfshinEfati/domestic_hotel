@@ -17,4 +17,6 @@ interface ReservationHotelRepositoryInterface extends BaseRepositoryInterface
     public function clearFinalByReservation(int $reservationId): void;
 
     public function markFinal(int $reservationHotelId): bool;
+
+    public function findFinalForReservation(int $reservationId): ?ReservationHotel;
 }
