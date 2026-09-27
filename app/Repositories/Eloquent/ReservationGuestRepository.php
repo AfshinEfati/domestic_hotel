@@ -23,4 +23,37 @@ class ReservationGuestRepository extends BaseRepository implements ReservationGu
         /** @var ReservationGuest */
         return parent::store($data);
     }
+
+    public function findForReservation(int $reservationId, int $guestId): ?ReservationGuest
+    {
+        return $this->model
+            ->newQuery()
+            ->whereKey($guestId)
+            ->whereHas(
+                'room.reservationHotel',
+                fn ($query) => $query->where('reservation_id', $reservationId)
+            )
+            ->first();
+    }
+
+    public function getIdsForReservation(int $reservationId): array
+    {
+        return $this->model
+            ->newQuery()
+            ->whereHas(
+                'room.reservationHotel',
+                fn ($query) => $query->where('reservation_id', $reservationId)
+            )
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    public function assignToRoom(int $guestId, int $reservationRoomId): bool
+    {
+        return $this->model
+            ->newQuery()
+            ->whereKey($guestId)
+            ->update(['reservation_room_id' => $reservationRoomId]) === 1;
+    }
 }
