@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Reservation\PurchasePaymentStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -21,6 +22,10 @@ class ReservationPurchasePayment extends Model
         'receipt_document_id',
         'status',
         'description',
+    ];
+
+    protected $attributes = [
+        'status' => PurchasePaymentStatus::PAID,
     ];
 
     protected $casts = [
