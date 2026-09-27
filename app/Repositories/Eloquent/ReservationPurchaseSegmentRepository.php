@@ -38,4 +38,12 @@ class ReservationPurchaseSegmentRepository extends BaseRepository implements Res
             'to_date' => $toDate,
         ]);
     }
+
+    public function deleteForPurchase(int $reservationPurchaseId): void
+    {
+        $this->model
+            ->newQuery()
+            ->where('reservation_purchase_id', $reservationPurchaseId)
+            ->delete();
+    }
 }
