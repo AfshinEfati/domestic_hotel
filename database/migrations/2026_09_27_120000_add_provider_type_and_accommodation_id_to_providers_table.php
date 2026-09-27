@@ -32,6 +32,7 @@ return new class extends Migration
         DB::table('providers')
             ->where('code', 'like', 'hotel-%')
             ->orderBy('id')
+            ->get()
             ->each(function (object $provider): void {
                 $rawId = substr((string) $provider->code, strlen('hotel-'));
 
