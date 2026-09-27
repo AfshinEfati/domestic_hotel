@@ -21,9 +21,9 @@ class ManualReservationPurchaseDoc
      *     @OA\Property(
      *         property="source",
      *         type="integer",
-     *         enum={2,3,4,5},
+     *         enum={1,2,3,4},
      *         example=3,
-     *         description="Payment method: 2=gateway, 3=card, 4=cash, 5=bank. The payment is recorded only after it has already happened."
+     *         description="Selectable payment source only; it does not change purchase workflow. 1=credit, 2=gateway/bank transfer, 3=card_to_card, 4=cash."
      *     ),
      *     @OA\Property(property="paid_at", type="string", format="date-time", example="2026-09-27T14:30:00+03:30")
      * )
@@ -308,7 +308,7 @@ class ManualReservationPurchaseDoc
      *             required={"acc_code","amount","source","paid_at"},
      *             @OA\Property(property="acc_code", type="string", example="A-102"),
      *             @OA\Property(property="amount", type="integer", format="int64", minimum=1, example=55000000),
-     *             @OA\Property(property="source", type="integer", enum={2,3,4,5}, example=5),
+     *             @OA\Property(property="source", type="integer", enum={1,2,3,4}, example=2),
      *             @OA\Property(property="paid_at", type="string", format="date-time", example="2026-09-27T14:30:00+03:30")
      *         )
      *     ),
