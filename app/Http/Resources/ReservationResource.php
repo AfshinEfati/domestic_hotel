@@ -117,6 +117,8 @@ class ReservationResource extends JsonResource
             ReservationStatus::PAYMENT_REQUIRED,
             ReservationStatus::COMPLETED => 'confirmed',
 
+            ReservationStatus::ISSUE_FAILED => 'rejected',
+
             default => null,
         };
     }
