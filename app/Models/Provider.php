@@ -28,6 +28,10 @@ class Provider extends Model
         'expire_at',
     ];
 
+    protected $attributes = [
+        'provider_type' => 1,
+    ];
+
     protected $casts = [
         'id' => 'integer',
         'fa_name' => 'string',
