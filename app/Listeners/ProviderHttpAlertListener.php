@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
 use App\Services\Alerts\TelegramAlertService;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\ResponseReceived;
@@ -30,7 +31,7 @@ final class ProviderHttpAlertListener
             if (
                 $status === 404
                 && $provider === 'grs'
-                && $this->isAvailabilityOperation($event->request)
+                && $this->isScheduledAvailabilityOperation($event->request)
             ) {
                 // The scheduled availability job adds hotel/date context and treats
                 // this as provider data, not an application failure.
@@ -157,11 +158,18 @@ final class ProviderHttpAlertListener
         return preg_match('/^[a-z0-9_-]{1,30}$/D', $code) ? $code : null;
     }
 
-    private function isAvailabilityOperation(Request $request): bool
+    private function isScheduledAvailabilityOperation(Request $request): bool
     {
         $path = (string) (parse_url($request->url(), PHP_URL_PATH) ?: '');
+        if (!str_ends_with($path, '/v1/available-rooms')) {
+            return false;
+        }
 
-        return str_ends_with($path, '/v1/available-rooms');
+        $tag = $request->attributes()['domestic_provider'] ?? [];
+        $tag = is_array($tag) ? $tag : [];
+        $log = is_array($tag['log'] ?? null) ? $tag['log'] : [];
+
+        return ($log['handler_class'] ?? null) === RefreshGrsPropertyPricesJob::class;
     }
 
     private function operation(Request $request): string
