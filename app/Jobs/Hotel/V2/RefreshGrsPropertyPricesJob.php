@@ -84,6 +84,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $to = $from->addDays($this->days);
             $started = now()->subSeconds(2); // Account for second-granularity DB timestamps.
             $adapter = new RateLimitedGrsAdapter($provider);
+            $adapter->withRequestLogContext(
+                null,
+                self::class,
+                'handle',
+            );
             $adapter->trackAvailability(
                 fn (): mixed => $schedules->requestStarted($this->scheduleId, $this->gdsId),
                 fn (): mixed => $schedules->http200($this->scheduleId, $this->gdsId)
