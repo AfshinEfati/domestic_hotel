@@ -27,6 +27,16 @@ final class ProviderHttpAlertListener
             $status = $event->response->status();
             $operation = $this->operation($event->request);
 
+            if (
+                $status === 404
+                && $provider === 'grs'
+                && $this->isAvailabilityOperation($event->request)
+            ) {
+                // The scheduled availability job adds hotel/date context and treats
+                // this as provider data, not an application failure.
+                return;
+            }
+
             if ($status >= 400) {
                 $this->alerts->providerFailure(
                     $provider,
@@ -145,6 +155,13 @@ final class ProviderHttpAlertListener
         // Only allow an identifier, never URLs, headers, credentials or request bodies.
         $code = strtolower($tag['code']);
         return preg_match('/^[a-z0-9_-]{1,30}$/D', $code) ? $code : null;
+    }
+
+    private function isAvailabilityOperation(Request $request): bool
+    {
+        $path = (string) (parse_url($request->url(), PHP_URL_PATH) ?: '');
+
+        return str_ends_with($path, '/v1/available-rooms');
     }
 
     private function operation(Request $request): string
