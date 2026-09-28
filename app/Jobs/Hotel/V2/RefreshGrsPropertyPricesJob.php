@@ -47,8 +47,9 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
     public function handle(
         HotelSyncService $service,
         GrsPriceRefreshScheduleService $schedules,
-        TelegramAlertService $alerts,
+        ?TelegramAlertService $alerts = null,
     ): void {
+        $alerts ??= app(TelegramAlertService::class);
         $provider = null;
         $grsId = '';
         $hotelName = 'هتل #' . $this->gdsId;
