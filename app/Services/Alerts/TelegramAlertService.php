@@ -110,7 +110,7 @@ final class TelegramAlertService
             'هتل' => $hotelName,
             'شناسه هتل' => $accommodationId,
             'شناسه هتل تأمین‌کننده' => $providerPropertyId,
-            'بازه درخواست' => "{$from} تا {$to}",
+            'بازه درخواست' => "{$from} تا قبل از {$to}",
             'روزهای درخواستی' => $requestedDays,
             'روزهای دریافتی' => $receivedDays,
         ];
