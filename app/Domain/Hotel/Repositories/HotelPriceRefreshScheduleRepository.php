@@ -65,7 +65,7 @@ class HotelPriceRefreshScheduleRepository
         $this->updateTime($id, $gdsId, 'last_gds_success_at');
     }
 
-    /** The due time changes ONLY after verified local persistence. */
+    /** Normal successful refresh advances the due time after verified local persistence. */
     public function markPersisted(int $id, int $gdsId): int
     {
         return $this->scheduleNextRun($id, $gdsId);
