@@ -83,6 +83,75 @@ final class TelegramAlertService
         );
     }
 
+    public function providerAvailabilityIssue(
+        string $provider,
+        string $hotelName,
+        int $accommodationId,
+        string $providerPropertyId,
+        string $from,
+        string $to,
+        int $requestedDays,
+        int $receivedDays,
+        string $issue,
+        ?int $httpStatus = null,
+        ?string $missingDates = null,
+        ?string $reason = null,
+    ): void {
+        $description = match ($issue) {
+            'not_found' => 'تأمین‌کننده هتل را برای نرخ و ظرفیت پیدا نکرد؛ Job بدون خطای سیستمی تمام شد.',
+            'empty' => 'تأمین‌کننده برای کل بازه درخواست‌شده هیچ نرخ و ظرفیتی برنگرداند.',
+            'partial' => 'تأمین‌کننده فقط بخشی از بازه درخواست‌شده را با نرخ و ظرفیت برگرداند.',
+            default => 'پاسخ نرخ و ظرفیت تأمین‌کننده نیاز به بررسی دارد.',
+        };
+
+        $fields = [
+            'دسته' => 'Provider availability data',
+            'تأمین‌کننده' => $provider,
+            'هتل' => $hotelName,
+            'شناسه هتل' => $accommodationId,
+            'شناسه هتل تأمین‌کننده' => $providerPropertyId,
+            'بازه درخواست' => "{$from} تا {$to}",
+            'روزهای درخواستی' => $requestedDays,
+            'روزهای دریافتی' => $receivedDays,
+        ];
+
+        if ($requestedDays >= $receivedDays) {
+            $fields['روزهای بدون داده'] = $requestedDays - $receivedDays;
+        }
+
+        if ($missingDates !== null && trim($missingDates) !== '') {
+            $fields['تاریخ‌های بدون نرخ/ظرفیت'] = $missingDates;
+        }
+
+        if ($httpStatus !== null) {
+            $fields['HTTP'] = $httpStatus;
+        }
+
+        if ($reason !== null && trim($reason) !== '') {
+            $fields['علت تأمین‌کننده'] = $reason;
+        }
+
+        $this->enqueue(
+            'هشدار نرخ و ظرفیت تأمین‌کننده',
+            $description,
+            $fields,
+            $httpStatus === null ? null : "HTTP: {$httpStatus}\nIssue: {$issue}",
+            implode('|', [
+                'availability',
+                $provider,
+                $accommodationId,
+                $providerPropertyId,
+                $from,
+                $to,
+                $issue,
+                $httpStatus,
+                $receivedDays,
+                $missingDates,
+                $reason,
+            ]),
+        );
+    }
+
     public function internalFailure(Throwable $exception): void
     {
         $class = $exception::class;
