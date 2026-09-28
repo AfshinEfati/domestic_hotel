@@ -42,3 +42,14 @@ Do not insert raw exception messages, SQL statements with bindings, request/resp
 The central HTTP observer catches tagged calls even when an adapter handles its own HTTP error. Errors detected only after complex response parsing, or swallowed internally without `report()`, cannot be inferred from generic HTTP events; use `TelegramAlertService::custom()` explicitly for those exceptional cases. The system does not forward every `Log::error()` or alert on non-critical normal business outcomes.
 
 Provider calls using a new independent HTTP client must attach `withAttributes(['domestic_provider' => ['code' => $providerCode]])`; the Telegram proxy request must **not** have this attribute. Do not use provider URL/header matching, as it can expose credentials and misclassify traffic.
+
+
+## GRS availability data anomalies
+
+Scheduled GRS availability refreshes distinguish provider data problems from application failures.
+
+- HTTP 404 from the GRS availability request is treated as a provider data anomaly. The queue job is not failed, the provider-success timestamp is not advanced, and only the next scheduled attempt is moved forward by the normal refresh interval.
+- HTTP 200 with no availability rows sends a Telegram warning but remains a successful queue execution.
+- HTTP 200 with only part of the requested date window sends a Telegram warning listing the missing date ranges; returned rows are still persisted.
+- Availability warnings include the local hotel name/id, provider property id, requested date range, requested/received day counts, missing dates and provider reason when available.
+- The generic HTTP observer suppresses the GRS `/v1/available-rooms` 404 message because the scheduled job sends the richer contextual alert instead.
