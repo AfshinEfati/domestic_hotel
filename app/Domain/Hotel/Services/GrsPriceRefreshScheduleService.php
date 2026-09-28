@@ -5,10 +5,12 @@ namespace App\Domain\Hotel\Services;
 use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\Provider;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
+use App\Repositories\Contracts\AccommodationRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -20,6 +22,7 @@ class GrsPriceRefreshScheduleService
         private readonly HotelPriceRefreshScheduleRepository $schedules,
         private readonly ProviderRepositoryInterface $providers,
         private readonly AccommodationProviderMapRepositoryInterface $maps,
+        private readonly AccommodationRepositoryInterface $accommodations,
         private readonly GrsAvailabilityPersistenceRepository $availability,
     ) {
     }
@@ -37,6 +40,11 @@ class GrsPriceRefreshScheduleService
     public function mapForAccommodation(int $gdsId, int $providerId): ?AccommodationProviderMap
     {
         return $this->maps->findForAccommodationAndProvider($gdsId, $providerId);
+    }
+
+    public function accommodationById(int $gdsId): ?Accommodation
+    {
+        return $this->accommodations->find($gdsId);
     }
 
     public function schedulerEnabled(): bool
@@ -88,5 +96,10 @@ class GrsPriceRefreshScheduleService
     public function persisted(int $id, int $gdsId): int
     {
         return $this->schedules->markPersisted($id, $gdsId);
+    }
+
+    public function providerAnomalyHandled(int $id, int $gdsId): int
+    {
+        return $this->schedules->markProviderAnomalyHandled($id, $gdsId);
     }
 }
