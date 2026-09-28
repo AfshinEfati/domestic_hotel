@@ -113,35 +113,35 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $minutes = $schedules->persisted($this->scheduleId, $this->gdsId);
 
             $coverage = $this->coverage($adapter->lastAvailability, $from, $to);
-            if ($coverage['received_days'] === 0) {
-                $alerts->providerAvailabilityIssue(
-                    (string) $provider->code,
-                    $hotelName,
-                    $this->gdsId,
-                    $grsId,
-                    $from->format('Y-m-d'),
-                    $to->format('Y-m-d'),
-                    $coverage['requested_days'],
-                    0,
-                    'empty',
-                    null,
-                    $coverage['missing_dates'],
-                );
-            } elseif ($coverage['received_days'] < $coverage['requested_days']) {
-                $alerts->providerAvailabilityIssue(
-                    (string) $provider->code,
-                    $hotelName,
-                    $this->gdsId,
-                    $grsId,
-                    $from->format('Y-m-d'),
-                    $to->format('Y-m-d'),
-                    $coverage['requested_days'],
-                    $coverage['received_days'],
-                    'partial',
-                    null,
-                    $coverage['missing_dates'],
-                );
-            }
+//            if ($coverage['received_days'] === 0) {
+//                $alerts->providerAvailabilityIssue(
+//                    (string) $provider->code,
+//                    $hotelName,
+//                    $this->gdsId,
+//                    $grsId,
+//                    $from->format('Y-m-d'),
+//                    $to->format('Y-m-d'),
+//                    $coverage['requested_days'],
+//                    0,
+//                    'empty',
+//                    null,
+//                    $coverage['missing_dates'],
+//                );
+//            } elseif ($coverage['received_days'] < $coverage['requested_days']) {
+//                $alerts->providerAvailabilityIssue(
+//                    (string) $provider->code,
+//                    $hotelName,
+//                    $this->gdsId,
+//                    $grsId,
+//                    $from->format('Y-m-d'),
+//                    $to->format('Y-m-d'),
+//                    $coverage['requested_days'],
+//                    $coverage['received_days'],
+//                    'partial',
+//                    null,
+//                    $coverage['missing_dates'],
+//                );
+//            }
 
             Log::info('GRS scheduled availability refresh completed', [
                 'schedule_id' => $this->scheduleId,

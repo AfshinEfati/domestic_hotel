@@ -35,7 +35,6 @@ Route::group(['prefix' => 'v1'], function () {
         Route::apiResource('providers', ProviderController::class);
         Route::apiResource('provider-pricing-rules', ProviderPricingRuleController::class);
         Route::apiResource('purchase-manual-rules', PurchaseManualRuleController::class);
-
         Route::get('reservations/{reservation_id}', [ManualReservationPurchaseController::class, 'show']);
         Route::patch('reservations/{reservation_id}/manual-purchase', [ManualReservationPurchaseController::class, 'update']);
         Route::post('reservations/{reservation_id}/hotels', [ManualReservationPurchaseController::class, 'storeHotel']);
