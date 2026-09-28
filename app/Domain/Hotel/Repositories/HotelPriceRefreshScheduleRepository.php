@@ -68,6 +68,21 @@ class HotelPriceRefreshScheduleRepository
     /** The due time changes ONLY after verified local persistence. */
     public function markPersisted(int $id, int $gdsId): int
     {
+        return $this->scheduleNextRun($id, $gdsId);
+    }
+
+    /**
+     * Provider-side data anomalies such as HTTP 404 are not application failures.
+     * Advance only next_gds_run_at so the same property is not hammered repeatedly;
+     * success timestamps remain untouched.
+     */
+    public function markProviderAnomalyHandled(int $id, int $gdsId): int
+    {
+        return $this->scheduleNextRun($id, $gdsId);
+    }
+
+    private function scheduleNextRun(int $id, int $gdsId): int
+    {
         $schedule = $this->active($id, $gdsId);
         if ($schedule === null) {
             throw new RuntimeException('SSP price refresh schedule is no longer active or mapped.');
