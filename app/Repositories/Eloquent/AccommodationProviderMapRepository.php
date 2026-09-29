@@ -41,6 +41,14 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->first();
     }
 
+    public function disableForAccommodationAndProvider(int $accommodationId, int $providerId): bool
+    {
+        return $this->model->newQuery()
+            ->where('accommodation_id', $accommodationId)
+            ->where('provider_id', $providerId)
+            ->update(['is_disabled' => true]) === 1;
+    }
+
     public function store(array $data): AccommodationProviderMap
     {
         /** @var AccommodationProviderMap */

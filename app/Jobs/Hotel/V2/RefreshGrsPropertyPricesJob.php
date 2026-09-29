@@ -76,6 +76,15 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $hotelName = trim((string) ($accommodation?->fa_name ?? ''))
                 ?: trim((string) ($accommodation?->en_name ?? ''))
                 ?: $hotelName;
+            if ($map?->is_disabled === true) {
+                Log::info('GRS price job skipped: accommodation provider map is disabled', [
+                    'schedule_id' => $this->scheduleId,
+                    'gds_id' => $this->gdsId,
+                    'grs_id' => $grsId,
+                ]);
+                return;
+            }
+
             if ($grsId === '') {
                 throw new RuntimeException('GRS provider property ID missing from local accommodation map.');
             }
@@ -184,6 +193,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     404,
                     $missingDates,
                     $this->providerReason($e),
+                );
+
+                $schedules->disableMapForAccommodation(
+                    $this->gdsId,
+                    (int) $provider->id
                 );
 
                 $minutes = $schedules->providerAnomalyHandled(
