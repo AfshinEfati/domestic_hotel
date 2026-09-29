@@ -67,7 +67,33 @@ class GrsPriceRefreshScheduleService
     public function due(Provider $provider): Collection
     {
         $capacity = min(10, max(1, (int) data_get($provider->config, 'availability_rate_limit.max_requests', 10)));
-        return $this->schedules->due($capacity);
+        $selected = collect();
+        $offset = 0;
+
+        do {
+            $batch = $this->schedules->due($capacity, $offset);
+
+            foreach ($batch as $schedule) {
+                $gdsId = (int) $schedule->gds_id;
+                $map = $gdsId > 0
+                    ? $this->mapForAccommodation($gdsId, (int) $provider->id)
+                    : null;
+
+                if ($map?->is_disabled === true) {
+                    continue;
+                }
+
+                $selected->push($schedule);
+
+                if ($selected->count() >= $capacity) {
+                    return $selected;
+                }
+            }
+
+            $offset += $batch->count();
+        } while ($batch->count() === $capacity);
+
+        return $selected;
     }
 
     public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
