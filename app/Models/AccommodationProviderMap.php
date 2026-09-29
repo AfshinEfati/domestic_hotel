@@ -24,6 +24,7 @@ class AccommodationProviderMap extends Model
         'accommodation_id' => 'integer',
         'provider_id' => 'integer',
         'provider_property_id' => 'string',
+        'is_disabled' => 'boolean',
         'fa_name' => 'string',
         'en_name' => 'string',
         'created_at' => 'datetime',

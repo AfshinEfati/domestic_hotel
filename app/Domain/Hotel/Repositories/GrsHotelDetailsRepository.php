@@ -90,6 +90,9 @@ class GrsHotelDetailsRepository
                 }
                 $this->syncRule((int) $map->accommodation_id, $ruleData, $parser);
             }
+            $map->update([
+                'is_disabled' => (bool) data_get($property, 'property.disabled', false),
+            ]);
         });
     }
 
