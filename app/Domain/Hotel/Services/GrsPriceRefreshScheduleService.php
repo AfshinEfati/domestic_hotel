@@ -42,6 +42,11 @@ class GrsPriceRefreshScheduleService
         return $this->maps->findForAccommodationAndProvider($gdsId, $providerId);
     }
 
+    public function disableMapForAccommodation(int $gdsId, int $providerId): bool
+    {
+        return $this->maps->disableForAccommodationAndProvider($gdsId, $providerId);
+    }
+
     public function accommodationById(int $gdsId): ?Accommodation
     {
         return $this->accommodations->find($gdsId);
