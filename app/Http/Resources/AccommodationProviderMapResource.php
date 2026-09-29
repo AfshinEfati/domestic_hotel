@@ -3,10 +3,12 @@
 namespace App\Http\Resources;
 
 use App\Helpers\StatusHelper;
+use App\Models\AccommodationProviderMap;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class AccommodationProviderMapResource extends JsonResource
 {
+    /** @mixin AccommodationProviderMap */
     public function toArray($request): array
     {
         return [
@@ -14,6 +16,7 @@ class AccommodationProviderMapResource extends JsonResource
             'accommodation_id' => $this->accommodation_id,
             'provider_id' => $this->provider_id,
             'provider_property_id' => $this->provider_property_id,
+            'is_disabled'=>StatusHelper::getStatus($this->is_disabled),
             'fa_name' => $this->fa_name,
             'en_name' => $this->en_name,
             'created_at' => StatusHelper::formatDates($this->created_at),
