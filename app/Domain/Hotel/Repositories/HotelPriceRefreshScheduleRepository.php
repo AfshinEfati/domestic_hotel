@@ -29,7 +29,7 @@ class HotelPriceRefreshScheduleRepository
     }
 
     /** @return Collection<int, HotelPriceRefreshSchedule> */
-    public function due(int $requestCapacity): Collection
+    public function due(int $requestCapacity, int $offset = 0): Collection
     {
         return HotelPriceRefreshSchedule::query()
             ->where('is_active', true)
@@ -40,7 +40,8 @@ class HotelPriceRefreshScheduleRepository
             })
             ->orderBy('next_gds_run_at')
             ->orderBy('id')
-            ->limit($requestCapacity)
+            ->offset(max(0, $offset))
+            ->limit(max(1, $requestCapacity))
             ->get();
     }
 
