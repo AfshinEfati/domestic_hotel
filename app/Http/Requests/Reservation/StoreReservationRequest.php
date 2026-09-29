@@ -6,6 +6,7 @@ use App\Models\Country;
 use App\Support\Reservation\ReservationGuestGender;
 use App\Support\Reservation\ReservationGuestService;
 use App\Support\Reservation\ReservationGuestType;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,14 +20,14 @@ class StoreReservationRequest extends FormRequest
             ->select('id', 'iso3')
             ->get()
             ->keyBy(
-                fn (Country $country): string => strtoupper($country->iso3)
+                fn(Country $country): string => strtoupper($country->iso3)
             );
         // سن ارسالی کاربر قابل اعتماد نیست؛ مرجع قطعی سن، تاریخ ورود است.
         $ageReference = null;
         try {
             $ageReference = CarbonImmutable::createFromFormat(
                 'Y-m-d',
-                (string) $this->input('check_in')
+                (string)$this->input('check_in')
             )?->startOfDay();
         } catch (\Throwable) {
             // Invalid check_in is reported by the normal request validation rules.
@@ -45,7 +46,7 @@ class StoreReservationRequest extends FormRequest
                 $guest['country_code'] = strtoupper(
                     trim($guest['country_code'] ?? '')
                 );
-
+                $guest['passport_issuer_country_code'] = $guest['country_code'];
                 $guest['country_id'] = $this->resolveCountryId(
                     $guest['country_code'],
                     $countries
@@ -61,7 +62,10 @@ class StoreReservationRequest extends FormRequest
                         $guest['passport_issuer_country_code'],
                         $countries
                     );
+                    if(!isset($guest['passport_expiry_date']))
+                        $guest['passport_expiry_date'] = Carbon::now()->addMonths(6)->format('Y-m-d');
                 }
+
 
                 // محاسبه سن نسبت به تاریخ ورود
                 $guest['age'] = $this->calculateAge(
@@ -85,7 +89,7 @@ class StoreReservationRequest extends FormRequest
 
     private function resolveCountryId(?string $code, $countries): ?int
     {
-        $code = strtoupper(trim((string) $code));
+        $code = strtoupper(trim((string)$code));
 
         return $code !== '' && isset($countries[$code])
             ? $countries[$code]->id
@@ -93,11 +97,11 @@ class StoreReservationRequest extends FormRequest
     }
 
 
-
     private function calculateAge(
-        ?string $birthDate,
+        ?string          $birthDate,
         ?CarbonImmutable $reference
-    ): ?int {
+    ): ?int
+    {
 
         if (!$birthDate || !$reference) {
             return null;
@@ -109,7 +113,7 @@ class StoreReservationRequest extends FormRequest
             return null;
         }
         $age = $birth->diffInYears($reference);
-        return max(0, (int) $age);
+        return max(0, (int)$age);
     }
 
 
@@ -320,9 +324,8 @@ class StoreReservationRequest extends FormRequest
             ],
 
             'hotel.rooms.*.guests.*.passport_expiry_date' => [
-                'nullable',
-                'date',
-                'after:today'
+                'sometimes',
+                'date'
             ],
         ];
     }
@@ -349,12 +352,12 @@ class StoreReservationRequest extends FormRequest
     {
         $checkIn = CarbonImmutable::createFromFormat(
             'Y-m-d',
-            (string) $this->input('check_in')
+            (string)$this->input('check_in')
         );
 
         $checkOut = CarbonImmutable::createFromFormat(
             'Y-m-d',
-            (string) $this->input('check_out')
+            (string)$this->input('check_out')
         );
 
 
@@ -435,7 +438,7 @@ class StoreReservationRequest extends FormRequest
             );
 
 
-            $roomTotal = (int) ($room['expected_total_price'] ?? 0);
+            $roomTotal = (int)($room['expected_total_price'] ?? 0);
 
 
             if ($calendarTotal !== $roomTotal) {
@@ -453,7 +456,7 @@ class StoreReservationRequest extends FormRequest
 
         if (
             $roomsTotal !==
-            (int) $this->input('expected_total_price', 0)
+            (int)$this->input('expected_total_price', 0)
         ) {
 
             $validator->errors()->add(
