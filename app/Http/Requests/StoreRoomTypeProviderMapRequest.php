@@ -17,6 +17,7 @@ class StoreRoomTypeProviderMapRequest extends FormRequest
             'id' => 'nullable',
             'room_type_id' => 'required|integer|exists:room_types,id',
             'provider_id' => 'required|integer|exists:providers,id',
+            'accommodation_provider_map_id' => 'required|integer|exists:accommodation_provider_maps,id',
             'provider_room_type_id' => 'nullable',
             'fa_name' => 'nullable',
             'en_name' => 'nullable',
