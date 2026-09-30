@@ -27,6 +27,7 @@ return new class extends Migration {
 
         $this->backfillRoomTypeMaps();
         $this->backfillRatePlanMaps();
+        $this->deleteInvalidRoomCalendars();
 
         Schema::table('room_type_provider_maps', function (Blueprint $table): void {
             $table->dropUnique('uniq_provider_room_type');
@@ -68,6 +69,26 @@ return new class extends Migration {
             $table->dropColumn('accommodation_provider_map_id');
             $table->unique(['provider_id', 'provider_rate_plan_id'], 'uniq_provider_rate_plan');
         });
+    }
+
+
+    private function deleteInvalidRoomCalendars(): void
+    {
+        do {
+            $ids = DB::table('room_calendars as calendars')
+                ->join('room_types as rooms', 'rooms.id', '=', 'calendars.room_type_id')
+                ->join('rate_plans as plans', 'plans.id', '=', 'calendars.rate_plan_id')
+                ->where(function ($query): void {
+                    $query->whereColumn('calendars.accommodation_id', '!=', 'rooms.accommodation_id')
+                        ->orWhereColumn('calendars.accommodation_id', '!=', 'plans.accommodation_id');
+                })
+                ->limit(500)
+                ->pluck('calendars.id');
+
+            if ($ids->isNotEmpty()) {
+                DB::table('room_calendars')->whereIn('id', $ids)->delete();
+            }
+        } while ($ids->isNotEmpty());
     }
 
     private function backfillRoomTypeMaps(): void
