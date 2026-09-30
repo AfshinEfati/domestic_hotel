@@ -121,7 +121,7 @@ readonly class ProviderRequestService implements ProviderRequestServiceInterface
             : CarbonImmutable::now();
 
         return [
-            'enabled' => ($log['enabled'] ?? true) === true,
+            'enabled' => ($log['enabled'] ?? false) === true,
             'provider_id' => isset($tag['id']) && is_numeric($tag['id']) ? (int) $tag['id'] : null,
             'provider_code' => is_string($tag['code'] ?? null) ? strtolower($tag['code']) : null,
             'reservation_id' => isset($log['reservation_id']) && is_numeric($log['reservation_id'])
