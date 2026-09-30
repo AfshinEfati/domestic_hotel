@@ -16,7 +16,6 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -64,9 +63,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             // The shared schedule and this job carry our local accommodations.id.
             if ($schedules->active($this->scheduleId, $this->gdsId) === null) {
-                Log::warning('GRS price job skipped: shared schedule disabled/remapped', [
-                    'schedule_id' => $this->scheduleId, 'gds_id' => $this->gdsId,
-                ]);
                 return;
             }
 
@@ -77,11 +73,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 ?: trim((string) ($accommodation?->en_name ?? ''))
                 ?: $hotelName;
             if ($map?->is_disabled === true) {
-                Log::info('GRS price job skipped: accommodation provider map is disabled', [
-                    'schedule_id' => $this->scheduleId,
-                    'gds_id' => $this->gdsId,
-                    'grs_id' => $grsId,
-                ]);
                 return;
             }
 
@@ -114,6 +105,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             // was actually returned, advance the normal schedule, and alert operations.
             $count = $schedules->verifiedRowCount(
                 (int) $provider->id,
+                (int) $map->id,
                 $this->gdsId,
                 $grsId,
                 $adapter->lastAvailability,
@@ -152,16 +144,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 //                );
 //            }
 
-            Log::info('GRS scheduled availability refresh completed', [
-                'schedule_id' => $this->scheduleId,
-                'gds_id' => $this->gdsId,
-                'grs_id' => $grsId,
-                'days' => $this->days,
-                'received_days' => $coverage['received_days'],
-                'missing_days' => $coverage['requested_days'] - $coverage['received_days'],
-                'calendar_rows' => $count,
-                'next_in_minutes' => $minutes,
-            ]);
+            // Normal successful refreshes are intentionally not logged.
         } catch (GrsApiQuotaExceeded $e) {
             // Quota is already exhausted; do not advance the SSP due time.
             $this->release(max(1, $e->retryAfterSeconds + 1));
@@ -205,29 +188,13 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     $this->gdsId
                 );
 
-                Log::warning('GRS availability returned HTTP 404; handled as provider data issue', [
-                    'schedule_id' => $this->scheduleId,
-                    'gds_id' => $this->gdsId,
-                    'grs_id' => $grsId,
-                    'from' => $from->format('Y-m-d'),
-                    'to' => $to->format('Y-m-d'),
-                    'next_in_minutes' => $minutes,
-                ]);
-
                 return;
             }
 
-            if ($status === 429) {
-                Log::error('GRS returned HTTP 429; API cooldown enabled; due time unchanged', [
-                    'schedule_id' => $this->scheduleId,
-                    'gds_id' => $this->gdsId,
-                    'cooldown_seconds' => RateLimitedGrsAdapter::cooldownSeconds(),
-                ]);
-            }
-
-            $this->recordFailure($e);
+            $this->fail($e);
         } catch (Throwable $e) {
-            $this->recordFailure($e);
+            $alerts->internalFailure($e);
+            $this->fail($e);
         }
     }
 
@@ -348,13 +315,4 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         return $message !== '' ? $message : null;
     }
 
-    private function recordFailure(Throwable $e): void
-    {
-        Log::error('GRS scheduled price refresh failed; shared due time unchanged', [
-            'schedule_id' => $this->scheduleId,
-            'gds_id' => $this->gdsId,
-            'error' => $e->getMessage(),
-        ]);
-        $this->fail($e);
-    }
 }
