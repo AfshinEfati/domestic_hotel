@@ -15,7 +15,7 @@ interface RoomTypeProviderMapRepositoryInterface extends BaseRepositoryInterface
     /** @param array<int, string> $providerRoomIds
      *  @return Collection<string, RoomTypeProviderMap>
      */
-    public function mappedForProviderIds(int $providerId, array $providerRoomIds): Collection;
+    public function mappedForAccommodationMapIds(int $accommodationProviderMapId, array $providerRoomIds): Collection;
 
     public function store(array $data): RoomTypeProviderMap;
 
