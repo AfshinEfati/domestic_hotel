@@ -12,7 +12,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
@@ -35,7 +34,6 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
     {
         $provider = Provider::query()->where('code', 'grs')->firstOrFail();
         if (!$provider->is_active || !$provider->is_online) {
-            Log::warning('GRS hotel catalog sync skipped: provider is inactive or offline');
             return;
         }
 
@@ -101,11 +99,6 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             ProcessGrsHotelBatchJob::dispatch($provider->id, $batch)->onQueue('grs-hotels');
         }
 
-        Log::info('GRS hotel catalog queued for mapping', [
-            'received' => count($properties),
-            'domestic' => count($domestic),
-            'batches' => (int) ceil(count($domestic) / self::BATCH_SIZE),
-        ]);
     }
 
     private function prepareFacilities(array $properties): void
