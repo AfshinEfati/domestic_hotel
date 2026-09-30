@@ -38,9 +38,22 @@ final class ProviderHttpAlertListener
             return;
         }
 
-        // Rate limiting is handled by provider-specific throttling/cooldown logic.
-        // It is operational flow, not an alert-worthy incident.
         if ($status === 429) {
+            // The scheduled GRS price worker handles its own 429 with hotel context,
+            // shared cooldown and delayed retry. Avoid a duplicate generic alert.
+            if ($provider === 'grs' && $this->isScheduledPriceRefreshOperation($event->request)) {
+                return;
+            }
+
+            $retryAfter = $event->response->header('Retry-After');
+
+            $this->alerts->providerRateLimited(
+                $provider,
+                $this->operation($event->request),
+                is_numeric($retryAfter) ? max(1, (int) $retryAfter) : null,
+                $this->responseReason($event->response->body()),
+            );
+
             return;
         }
 
@@ -121,6 +134,11 @@ final class ProviderHttpAlertListener
             return false;
         }
 
+        return $this->isScheduledPriceRefreshOperation($request);
+    }
+
+    private function isScheduledPriceRefreshOperation(Request $request): bool
+    {
         $tag = $request->attributes()['domestic_provider'] ?? [];
         $tag = is_array($tag) ? $tag : [];
         $log = is_array($tag['log'] ?? null) ? $tag['log'] : [];

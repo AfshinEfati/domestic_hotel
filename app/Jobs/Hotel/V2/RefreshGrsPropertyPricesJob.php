@@ -23,7 +23,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 100; // Quota releases count as attempts; HTTP errors are not retried here.
+    public int $tries = 100; // Quota/rate-limit releases count as attempts; actionable HTTP failures are handled explicitly.
     public int $maxExceptions = 1;
     public int $timeout = 55; // Below Horizon's 60s worker timeout and Redis retry_after=90.
     public int $uniqueFor = 14400;
@@ -116,6 +116,28 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $this->release(max(1, $e->retryAfterSeconds + 1));
         } catch (RequestException $e) {
             $status = $e->response?->status();
+
+            if ($status === 429) {
+                $retryAfter = max(1, RateLimitedGrsAdapter::cooldownSeconds());
+
+                $alerts->providerRateLimited(
+                    (string) ($provider?->code ?? 'grs'),
+                    'بروزرسانی نرخ و ظرفیت GRS',
+                    $retryAfter,
+                    $this->providerReason($e),
+                    [
+                        'هتل' => $hotelName,
+                        'شناسه هتل' => $this->gdsId,
+                        'شناسه هتل تأمین‌کننده' => $grsId,
+                    ],
+                );
+
+                // Provider throttling is temporary. Keep the schedule due and retry
+                // this same job after the shared GRS cooldown instead of failing it.
+                $this->release($retryAfter + 1);
+
+                return;
+            }
 
             if (
                 $status === 404

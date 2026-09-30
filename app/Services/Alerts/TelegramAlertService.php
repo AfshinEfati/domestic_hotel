@@ -61,6 +61,55 @@ final class TelegramAlertService
         );
     }
 
+    /**
+     * Provider-side throttling is temporary and should never be reported as an
+     * application failure. The fingerprint intentionally ignores hotel context
+     * so a burst of 429 responses produces one operational alert, not one per job.
+     *
+     * @param array<string, string|int> $context
+     */
+    public function providerRateLimited(
+        string $provider,
+        string $operation,
+        ?int $retryAfterSeconds = null,
+        ?string $reason = null,
+        array $context = [],
+    ): void {
+        $fields = [
+            'دسته' => 'Provider rate limit',
+            'تأمین‌کننده' => $provider,
+            'عملیات' => $operation,
+            'HTTP' => 429,
+        ];
+
+        if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
+            $fields['تلاش مجدد پس از'] = $retryAfterSeconds.' ثانیه';
+        }
+
+        foreach ($context as $key => $value) {
+            if (is_string($key) && (is_string($value) || is_int($value))) {
+                $fields[$key] = $value;
+            }
+        }
+
+        if ($reason !== null && trim($reason) !== '') {
+            $fields['علت تأمین‌کننده'] = $reason;
+        }
+
+        $snippet = 'HTTP: 429';
+        if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
+            $snippet .= "\nRetry after: {$retryAfterSeconds}s";
+        }
+
+        $this->enqueue(
+            'محدودیت تعداد درخواست تأمین‌کننده',
+            'تعداد درخواست‌ها از حد مجاز تأمین‌کننده عبور کرده است؛ درخواست با تأخیر دوباره ارسال می‌شود.',
+            $fields,
+            $snippet,
+            implode('|', ['rate-limit', $provider, $operation]),
+        );
+    }
+
     public function providerAvailabilityIssue(
         string $provider,
         string $hotelName,
