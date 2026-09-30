@@ -13,6 +13,7 @@ class RoomTypeProviderMapResource extends JsonResource
             'id' => $this->id,
             'room_type_id' => $this->room_type_id,
             'provider_id' => $this->provider_id,
+            'accommodation_provider_map_id' => $this->accommodation_provider_map_id,
             'provider_room_type_id' => $this->provider_room_type_id,
             'fa_name' => $this->fa_name,
             'en_name' => $this->en_name,
