@@ -5,7 +5,6 @@ namespace App\Jobs\Hotel;
 use App\Models\Provider;
 use App\Services\Contracts\AccommodationProviderMapServiceInterface;
 use App\Services\Contracts\ProviderServiceInterface;
-use App\Support\Logging\SystemLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -27,14 +26,12 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
     }
 
     public function handle(
-        SystemLogger $logger,
         ProviderServiceInterface $providerService,
         AccommodationProviderMapServiceInterface $mapService
     ): void {
         $providers = collect($providerService->getActiveProviders());
 
         if ($providers->isEmpty()) {
-            $logger->info(__METHOD__, 'SyncAllProvidersAvailabilityJob skipped because no active providers found');
             return;
         }
 
@@ -49,14 +46,13 @@ class SyncAllProvidersAvailabilityJob implements ShouldQueue
                 continue;
             }
 
-            $this->syncProvider($provider, $mapService, $logger);
+            $this->syncProvider($provider, $mapService);
         }
     }
 
     private function syncProvider(
         Provider $provider,
-        AccommodationProviderMapServiceInterface $mapService,
-        SystemLogger $logger
+        AccommodationProviderMapServiceInterface $mapService
     ): void {
         $config = $provider->config ?? [];
 
