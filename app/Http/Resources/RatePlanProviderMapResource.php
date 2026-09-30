@@ -13,6 +13,7 @@ class RatePlanProviderMapResource extends JsonResource
             'id' => $this->id,
             'rate_plan_id' => $this->rate_plan_id,
             'provider_id' => $this->provider_id,
+            'accommodation_provider_map_id' => $this->accommodation_provider_map_id,
             'provider_rate_plan_id' => $this->provider_rate_plan_id,
             'fa_name' => $this->fa_name,
             'en_name' => $this->en_name,
