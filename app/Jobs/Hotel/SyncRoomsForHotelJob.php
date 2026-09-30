@@ -3,11 +3,10 @@
 namespace App\Jobs\Hotel;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
-use App\Models\SystemLog;
+use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Services\Contracts\ProviderServiceInterface;
 use App\Services\Contracts\RoomTypeProviderMapServiceInterface;
 use App\Services\Contracts\RoomTypeServiceInterface;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -32,10 +31,10 @@ class SyncRoomsForHotelJob implements ShouldQueue
     public function handle(
         ProviderServiceInterface $providerService,
         RoomTypeServiceInterface $roomTypeService,
-        RoomTypeProviderMapServiceInterface $mapService
+        RoomTypeProviderMapServiceInterface $mapService,
+        AccommodationProviderMapRepositoryInterface $accommodationMaps
     ): void
     {
-        try {
             $provider = $providerService->show($this->providerId);
             if (!$provider) {
                 return;
@@ -51,23 +50,27 @@ class SyncRoomsForHotelJob implements ShouldQueue
                 return;
             }
 
-            foreach ($rooms as $roomData) {
-                $this->syncRoom($roomData, $roomTypeService, $mapService);
+            $accommodationMap = $accommodationMaps->findForProviderProperty(
+                $this->providerId,
+                $this->providerHotelId
+            );
+            if ($accommodationMap === null || (int) $accommodationMap->accommodation_id !== $this->accommodationId) {
+                return;
             }
 
-        } catch (Exception $e) {
-             SystemLog::create([
-                'level' => 'error',
-                'method' => 'SyncRoomsForHotelJob',
-                'message' => $e->getMessage(),
-                'provider_id' => $this->providerId,
-                'context' => ['accommodation_id' => $this->accommodationId, 'provider_hotel_id' => $this->providerHotelId],
-            ]);
-        }
+            foreach ($rooms as $roomData) {
+                $this->syncRoom(
+                    $roomData,
+                    (int) $accommodationMap->id,
+                    $roomTypeService,
+                    $mapService
+                );
+            }
     }
 
     protected function syncRoom(
         array $roomData,
+        int $accommodationProviderMapId,
         RoomTypeServiceInterface $roomTypeService,
         RoomTypeProviderMapServiceInterface $mapService
     ): void
@@ -76,7 +79,10 @@ class SyncRoomsForHotelJob implements ShouldQueue
         $name = $roomData['fa_name'];
 
         // 1. Check if map exists
-        $map = $mapService->findByProviderAndRemoteId($this->providerId, $providerRoomTypeId);
+        $map = $mapService->findByAccommodationMapAndRemoteId(
+            $accommodationProviderMapId,
+            $providerRoomTypeId
+        );
 
         if ($map) {
             // Update existing map or room type if needed
@@ -107,6 +113,7 @@ class SyncRoomsForHotelJob implements ShouldQueue
         $mapService->store([
             'room_type_id' => $roomType->id,
             'provider_id' => $this->providerId,
+            'accommodation_provider_map_id' => $accommodationProviderMapId,
             'provider_room_type_id' => $providerRoomTypeId,
             'fa_name' => $name,
             'en_name' => $roomData['en_name'] ?? null,
