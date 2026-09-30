@@ -44,10 +44,6 @@ class SyncCitiesJob implements ShouldQueue
 
             $cityRepository->upsertFromProvider($c, $provider);
         }
-
-        \Log::info("Sync cities completed for {$provider->code}", [
-            'count' => $cities->count(),
-        ]);
     }
 
 }
