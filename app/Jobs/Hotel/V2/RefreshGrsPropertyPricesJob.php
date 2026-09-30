@@ -15,7 +15,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Collection;
 use RuntimeException;
 use Throwable;
 
@@ -101,9 +100,9 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 throw $adapter->supplementalError;
             }
 
-            // Empty/partial provider data is not an application failure. Persist what
-            // was actually returned, advance the normal schedule, and alert operations.
-            $count = $schedules->verifiedRowCount(
+            // Empty/partial provider data is a normal provider outcome. Persist whatever
+            // valid rows were returned and advance the normal schedule without logging.
+            $schedules->verifiedRowCount(
                 (int) $provider->id,
                 (int) $map->id,
                 $this->gdsId,
@@ -111,40 +110,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 $adapter->lastAvailability,
                 $started
             );
-            $minutes = $schedules->persisted($this->scheduleId, $this->gdsId);
-
-            $coverage = $this->coverage($adapter->lastAvailability, $from, $to);
-//            if ($coverage['received_days'] === 0) {
-//                $alerts->providerAvailabilityIssue(
-//                    (string) $provider->code,
-//                    $hotelName,
-//                    $this->gdsId,
-//                    $grsId,
-//                    $from->format('Y-m-d'),
-//                    $to->format('Y-m-d'),
-//                    $coverage['requested_days'],
-//                    0,
-//                    'empty',
-//                    null,
-//                    $coverage['missing_dates'],
-//                );
-//            } elseif ($coverage['received_days'] < $coverage['requested_days']) {
-//                $alerts->providerAvailabilityIssue(
-//                    (string) $provider->code,
-//                    $hotelName,
-//                    $this->gdsId,
-//                    $grsId,
-//                    $from->format('Y-m-d'),
-//                    $to->format('Y-m-d'),
-//                    $coverage['requested_days'],
-//                    $coverage['received_days'],
-//                    'partial',
-//                    null,
-//                    $coverage['missing_dates'],
-//                );
-//            }
-
-            // Normal successful refreshes are intentionally not logged.
+            $schedules->persisted($this->scheduleId, $this->gdsId);
         } catch (GrsApiQuotaExceeded $e) {
             // Quota is already exhausted; do not advance the SSP due time.
             $this->release(max(1, $e->retryAfterSeconds + 1));
@@ -183,7 +149,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     (int) $provider->id
                 );
 
-                $minutes = $schedules->providerAnomalyHandled(
+                $schedules->providerAnomalyHandled(
                     $this->scheduleId,
                     $this->gdsId
                 );
@@ -196,44 +162,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $alerts->internalFailure($e);
             $this->fail($e);
         }
-    }
-
-    /**
-     * @return array{requested_days:int, received_days:int, missing_dates:?string}
-     */
-    private function coverage(
-        ?Collection $availability,
-        CarbonImmutable $from,
-        CarbonImmutable $to,
-    ): array {
-        $expected = $this->expectedDates($from, $to);
-        $expectedLookup = array_fill_keys($expected, true);
-
-        $received = ($availability ?? collect())
-            ->pluck('day')
-            ->filter()
-            ->map(function ($day): ?string {
-                try {
-                    return CarbonImmutable::parse((string) $day)->format('Y-m-d');
-                } catch (Throwable) {
-                    return null;
-                }
-            })
-            ->filter(fn (?string $day): bool =>
-                $day !== null && isset($expectedLookup[$day])
-            )
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
-
-        $missing = array_values(array_diff($expected, $received));
-
-        return [
-            'requested_days' => count($expected),
-            'received_days' => count($received),
-            'missing_dates' => $this->summarizeDateRanges($missing),
-        ];
     }
 
     /** @return array<int, string> */
