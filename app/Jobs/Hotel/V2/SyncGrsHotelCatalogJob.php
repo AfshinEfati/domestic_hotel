@@ -50,7 +50,7 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
                 'id' => (int) $provider->id,
                 'code' => 'grs',
                 'log' => [
-                    'enabled' => true,
+                    'enabled' => false,
                     'reservation_id' => null,
                     'handler_class' => self::class,
                     'handler_method' => __FUNCTION__,
