@@ -114,8 +114,6 @@ class SyncAccommodationsJob implements ShouldQueue
                 }
             }
         }
-
-        \Log::info("Accommodations synced from {$provider->code}");
     }
 
 }
