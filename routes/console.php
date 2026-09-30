@@ -25,7 +25,6 @@ Schedule::call(static fn (): int => app(ProviderPriceRefreshScheduler::class)->d
     ->name('hotel-provider-price-refresh')
     ->everyMinute()
     ->withoutOverlapping();
-
 // Remove expired room-calendar days and provider request logs past their retention deadline.
 Schedule::command('model:prune', ['--model' => [RoomCalendar::class, ProviderRequest::class]])
     ->everyFiveMinutes()
