@@ -27,4 +27,6 @@ interface RoomTypeProviderMapServiceInterface extends BaseServiceInterface
     public function update(int|string $id, mixed $payload): bool;
 
     public function destroy(int|string $id): bool;
-    public function findByProviderAndRemoteId(int $providerId, string $remoteId): ?RoomTypeProviderMap;}
+    public function findByAccommodationMapAndRemoteId(int $accommodationProviderMapId, string $remoteId): ?RoomTypeProviderMap;
+}
+
