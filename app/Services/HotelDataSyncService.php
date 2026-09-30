@@ -15,7 +15,7 @@ use App\Services\Contracts\RoomTypeNameServiceInterface;
 use App\Services\Contracts\RoomTypeProviderMapServiceInterface;
 use App\Services\Contracts\RoomTypeServiceInterface;
 use App\Repositories\Contracts\FacilityRepositoryInterface;
-use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class HotelDataSyncService
 {
@@ -86,18 +86,23 @@ class HotelDataSyncService
         }
 
         $mapping = $this->roomTypeProviderMapService->repository()->findDynamic([
+            'accommodation_provider_map_id' => $map->id,
             'provider_id' => $provider->id,
-            'provider_room_type_id' => $providerRoomTypeId
+            'provider_room_type_id' => $providerRoomTypeId,
         ]);
 
         $roomType = null;
 
         if ($mapping) {
             $roomType = $this->roomTypeService->show($mapping->room_type_id);
-            if ($roomType) {
-                if ($roomType->room_type_name_id !== $roomTypeName->id) {
-                    $this->roomTypeService->update($roomType->id, ['room_type_name_id' => $roomTypeName->id]);
-                }
+            if (!$roomType || (int) $roomType->accommodation_id !== (int) $map->accommodation_id) {
+                throw new RuntimeException(
+                    'Provider room mapping points to a room from another accommodation: '.$providerRoomTypeId
+                );
+            }
+
+            if ($roomType->room_type_name_id !== $roomTypeName->id) {
+                $this->roomTypeService->update($roomType->id, ['room_type_name_id' => $roomTypeName->id]);
             }
         } else {
             $roomType = $this->roomTypeService->repository()->findDynamic([
@@ -121,6 +126,7 @@ class HotelDataSyncService
             $this->roomTypeProviderMapService->store([
                 'room_type_id' => $roomType->id,
                 'provider_id' => $provider->id,
+                'accommodation_provider_map_id' => $map->id,
                 'provider_room_type_id' => $providerRoomTypeId,
                 'fa_name' => $providerName,
                 'en_name' => $providerEnName,
@@ -144,9 +150,21 @@ class HotelDataSyncService
         $rpEnName = $rpData['name_en'] ?? null;
 
         $rpMap = $this->ratePlanProviderMapService->repository()->findDynamic([
+            'accommodation_provider_map_id' => $map->id,
             'provider_id' => $provider->id,
-            'provider_rate_plan_id' => $providerRpId
+            'provider_rate_plan_id' => $providerRpId,
         ]);
+
+        if ($rpMap) {
+            $ratePlan = $this->ratePlanService->show($rpMap->rate_plan_id);
+            if (!$ratePlan || (int) $ratePlan->accommodation_id !== (int) $map->accommodation_id) {
+                throw new RuntimeException(
+                    'Provider rate-plan mapping points to a rate plan from another accommodation: '.$providerRpId
+                );
+            }
+
+            return;
+        }
 
         if (!$rpMap) {
             $ratePlan = $this->ratePlanService->repository()->findDynamic([
@@ -171,6 +189,7 @@ class HotelDataSyncService
             $this->ratePlanProviderMapService->store([
                 'rate_plan_id' => $ratePlan->id,
                 'provider_id' => $provider->id,
+                'accommodation_provider_map_id' => $map->id,
                 'provider_rate_plan_id' => $providerRpId,
                 'fa_name' => $rpName,
                 'en_name' => $rpEnName,
@@ -220,10 +239,6 @@ class HotelDataSyncService
 
         if ($facilityIds !== []) {
             $acc->facilities()->sync($facilityIds);
-        } else {
-            Log::warning('Facilities sync skipped: no valid facilities', [
-                'accommodation_id' => $acc->id,
-            ]);
         }
     }
 
