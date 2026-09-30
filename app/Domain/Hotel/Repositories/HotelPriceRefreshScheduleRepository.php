@@ -82,6 +82,15 @@ class HotelPriceRefreshScheduleRepository
         return $this->scheduleNextRun($id, $gdsId);
     }
 
+    /**
+     * A missing or incomplete local GRS map is actionable configuration/data drift,
+     * not a successful refresh. Move only the due time forward to prevent alert spam.
+     */
+    public function markMappingIssueHandled(int $id, int $gdsId): int
+    {
+        return $this->scheduleNextRun($id, $gdsId);
+    }
+
     private function scheduleNextRun(int $id, int $gdsId): int
     {
         $schedule = $this->active($id, $gdsId);

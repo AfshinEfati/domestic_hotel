@@ -139,4 +139,9 @@ class GrsPriceRefreshScheduleService
     {
         return $this->schedules->markProviderAnomalyHandled($id, $gdsId);
     }
+
+    public function mappingIssueHandled(int $id, int $gdsId): int
+    {
+        return $this->schedules->markMappingIssueHandled($id, $gdsId);
+    }
 }

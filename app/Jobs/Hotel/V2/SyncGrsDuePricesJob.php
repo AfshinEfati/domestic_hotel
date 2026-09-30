@@ -5,6 +5,7 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
+use App\Services\Alerts\TelegramAlertService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,8 +33,10 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         return 'grs-due-prices-dispatch';
     }
 
-    public function handle(GrsPriceRefreshScheduleService $schedules): void
-    {
+    public function handle(
+        GrsPriceRefreshScheduleService $schedules,
+        TelegramAlertService $alerts,
+    ): void {
         $provider = $schedules->grsProvider();
         if ($provider === null) {
             throw new RuntimeException('GRS provider is not configured.');
@@ -52,24 +55,55 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $schedules->assertReady();
-        // SSP.gds_id identifies GDS accommodations.id. Dispatch does not alter due time.
-        $due = $schedules->due($provider);
-        $queued = 0;
-        $unmapped = 0;
 
-        foreach ($due as $schedule) {
+        // SSP.gds_id identifies GDS accommodations.id. Dispatch does not alter due time.
+        foreach ($schedules->due($provider) as $schedule) {
             $gdsId = (int) $schedule->gds_id;
             $map = $gdsId > 0
                 ? $schedules->mapForAccommodation($gdsId, (int) $provider->id)
                 : null;
-            $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
+            // Disabled maps are an expected state and must stay silent.
             if ($map?->is_disabled === true) {
                 continue;
             }
 
-            if ($gdsId <= 0 || $grsId === '') {
-                $unmapped++;
+            $grsId = trim((string) ($map?->provider_property_id ?? ''));
+
+            if ($gdsId <= 0 || $map === null || $grsId === '') {
+                $status = match (true) {
+                    $gdsId <= 0 => 'شناسه GDS نامعتبر است',
+                    $map === null => 'مپ هتل برای GRS وجود ندارد',
+                    default => 'شناسه هتل تأمین‌کننده در مپ خالی است',
+                };
+
+                $fields = [
+                    'Schedule ID' => (int) $schedule->id,
+                    'GDS ID' => $gdsId,
+                    'تأمین‌کننده' => (string) $provider->code,
+                    'وضعیت مپ' => $status,
+                ];
+
+                if ($gdsId > 0) {
+                    $hotelName = trim((string) ($schedules->accommodationById($gdsId)?->fa_name ?? ''));
+                    if ($hotelName !== '') {
+                        $fields['هتل'] = $hotelName;
+                    }
+                }
+
+                $alerts->custom(
+                    'ناهماهنگی مپ هتل GRS',
+                    'هتل فعال در صف بروزرسانی نرخ و ظرفیت، مپ معتبر GRS ندارد.',
+                    $fields,
+                );
+
+                // Do not report a fake success, but do move the due time forward
+                // so one bad mapping cannot generate an alert on every dispatcher run.
+                $schedules->mappingIssueHandled(
+                    (int) $schedule->id,
+                    $gdsId
+                );
+
                 continue;
             }
 
@@ -80,7 +114,6 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
                 (int) $provider->id,
                 $days
             );
-            $queued++;
         }
     }
 }
