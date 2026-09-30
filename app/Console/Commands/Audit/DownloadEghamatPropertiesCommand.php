@@ -51,7 +51,7 @@ class DownloadEghamatPropertiesCommand extends Command
                 'id' => (int) $provider->id,
                 'code' => (string) $provider->code,
                 'log' => [
-                    'enabled' => true,
+                    'enabled' => false,
                     'reservation_id' => null,
                     'handler_class' => self::class,
                     'handler_method' => __FUNCTION__,
