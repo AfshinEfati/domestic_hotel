@@ -9,7 +9,6 @@ use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -50,10 +49,6 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
             ->first();
 
         if (!$map) {
-            Log::warning('SnappTrip: AccommodationProviderMap not found', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-            ]);
             return collect();
         }
 
@@ -70,62 +65,23 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
                 ]
             )->json();
         } catch (ConnectionException $e) {
-            Log::error('SnappTrip: calendar request connection failed', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
-                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
-                'error' => $e->getMessage(),
-            ]);
             throw $e;
         } catch (Throwable $e) {
-            Log::error('SnappTrip: calendar request failed', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
-                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
-                'error' => $e->getMessage(),
-            ]);
-            return collect();
+            throw $e;
         }
 
         $rooms = data_get($calendar, 'rooms', []);
         if (!is_array($rooms) || empty($rooms)) {
-            Log::warning('SnappTrip: calendar returned empty rooms', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-                'from' => CarbonImmutable::parse($from)->format('Y-m-d'),
-                'to' => CarbonImmutable::parse($to)->format('Y-m-d'),
-            ]);
             return collect();
         }
 
         // 3) sync virtual room_types + rate_plans (NO extra snapp requests)
         $roomTypesData = $this->buildRoomTypesDataForSync($rooms, $roomMeta);
 
-        if (empty($roomTypesData)) {
-            Log::warning('SnappTrip: generated roomTypesData is empty (cannot sync room_types/rate_plans)', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-            ]);
-        } else {
-            try {
-                /** @var HotelDataSyncService $syncService */
-                $syncService = app(HotelDataSyncService::class);
-                $syncService->syncRoomTypes($map, $roomTypesData);
-
-                Log::info('SnappTrip: synced virtual room types & rate plans via HotelDataSyncService', [
-                    'provider_id' => $providerId,
-                    'property_id' => $providerPropertyId,
-                    'room_types_count' => count($roomTypesData),
-                ]);
-            } catch (Throwable $e) {
-                Log::error('SnappTrip: syncRoomTypes failed (room_types/rate_plans may be missing => calendars may not save)', [
-                    'provider_id' => $providerId,
-                    'property_id' => $providerPropertyId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        if (!empty($roomTypesData)) {
+            /** @var HotelDataSyncService $syncService */
+            $syncService = app(HotelDataSyncService::class);
+            $syncService->syncRoomTypes($map, $roomTypesData);
         }
 
         // 4) output normalized availability rows
@@ -204,14 +160,7 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
                 'checkin' => $checkin,
                 'checkout' => $checkout,
             ])->json();
-        } catch (Throwable $e) {
-            Log::warning('SnappTrip: availability(hotels) meta request failed', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-                'checkin' => $checkin,
-                'checkout' => $checkout,
-                'error' => $e->getMessage(),
-            ]);
+        } catch (Throwable) {
             return collect();
         }
 
@@ -220,12 +169,6 @@ class SnappTripAdapter extends BaseAdapter implements ProviderAdapterInterface
 
         $avail = is_array($firstHotel) ? ($firstHotel['availability'] ?? []) : [];
         if (!is_array($avail) || empty($avail)) {
-            Log::warning('SnappTrip: availability(hotels) meta returned empty', [
-                'provider_id' => $providerId,
-                'property_id' => $providerPropertyId,
-                'checkin' => $checkin,
-                'checkout' => $checkout,
-            ]);
             return collect();
         }
 
