@@ -9,6 +9,7 @@ class RoomTypeProviderMapDTO
     public mixed $id;
     public mixed $room_type_id;
     public mixed $provider_id;
+    public mixed $accommodation_provider_map_id;
     public mixed $provider_room_type_id;
     public mixed $fa_name;
     public mixed $en_name;
@@ -19,6 +20,7 @@ class RoomTypeProviderMapDTO
         mixed $id = null,
         mixed $room_type_id = null,
         mixed $provider_id = null,
+        mixed $accommodation_provider_map_id = null,
         mixed $provider_room_type_id = null,
         mixed $fa_name = null,
         mixed $en_name = null,
@@ -28,6 +30,7 @@ class RoomTypeProviderMapDTO
         $this->id = $id;
         $this->room_type_id = $room_type_id;
         $this->provider_id = $provider_id;
+        $this->accommodation_provider_map_id = $accommodation_provider_map_id;
         $this->provider_room_type_id = $provider_room_type_id;
         $this->fa_name = $fa_name;
         $this->en_name = $en_name;
@@ -41,6 +44,7 @@ class RoomTypeProviderMapDTO
         $dto->id = $request->input('id');
         $dto->room_type_id = $request->input('room_type_id');
         $dto->provider_id = $request->input('provider_id');
+        $dto->accommodation_provider_map_id = $request->input('accommodation_provider_map_id');
         $dto->provider_room_type_id = $request->input('provider_room_type_id');
         $dto->fa_name = $request->input('fa_name');
         $dto->en_name = $request->input('en_name');
@@ -56,6 +60,7 @@ class RoomTypeProviderMapDTO
         if ($this->id !== null) { $out['id'] = $this->id; }
         if ($this->room_type_id !== null) { $out['room_type_id'] = $this->room_type_id; }
         if ($this->provider_id !== null) { $out['provider_id'] = $this->provider_id; }
+        if ($this->accommodation_provider_map_id !== null) { $out['accommodation_provider_map_id'] = $this->accommodation_provider_map_id; }
         if ($this->provider_room_type_id !== null) { $out['provider_room_type_id'] = $this->provider_room_type_id; }
         if ($this->fa_name !== null) { $out['fa_name'] = $this->fa_name; }
         if ($this->en_name !== null) { $out['en_name'] = $this->en_name; }
