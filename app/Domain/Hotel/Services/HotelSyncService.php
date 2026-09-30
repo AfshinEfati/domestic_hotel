@@ -167,12 +167,7 @@ readonly class HotelSyncService
     ): void {
         try {
             $roomTypes = $adapter->fetchRoomTypes($map->provider_property_id);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to fetch provider room types', [
-                'provider_id' => $provider->id,
-                'property_id' => $map->provider_property_id,
-                'error' => $e->getMessage(),
-            ]);
+        } catch (\Throwable) {
             return;
         }
 
