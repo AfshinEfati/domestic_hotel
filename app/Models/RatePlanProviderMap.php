@@ -11,6 +11,7 @@ class RatePlanProviderMap extends Model
         'id',
         'rate_plan_id',
         'provider_id',
+        'accommodation_provider_map_id',
         'provider_rate_plan_id',
         'fa_name',
         'en_name',
@@ -22,6 +23,7 @@ class RatePlanProviderMap extends Model
         'id' => 'integer',
         'rate_plan_id' => 'integer',
         'provider_id' => 'integer',
+        'accommodation_provider_map_id' => 'integer',
         'provider_rate_plan_id' => 'string',
         'fa_name' => 'string',
         'en_name' => 'string',
@@ -37,5 +39,10 @@ class RatePlanProviderMap extends Model
     public function provider(): BelongsTo
     {
         return $this->belongsTo(Provider::class);
+    }
+
+    public function accommodationProviderMap(): BelongsTo
+    {
+        return $this->belongsTo(AccommodationProviderMap::class);
     }
 }
