@@ -13,16 +13,17 @@ class RatePlanProviderMapDoc
      * @OA\Schema(
      *     schema="RatePlanProviderMapResource",
      *     type="object",
-     *     required={"id","rate_plan_id","provider_id","provider_rate_plan_id"},
+     *     required={"id","rate_plan_id","provider_id","accommodation_provider_map_id","provider_rate_plan_id"},
      *     @OA\Property(property="id", type="integer", example=1),
      *     @OA\Property(property="rate_plan_id", type="integer", example=1),
      *     @OA\Property(property="provider_id", type="integer", example=1),
+     *     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *     @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *     @OA\Property(property="fa_name", type="string", nullable=true, example="Sample Fa Name"),
      *     @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
      *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *     example={"id":1,"rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *     example={"id":1,"rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
      * )
      */
     public function ratePlanProviderMapSchema(): void
@@ -44,12 +45,13 @@ class RatePlanProviderMapDoc
      *                     @OA\Property(property="id", type="integer", example=1),
      *                     @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                     @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                     @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                     @OA\Property(property="fa_name", type="string", nullable=true, example="Sample Fa Name"),
      *                     @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
      *                     @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                     @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                     example={"id":1,"rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                     example={"id":1,"rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
      *                 )
      *             )
      *     ),
@@ -73,16 +75,17 @@ class RatePlanProviderMapDoc
      *         required=true,
      *         @OA\JsonContent(
      *                 type="object",
-     *                 required={"id","rate_plan_id","provider_id","provider_rate_plan_id","fa_name","en_name","created_at","updated_at"},
+     *                 required={"id","rate_plan_id","provider_id","accommodation_provider_map_id","provider_rate_plan_id","fa_name","en_name","created_at","updated_at"},
      *                 @OA\Property(property="id", type="string", example="Id"),
      *                 @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                 @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                 @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                 @OA\Property(property="fa_name", type="string", example="Sample Fa Name"),
      *                 @OA\Property(property="en_name", type="string", example="Sample En Name"),
      *                 @OA\Property(property="created_at", type="string", example="Created At"),
      *                 @OA\Property(property="updated_at", type="string", example="Updated At"),
-     *                 example={"id":"Id","rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"Created At","updated_at":"Updated At"}
+     *                 example={"id":"Id","rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"Created At","updated_at":"Updated At"}
      *             )
      *     ),
      *     @OA\Response(
@@ -90,16 +93,17 @@ class RatePlanProviderMapDoc
      *         description="Created",
      *         @OA\JsonContent(
      *                 type="object",
-     *                 required={"id","rate_plan_id","provider_id","provider_rate_plan_id"},
+     *                 required={"id","rate_plan_id","provider_id","accommodation_provider_map_id","provider_rate_plan_id"},
      *                 @OA\Property(property="id", type="integer", example=1),
      *                 @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                 @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                 @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                 @OA\Property(property="fa_name", type="string", nullable=true, example="Sample Fa Name"),
      *                 @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
      *             )
      *     ),
      *     @OA\Response(
@@ -129,16 +133,17 @@ class RatePlanProviderMapDoc
      *         description="Successful response",
      *         @OA\JsonContent(
      *                 type="object",
-     *                 required={"id","rate_plan_id","provider_id","provider_rate_plan_id"},
+     *                 required={"id","rate_plan_id","provider_id","accommodation_provider_map_id","provider_rate_plan_id"},
      *                 @OA\Property(property="id", type="integer", example=1),
      *                 @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                 @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                 @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                 @OA\Property(property="fa_name", type="string", nullable=true, example="Sample Fa Name"),
      *                 @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
      *             )
      *     ),
      *     @OA\Response(
@@ -170,12 +175,13 @@ class RatePlanProviderMapDoc
      *                 @OA\Property(property="id", type="string", example="Id"),
      *                 @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                 @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                 @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                 @OA\Property(property="fa_name", type="string", example="Sample Fa Name"),
      *                 @OA\Property(property="en_name", type="string", example="Sample En Name"),
      *                 @OA\Property(property="created_at", type="string", example="Created At"),
      *                 @OA\Property(property="updated_at", type="string", example="Updated At"),
-     *                 example={"id":"Id","rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"Created At","updated_at":"Updated At"}
+     *                 example={"id":"Id","rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"Created At","updated_at":"Updated At"}
      *             )
      *     ),
      *     @OA\Response(
@@ -183,16 +189,17 @@ class RatePlanProviderMapDoc
      *         description="Updated",
      *         @OA\JsonContent(
      *                 type="object",
-     *                 required={"id","rate_plan_id","provider_id","provider_rate_plan_id"},
+     *                 required={"id","rate_plan_id","provider_id","accommodation_provider_map_id","provider_rate_plan_id"},
      *                 @OA\Property(property="id", type="integer", example=1),
      *                 @OA\Property(property="rate_plan_id", type="integer", example=1),
      *                 @OA\Property(property="provider_id", type="integer", example=1),
+     *                     @OA\Property(property="accommodation_provider_map_id", type="integer", example=1),
      *                 @OA\Property(property="provider_rate_plan_id", type="string", example="Provider Rate Plan Id"),
      *                 @OA\Property(property="fa_name", type="string", nullable=true, example="Sample Fa Name"),
      *                 @OA\Property(property="en_name", type="string", nullable=true, example="Sample En Name"),
      *                 @OA\Property(property="created_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time", nullable=true, example="2024-01-01T10:00:00Z"),
-     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
+     *                 example={"id":1,"rate_plan_id":1,"provider_id":1,"accommodation_provider_map_id":1,"provider_rate_plan_id":"Provider Rate Plan Id","fa_name":"Sample Fa Name","en_name":"Sample En Name","created_at":"2024-01-01T10:00:00Z","updated_at":"2024-01-01T10:00:00Z"}
      *             )
      *     ),
      *     @OA\Response(

@@ -7,7 +7,6 @@ use App\Services\Alerts\TelegramAlertService;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\ResponseReceived;
 use Illuminate\Http\Client\Request;
-use Throwable;
 
 /**
  * Observe tagged supplier calls even when an adapter catches their errors.
@@ -24,78 +23,35 @@ final class ProviderHttpAlertListener
             return;
         }
 
-        try {
-            $status = $event->response->status();
-            $operation = $this->operation($event->request);
-
-            if (
-                $status === 404
-                && $provider === 'grs'
-                && $this->isScheduledAvailabilityOperation($event->request)
-            ) {
-                // The scheduled availability job adds hotel/date context and treats
-                // this as provider data, not an application failure.
-                return;
-            }
-
-            if ($status >= 400) {
-                $this->alerts->providerFailure(
-                    $provider,
-                    $operation,
-                    'http',
-                    $status,
-                    null,
-                    $this->responseReason($event->response->body()),
-                );
-                return;
-            }
-
-            // Do not decode large provider catalog responses only for monitoring.
-            $body = $event->response->body();
-            if ($body === '' || strlen($body) > 32768) {
-                return;
-            }
-
-            $data = $event->response->json();
-            if (!is_array($data)) {
-                $this->alerts->providerFailure($provider, $operation, 'invalid_response', $status);
-                return;
-            }
-
-            $failure = ($data['ok'] ?? null) === false
-                || ($data['success'] ?? null) === false
-                || ($data['is_success'] ?? null) === false
-                || ($data['status'] ?? null) === 'error';
-
-            // GRS can return an application-level error with HTTP 200.
-            if ($provider === 'grs' && isset($data['code']) && is_numeric($data['code'])) {
-                $failure = $failure || (int) $data['code'] !== 200;
-            }
-
-            if ($provider === 'parto'
-                && str_ends_with(parse_url($event->request->url(), PHP_URL_PATH) ?: '', '/Authenticate/CreateSession')
-                && empty($data['SessionId'])) {
-                $failure = true;
-            }
-
-            if (!$failure) {
-                return;
-            }
-
-            $code = $data['error_code'] ?? $data['code'] ?? null;
-            $code = is_string($code) || is_int($code) ? (string) $code : null;
-            $this->alerts->providerFailure(
-                $provider,
-                $operation,
-                'business',
-                $status,
-                $code,
-                $this->responseReason($event->response->body()),
-            );
-        } catch (Throwable $exception) {
-            // Monitoring must not change the result of the original provider call.
-            error_log('Provider HTTP alert observer unavailable: ' . $exception::class);
+        $status = $event->response->status();
+        if ($status < 400) {
+            return;
         }
+
+        if (
+            $status === 404
+            && $provider === 'grs'
+            && $this->isScheduledAvailabilityOperation($event->request)
+        ) {
+            // RefreshGrsPropertyPricesJob reports this with hotel/date context,
+            // disables the stale provider mapping and advances the schedule.
+            return;
+        }
+
+        // Rate limiting is handled by provider-specific throttling/cooldown logic.
+        // It is operational flow, not an alert-worthy incident.
+        if ($status === 429) {
+            return;
+        }
+
+        $this->alerts->providerFailure(
+            $provider,
+            $this->operation($event->request),
+            'http',
+            $status,
+            null,
+            $this->responseReason($event->response->body()),
+        );
     }
 
     public function connectionFailed(ConnectionFailed $event): void
@@ -105,11 +61,11 @@ final class ProviderHttpAlertListener
             return;
         }
 
-        try {
-            $this->alerts->providerFailure($provider, $this->operation($event->request), 'connection');
-        } catch (Throwable $exception) {
-            error_log('Provider connection alert observer unavailable: ' . $exception::class);
-        }
+        $this->alerts->providerFailure(
+            $provider,
+            $this->operation($event->request),
+            'connection'
+        );
     }
 
     private function responseReason(string $body): ?string

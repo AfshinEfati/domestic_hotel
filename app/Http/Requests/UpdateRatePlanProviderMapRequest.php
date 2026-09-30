@@ -17,6 +17,7 @@ class UpdateRatePlanProviderMapRequest extends FormRequest
             'id' => 'sometimes|nullable',
             'rate_plan_id' => 'sometimes|nullable|integer|exists:rate_plans,id',
             'provider_id' => 'sometimes|nullable|integer|exists:providers,id',
+            'accommodation_provider_map_id' => 'sometimes|integer|exists:accommodation_provider_maps,id',
             'provider_rate_plan_id' => 'sometimes|nullable',
             'fa_name' => 'sometimes|nullable',
             'en_name' => 'sometimes|nullable',

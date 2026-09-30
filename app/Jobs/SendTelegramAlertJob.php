@@ -9,8 +9,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 final class SendTelegramAlertJob implements ShouldQueue
 {
@@ -82,10 +80,4 @@ final class SendTelegramAlertJob implements ShouldQueue
         }
     }
 
-    public function failed(Throwable $exception): void
-    {
-        Log::warning('Telegram alert delivery failed.', [
-            'exception_type' => $exception::class,
-        ]);
-    }
 }

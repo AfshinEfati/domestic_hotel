@@ -66,6 +66,7 @@ class RatePlanProviderMapService extends BaseService implements RatePlanProvider
         return [
             'ratePlan.accommodation',
             'provider.cityMaps.city',
+            'accommodationProviderMap',
         ];
     }
 }

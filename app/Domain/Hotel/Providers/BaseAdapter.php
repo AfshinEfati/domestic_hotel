@@ -97,8 +97,9 @@ abstract class BaseAdapter
     }
 
     /**
-     * Rate/capacity traffic is skipped by default. Reservation validation can
-     * explicitly force logging through withRequestLogContext().
+     * Provider request persistence is opt-in. Background synchronization never
+     * stores request/response payloads unless a reservation context explicitly
+     * asks for audit logging.
      *
      * @return array{
      *     enabled:bool,
@@ -113,17 +114,12 @@ abstract class BaseAdapter
     private function requestLogMetadata(): array
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 20);
-        $inAvailabilityFlow = false;
         $detectedClass = null;
         $detectedMethod = null;
 
         foreach ($trace as $frame) {
             $method = $frame['function'] ?? null;
             $class = $frame['class'] ?? null;
-
-            if ($method === 'fetchAvailability') {
-                $inAvailabilityFlow = true;
-            }
 
             if (
                 $detectedMethod === null
@@ -139,12 +135,13 @@ abstract class BaseAdapter
 
         $context = $this->requestLogContext ?? [];
         $force = ($context['force'] ?? false) === true;
+        $reservationId = isset($context['reservation_id'])
+            ? (int) $context['reservation_id']
+            : null;
 
         return [
-            'enabled' => $force || !$inAvailabilityFlow,
-            'reservation_id' => isset($context['reservation_id'])
-                ? (int) $context['reservation_id']
-                : null,
+            'enabled' => $force || $reservationId !== null,
+            'reservation_id' => $reservationId,
             'handler_class' => $context['handler_class'] ?? $detectedClass ?? static::class,
             'handler_method' => $context['handler_method'] ?? $detectedMethod,
             'attempt' => max(1, (int) ($context['attempt'] ?? 1)),

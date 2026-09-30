@@ -26,15 +26,16 @@ class RoomTypeProviderMapRepository extends BaseRepository implements RoomTypePr
         return parent::find($id);
     }
 
-    public function mappedForProviderIds(int $providerId, array $providerRoomIds): Collection
+    public function mappedForAccommodationMapIds(int $accommodationProviderMapId, array $providerRoomIds): Collection
     {
         if ($providerRoomIds === []) {
             return collect();
         }
 
         return $this->model->newQuery()
-            ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_room_type_id', $providerRoomIds)
+            ->with('roomType:id,accommodation_id')
             ->get()
             ->keyBy('provider_room_type_id');
     }

@@ -56,9 +56,5 @@ class SyncFacilitiesJob implements ShouldQueue
             );
 
         }
-
-        \Log::info("Facilities synced for provider {$provider->code}", [
-            'count' => count($facilities),
-        ]);
     }
 }

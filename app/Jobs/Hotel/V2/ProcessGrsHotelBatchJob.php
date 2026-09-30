@@ -14,7 +14,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -66,15 +65,9 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                     'exception' => $e::class,
                     'message' => $e->getMessage(),
                 ];
-                Log::error('GRS hotel mapping failed', [
-                    'property_id' => $propertyId,
-                    'provider_id' => $this->providerId,
-                    'error' => $e->getMessage(),
-                ]);
             }
         }
 
-        Log::info('GRS hotel mapping batch completed', compact('mapped', 'created', 'skipped', 'errors'));
         if ($errors > 0) {
             $propertyId = (string) ($firstError['property_id'] ?? 'unknown');
             $message = trim((string) ($firstError['message'] ?? 'Unknown mapping error.'));
@@ -116,10 +109,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                 ->value('city_id');
 
             if (!$cityId) {
-                Log::warning('GRS hotel skipped: provider city is not mapped; run provider:city grs separately', [
-                    'property_id' => $propertyId,
-                    'provider_city_id' => $property['city_id'] ?? null,
-                ]);
                 return 'skipped';
             }
 
@@ -127,14 +116,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             if (!$hotel) {
                 $providerType = $property['type'] ?? null;
                 $providerTypeEn = $property['type_en'] ?? null;
-                if ($types->canonicalId($providerType, $providerTypeEn) === null) {
-                    Log::warning('GRS property uses unknown accommodation type; expert review needed', [
-                        'property_id' => $propertyId,
-                        'provider_id' => $this->providerId,
-                        'provider_type' => $providerType,
-                        'provider_type_en' => $providerTypeEn,
-                    ]);
-                }
                 $typeId = $types->resolveId($providerType, $providerTypeEn);
                 $hotel = Accommodation::query()->create([
                     'city_id' => $cityId,

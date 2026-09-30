@@ -140,6 +140,7 @@ class GrsHotelDetailsRepository
         }
 
         $roomMap = RoomTypeProviderMap::query()
+            ->where('accommodation_provider_map_id', $map->id)
             ->where('provider_id', $map->provider_id)
             ->where('provider_room_type_id', $providerRoomId)
             ->first();
@@ -156,6 +157,7 @@ class GrsHotelDetailsRepository
             RoomTypeProviderMap::query()->create([
                 'room_type_id' => $room->id,
                 'provider_id' => $map->provider_id,
+                'accommodation_provider_map_id' => $map->id,
                 'provider_room_type_id' => $providerRoomId,
                 'fa_name' => $name,
                 'en_name' => $this->nullableString($data['name_en'] ?? null),
@@ -198,6 +200,7 @@ class GrsHotelDetailsRepository
         }
 
         $planMap = RatePlanProviderMap::query()
+            ->where('accommodation_provider_map_id', $map->id)
             ->where('provider_id', $map->provider_id)
             ->where('provider_rate_plan_id', $providerPlanId)
             ->first();
@@ -213,6 +216,7 @@ class GrsHotelDetailsRepository
             RatePlanProviderMap::query()->create([
                 'rate_plan_id' => $plan->id,
                 'provider_id' => $map->provider_id,
+                'accommodation_provider_map_id' => $map->id,
                 'provider_rate_plan_id' => $providerPlanId,
                 'fa_name' => $name,
                 'en_name' => $this->nullableString($data['name_en'] ?? null),

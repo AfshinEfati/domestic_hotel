@@ -4,7 +4,6 @@ namespace App\Jobs\Hotel;
 
 use App\Models\Provider;
 use App\Services\Contracts\SystemSettingServiceInterface;
-use App\Support\Logging\SystemLogger;
 use App\Support\System\SystemSettingKey;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -29,26 +28,15 @@ class SyncGrsAvailabilityJob implements ShouldQueue
     }
 
     public function handle(
-        SystemLogger $logger,
         SystemSettingServiceInterface $systemSettingService
     ): void {
         $provider = Provider::query()->where('code', 'grs')->first();
 
         if (!$provider) {
-            $logger->warning(__METHOD__, 'GRS availability sync skipped because provider was not found', [
-                'code' => 'grs',
-            ]);
-
             return;
         }
 
         if (!$provider->is_active || !$provider->is_online) {
-            $logger->warning(__METHOD__, 'GRS availability sync skipped because provider is not active and online', [
-                'provider_id' => $provider->id,
-                'is_active' => $provider->is_active,
-                'is_online' => $provider->is_online,
-            ]);
-
             return;
         }
 
@@ -90,26 +78,10 @@ class SyncGrsAvailabilityJob implements ShouldQueue
         $totalProperties = (clone $baseQuery)->count();
 
         if ($totalProperties === 0) {
-            $logger->info(__METHOD__, 'GRS availability sync skipped because no mapped properties were found', [
-                'provider_id' => $provider->id,
-            ]);
-
             return;
         }
 
-        $logger->info(__METHOD__, 'GRS availability sync dispatch started', [
-            'provider_id' => $provider->id,
-            'from' => $from->toDateString(),
-            'to' => $to->toDateString(),
-            'total_properties' => $totalProperties,
-            'chunk_size' => $chunkSize,
-            'max_attempts' => $maxAttempts,
-            'rate_limit_max_requests' => $maxRequests,
-            'rate_limit_window_minutes' => $windowMinutes,
-        ]);
-
         $queued = 0;
-        $skipped = 0;
 
         $baseQuery
             ->select('id', 'provider_property_id')
@@ -122,20 +94,12 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                 $throttleMs,
                 $maxRequests,
                 $windowMinutes,
-                &$queued,
-                &$skipped,
-                $logger
+                &$queued
             ) {
                 foreach ($rows as $row) {
                     $propertyKey = trim((string) ($row->provider_property_id ?? ''));
 
                     if ($propertyKey === '') {
-                        $logger->warning(__METHOD__, 'GRS availability property skipped because provider property id is empty', [
-                            'provider_id' => $provider->id,
-                            'map_id' => $row->id,
-                        ]);
-                        $skipped++;
-
                         continue;
                     }
 
@@ -161,11 +125,6 @@ class SyncGrsAvailabilityJob implements ShouldQueue
                 }
             }, 'id');
 
-        $logger->info(__METHOD__, 'GRS availability sync dispatch finished', [
-            'provider_id' => $provider->id,
-            'queued_properties' => $queued,
-            'skipped_properties' => $skipped,
-        ]);
     }
 
     private function resolvePositiveInt(?int $value, int $default, int $min): int

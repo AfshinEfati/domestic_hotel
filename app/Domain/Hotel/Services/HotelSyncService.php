@@ -14,7 +14,7 @@ use App\Repositories\Contracts\RoomTypeProviderMapRepositoryInterface;
 use App\Services\HotelDataSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 readonly class HotelSyncService
 {
@@ -80,8 +80,8 @@ readonly class HotelSyncService
         }
 
         $accId = (int) $map->accommodation_id;
-        $roomTypeMaps = $this->loadRoomTypeMaps((int) $provider->id, $availability);
-        $ratePlanMaps = $this->loadRatePlanMaps((int) $provider->id, $availability);
+        $roomTypeMaps = $this->loadRoomTypeMaps((int) $map->id, $availability);
+        $ratePlanMaps = $this->loadRatePlanMaps((int) $map->id, $availability);
         [$roomTypeMaps, $ratePlanMaps] = $this->ensureAvailabilityMappings(
             $provider, $adapter, $map, $availability, $roomTypeMaps, $ratePlanMaps
         );
@@ -104,13 +104,16 @@ readonly class HotelSyncService
                 $roomTypeMap = $roomTypeMaps->get($providerRoomTypeId);
                 $ratePlanMap = $ratePlanMaps->get($providerRatePlanId);
                 if (!$roomTypeMap || !$ratePlanMap) {
-                    Log::warning('Skipping availability rows without provider mappings', [
-                        'provider_id' => $provider->id,
-                        'property_id' => $providerPropertyId,
-                        'provider_room_type_id' => $providerRoomTypeId,
-                        'provider_rate_plan_id' => $providerRatePlanId,
-                    ]);
                     return;
+                }
+
+                if (
+                    (int) ($roomTypeMap->roomType?->accommodation_id ?? 0) !== $accId
+                    || (int) ($ratePlanMap->ratePlan?->accommodation_id ?? 0) !== $accId
+                ) {
+                    throw new RuntimeException(
+                        'Provider room/rate-plan mapping does not belong to the requested accommodation.'
+                    );
                 }
 
                 $normalized = $this->normalizeAvailabilityRows($rows);
@@ -152,8 +155,8 @@ readonly class HotelSyncService
         $this->syncRoomTypesFromProvider($provider, $adapter, $map);
 
         return [
-            $this->loadRoomTypeMaps((int) $provider->id, $availability),
-            $this->loadRatePlanMaps((int) $provider->id, $availability),
+            $this->loadRoomTypeMaps((int) $map->id, $availability),
+            $this->loadRatePlanMaps((int) $map->id, $availability),
         ];
     }
 
@@ -164,12 +167,7 @@ readonly class HotelSyncService
     ): void {
         try {
             $roomTypes = $adapter->fetchRoomTypes($map->provider_property_id);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to fetch provider room types', [
-                'provider_id' => $provider->id,
-                'property_id' => $map->provider_property_id,
-                'error' => $e->getMessage(),
-            ]);
+        } catch (\Throwable) {
             return;
         }
 
@@ -198,16 +196,24 @@ readonly class HotelSyncService
             ->values();
     }
 
-    private function loadRoomTypeMaps(int $providerId, Collection $availability): Collection
+    private function loadRoomTypeMaps(int $accommodationProviderMapId, Collection $availability): Collection
     {
         $roomTypeIds = $this->extractProviderIds($availability, 'room_type_id')->all();
-        return $this->roomMaps->mappedForProviderIds($providerId, $roomTypeIds);
+
+        return $this->roomMaps->mappedForAccommodationMapIds(
+            $accommodationProviderMapId,
+            $roomTypeIds
+        );
     }
 
-    private function loadRatePlanMaps(int $providerId, Collection $availability): Collection
+    private function loadRatePlanMaps(int $accommodationProviderMapId, Collection $availability): Collection
     {
         $ratePlanIds = $this->extractProviderIds($availability, 'rate_plan_id')->all();
-        return $this->rateMaps->mappedForProviderIds($providerId, $ratePlanIds);
+
+        return $this->rateMaps->mappedForAccommodationMapIds(
+            $accommodationProviderMapId,
+            $ratePlanIds
+        );
     }
 
     private function normalizeAvailabilityRows(Collection $rows): Collection

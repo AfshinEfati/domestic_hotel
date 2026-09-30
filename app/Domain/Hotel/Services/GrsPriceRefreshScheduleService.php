@@ -114,13 +114,19 @@ class GrsPriceRefreshScheduleService
     /** @param Collection<int, array<string, mixed>>|null $response */
     public function verifiedRowCount(
         int $providerId,
+        int $accommodationProviderMapId,
         int $gdsId,
         string $providerPropertyId,
         ?Collection $response,
         CarbonInterface $started,
     ): int {
         return $this->availability->verifiedRowCount(
-            $providerId, $gdsId, $providerPropertyId, $response, $started
+            $providerId,
+            $accommodationProviderMapId,
+            $gdsId,
+            $providerPropertyId,
+            $response,
+            $started
         );
     }
 

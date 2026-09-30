@@ -5,7 +5,6 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
 use App\Exceptions\ProviderDataException;
 use App\Domain\Hotel\V2\GrsHotelDetailsClient;
-use App\Services\Alerts\TelegramAlertService;
 use App\Services\HotelChildPolicyTextParser;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
@@ -16,7 +15,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
 
@@ -48,8 +46,7 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
     public function handle(
         GrsHotelDetailsRepository $repository,
         GrsHotelDetailsClient $client,
-        HotelChildPolicyTextParser $parser,
-        TelegramAlertService $alerts
+        HotelChildPolicyTextParser $parser
     ): void {
         $provider = $repository->grsProvider();
         if ($provider === null || (int) $provider->id !== $this->providerId
@@ -86,21 +83,7 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
 
         try {
             $details = $client->fetch($provider, $propertyId);
-        } catch (ProviderDataException $exception) {
-            Log::warning('GRS hotel details skipped because provider data is incomplete', [
-                'provider_id' => $this->providerId,
-                'accommodation_id' => $map->accommodation_id,
-                'provider_property_id' => $propertyId,
-                'reason' => $exception->getMessage(),
-            ]);
-
-            $alerts->providerDataIssue(
-                provider: 'grs',
-                operation: 'GET /v1/properties/{id}',
-                resourceId: $propertyId,
-                reason: $exception->getMessage(),
-            );
-
+        } catch (ProviderDataException) {
             return;
         }
 
@@ -113,11 +96,5 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        Log::info('GRS hotel details refreshed', [
-            'provider_id' => $this->providerId,
-            'accommodation_id' => $map->accommodation_id,
-            'provider_property_id' => $propertyId,
-            'room_types' => count($details['room_types']),
-        ]);
     }
 }

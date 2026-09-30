@@ -11,7 +11,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /** GRS-only due scan. Provider and accommodation lookups belong to repositories. */
@@ -40,7 +39,6 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS provider is not configured.');
         }
         if (!$provider->is_active || !$provider->is_online) {
-            Log::warning('GRS prices skipped: provider inactive or offline');
             return;
         }
 
@@ -50,7 +48,6 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         if (RateLimitedGrsAdapter::cooldownSeconds() > 0) {
-            Log::warning('GRS prices paused by API 429 cooldown');
             return;
         }
 

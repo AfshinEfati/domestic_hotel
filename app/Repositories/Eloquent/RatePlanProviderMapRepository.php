@@ -26,15 +26,16 @@ class RatePlanProviderMapRepository extends BaseRepository implements RatePlanPr
         return parent::find($id);
     }
 
-    public function mappedForProviderIds(int $providerId, array $providerRateIds): Collection
+    public function mappedForAccommodationMapIds(int $accommodationProviderMapId, array $providerRateIds): Collection
     {
         if ($providerRateIds === []) {
             return collect();
         }
 
         return $this->model->newQuery()
-            ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_rate_plan_id', $providerRateIds)
+            ->with('ratePlan:id,accommodation_id')
             ->get()
             ->keyBy('provider_rate_plan_id');
     }

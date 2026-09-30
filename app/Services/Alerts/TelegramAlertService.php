@@ -61,28 +61,6 @@ final class TelegramAlertService
         );
     }
 
-    public function providerDataIssue(
-        string $provider,
-        string $operation,
-        string $resourceId,
-        string $reason,
-    ): void {
-        $this->enqueue(
-            'داده ناقص تأمین‌کننده',
-            'پاسخ تأمین‌کننده برای این هتل ناقص بود؛ هتل skip شد و پردازش بقیه ادامه پیدا کرد.',
-            [
-                'دسته' => 'Provider data',
-                'تأمین‌کننده' => $provider,
-                'عملیات' => $operation,
-                'شناسه' => $resourceId,
-                'علت' => $reason,
-                'اقدام' => 'skip hotel / continue job',
-            ],
-            null,
-            implode('|', ['provider-data', $provider, $operation, $resourceId, $reason]),
-        );
-    }
-
     public function providerAvailabilityIssue(
         string $provider,
         string $hotelName,
@@ -216,7 +194,6 @@ final class TelegramAlertService
 
         // A synchronous queue would make the customer wait for Telegram.
         if (config('queue.default') === 'sync') {
-            error_log('Telegram alerts require an asynchronous queue; QUEUE_CONNECTION=sync is unsupported.');
             return;
         }
 
@@ -225,18 +202,16 @@ final class TelegramAlertService
             if (!Cache::add($key, true, 300)) {
                 return;
             }
-        } catch (Throwable $exception) {
-            // Cache downtime should not silently disable reporting.
-            error_log('Telegram deduplication unavailable: ' . $exception::class);
+        } catch (Throwable) {
+            // Cache downtime must not block best-effort alert delivery.
         }
 
         try {
             SendTelegramAlertJob::dispatch(
                 $this->formatter->format($title, $description, $fields, $snippet)
             )->onQueue('default')->afterCommit();
-        } catch (Throwable $exception) {
+        } catch (Throwable) {
             // Alerting must never change the outcome of provider calls.
-            error_log('Telegram alert enqueue unavailable: ' . $exception::class);
         }
     }
 }

@@ -10,7 +10,6 @@ use App\Models\RoomTypeProviderMap;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -25,6 +24,7 @@ class GrsAvailabilityPersistenceRepository
      */
     public function verifiedRowCount(
         int $providerId,
+        int $accommodationProviderMapId,
         int $accommodationId,
         string $providerPropertyId,
         ?Collection $response,
@@ -45,18 +45,11 @@ class GrsAvailabilityPersistenceRepository
             $rateId = trim((string) ($row['rate_plan_id'] ?? ''));
             $day = $row['day'] ?? null;
             if ($roomId === '' || $rateId === '' || !is_string($day) || trim($day) === '') {
-                Log::warning('GRS availability row skipped: room, rate plan or day missing', [
-                    'gds_id' => $accommodationId, 'provider_property_id' => $providerPropertyId,
-                ]);
                 continue;
             }
             try {
                 $normalizedDay = CarbonImmutable::parse($day)->toDateString();
             } catch (Throwable) {
-                Log::warning('GRS availability row skipped: invalid date', [
-                    'gds_id' => $accommodationId, 'provider_property_id' => $providerPropertyId,
-                    'received_day' => $day,
-                ]);
                 continue;
             }
             // A provider may return dates outside the requested window. Keep the
@@ -72,10 +65,12 @@ class GrsAvailabilityPersistenceRepository
 
         $roomIds = RoomTypeProviderMap::query()
             ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_room_type_id', array_keys($roomProviderIds))
             ->pluck('room_type_id', 'provider_room_type_id')->all();
         $rateIds = RatePlanProviderMap::query()
             ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_rate_plan_id', array_keys($rateProviderIds))
             ->pluck('rate_plan_id', 'provider_rate_plan_id')->all();
         if (count($roomIds) !== count($roomProviderIds) || count($rateIds) !== count($rateProviderIds)) {

@@ -10,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class FetchRoomTypesFromProviderJob implements ShouldQueue
 {
@@ -43,26 +42,14 @@ class FetchRoomTypesFromProviderJob implements ShouldQueue
         /** @var ProviderAdapterInterface $adapter */
         $adapter = new $class($provider);
 
-        try {
-            $roomTypes = $adapter->fetchRoomTypes($this->map->provider_property_id);
-        } catch (\Exception $e) {
-            Log::error("API Error for provider {$provider->id}: " . $e->getMessage());
-            $this->fail($e);
-            return;
-        }
+        $roomTypes = $adapter->fetchRoomTypes($this->map->provider_property_id);
 
         if (empty($roomTypes)) {
             return;
         }
 
-        try {
-            // ذخیره در دیتابیس
-            /** @var HotelDataSyncService $syncService */
-            $syncService = app(HotelDataSyncService::class);
-            $syncService->syncRoomTypes($this->map, $roomTypes);
-        } catch (\Exception $e) {
-            Log::error("Sync Error for property {$this->map->provider_property_id}: " . $e->getMessage());
-            $this->fail($e);
-        }
+        /** @var HotelDataSyncService $syncService */
+        $syncService = app(HotelDataSyncService::class);
+        $syncService->syncRoomTypes($this->map, $roomTypes);
     }
 }
