@@ -16,7 +16,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ProcessGrsHotelPropertyJob implements ShouldQueue
@@ -121,11 +120,6 @@ class ProcessGrsHotelPropertyJob implements ShouldQueue
                 $facilityRepo
             );
         } catch (Throwable $e) {
-            Log::error('GRS property processing failed', [
-                'provider_code' => $this->providerCode,
-                'property_id' => $providerPropertyId,
-                'error' => $e->getMessage(),
-            ]);
             throw $e;
         }
     }
@@ -179,10 +173,6 @@ class ProcessGrsHotelPropertyJob implements ShouldQueue
 
         if ($facilityIds !== []) {
             $acc->facilities()->sync($facilityIds);
-        } else {
-            Log::warning('GRS facilities skipped: no valid facilities', [
-                'accommodation_id' => $acc->id,
-            ]);
         }
     }
 
