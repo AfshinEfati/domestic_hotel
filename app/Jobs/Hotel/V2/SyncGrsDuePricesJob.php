@@ -65,20 +65,11 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
             if ($map?->is_disabled === true) {
-                Log::info('GRS due property skipped: accommodation provider map is disabled', [
-                    'schedule_id' => $schedule->id,
-                    'gds_id' => $gdsId,
-                    'grs_id' => $grsId,
-                ]);
                 continue;
             }
 
             if ($gdsId <= 0 || $grsId === '') {
                 $unmapped++;
-                Log::warning('GRS due property missing local accommodation map; due time unchanged', [
-                    'schedule_id' => $schedule->id,
-                    'gds_id' => $gdsId,
-                ]);
                 continue;
             }
 
@@ -91,9 +82,5 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             );
             $queued++;
         }
-
-        Log::info('GRS due price scan finished', [
-            'days' => $days, 'selected' => $due->count(), 'queued' => $queued, 'unmapped' => $unmapped,
-        ]);
     }
 }
