@@ -15,7 +15,7 @@ interface RatePlanProviderMapRepositoryInterface extends BaseRepositoryInterface
     /** @param array<int, string> $providerRateIds
      *  @return Collection<string, RatePlanProviderMap>
      */
-    public function mappedForProviderIds(int $providerId, array $providerRateIds): Collection;
+    public function mappedForAccommodationMapIds(int $accommodationProviderMapId, array $providerRateIds): Collection;
 
     public function store(array $data): RatePlanProviderMap;
 
