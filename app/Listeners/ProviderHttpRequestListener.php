@@ -18,8 +18,8 @@ final class ProviderHttpRequestListener
     {
         try {
             $this->requests->recordResponse($event->request, $event->response);
-        } catch (Throwable $exception) {
-            error_log('Provider request persistence unavailable: '.$exception::class);
+        } catch (Throwable) {
+            // Request logging must never affect provider traffic.
         }
     }
 
@@ -27,8 +27,8 @@ final class ProviderHttpRequestListener
     {
         try {
             $this->requests->recordConnectionFailure($event->request);
-        } catch (Throwable $exception) {
-            error_log('Provider connection failure persistence unavailable: '.$exception::class);
+        } catch (Throwable) {
+            // Request logging must never affect provider traffic.
         }
     }
 }
