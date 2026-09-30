@@ -17,6 +17,7 @@ class StoreRatePlanProviderMapRequest extends FormRequest
             'id' => 'nullable',
             'rate_plan_id' => 'required|integer|exists:rate_plans,id',
             'provider_id' => 'required|integer|exists:providers,id',
+            'accommodation_provider_map_id' => 'required|integer|exists:accommodation_provider_maps,id',
             'provider_rate_plan_id' => 'nullable',
             'fa_name' => 'nullable',
             'en_name' => 'nullable',
