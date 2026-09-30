@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use RuntimeException;
 
 class RoomTypeProviderMap extends Model
 {
@@ -30,6 +31,27 @@ class RoomTypeProviderMap extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $mapping): void {
+            $accommodationMap = AccommodationProviderMap::query()
+                ->find($mapping->accommodation_provider_map_id);
+            $local = RoomType::query()->find($mapping->room_type_id);
+
+            if (
+                $accommodationMap === null
+                || $local === null
+                || (int) $accommodationMap->provider_id !== (int) $mapping->provider_id
+                || (int) $accommodationMap->accommodation_id !== (int) $local->accommodation_id
+            ) {
+                throw new RuntimeException(
+                    'Room type provider mapping must belong to the same provider and accommodation map.'
+                );
+            }
+        });
+    }
 
     public function roomType(): BelongsTo
     {
