@@ -47,8 +47,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
             try {
                 app(\App\Services\Alerts\TelegramAlertService::class)->internalFailure($exception);
-            } catch (\Throwable $alertError) {
-                error_log('Internal alert unavailable: ' . $alertError::class);
+            } catch (\Throwable) {
+                // Alert transport must never create another application failure.
             }
         });
 
