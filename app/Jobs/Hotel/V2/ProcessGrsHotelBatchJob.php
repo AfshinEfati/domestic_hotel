@@ -2,8 +2,11 @@
 
 namespace App\Jobs\Hotel\V2;
 
+use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
+use App\Models\Facility;
+use App\Models\FacilityGroup;
 use App\Models\ProviderCityMap;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,13 +17,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
-/**
- * Mapping-only GRS catalog processor.
- *
- * Safety rule: this job must NEVER create or update Accommodation records.
- * It may only preserve/update provider-map metadata or create a missing,
- * unambiguous AccommodationProviderMap for an already existing hotel.
- */
+/** Only local database work. This job makes ZERO provider HTTP requests. */
 class ProcessGrsHotelBatchJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -28,36 +25,44 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
     public int $tries = 1;
     public int $timeout = 70;
 
-    public function __construct(
-        public int $providerId,
-        public array $properties,
-    ) {
+    public function __construct(public int $providerId, public array $properties)
+    {
     }
 
-    public function handle(): void
+    public function handle(AccommodationTypeResolver $types): void
     {
+        $facilityLookup = $this->loadFacilities();
         $errors = 0;
         $firstError = null;
+        $mapped = 0;
+        $created = 0;
+        $skipped = 0;
 
         foreach ($this->properties as $property) {
             if (!is_array($property)) {
+                $skipped++;
                 continue;
             }
-
             $propertyId = trim((string) ($property['id'] ?? ''));
             if ($propertyId === '') {
+                $skipped++;
                 continue;
             }
 
             try {
-                DB::transaction(
-                    fn (): string => $this->processProperty($property, $propertyId),
-                    3
-                );
+                $result = DB::transaction(fn () => $this->processProperty($property, $propertyId, $facilityLookup, $types));
+                if ($result === 'created') {
+                    $created++;
+                } elseif ($result === 'mapped') {
+                    $mapped++;
+                } else {
+                    $skipped++;
+                }
             } catch (Throwable $e) {
                 $errors++;
                 $firstError ??= [
                     'property_id' => $propertyId,
+                    'exception' => $e::class,
                     'message' => $e->getMessage(),
                 ];
             }
@@ -66,309 +71,214 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         if ($errors > 0) {
             $propertyId = (string) ($firstError['property_id'] ?? 'unknown');
             $message = trim((string) ($firstError['message'] ?? 'Unknown mapping error.'));
-
             throw new RuntimeException(
-                "GRS mapping-only batch finished with {$errors} error(s). "
+                "GRS hotel mapping batch finished with {$errors} error(s). "
                 ."First failure for property {$propertyId}: {$message}"
             );
         }
     }
 
-    private function processProperty(array $property, string $propertyId): string
-    {
+    private function processProperty(
+        array $property,
+        string $propertyId,
+        array $facilityLookup,
+        AccommodationTypeResolver $types
+    ): string {
         $faName = trim((string) ($property['name'] ?? ''));
         if ($faName === '') {
-            return 'skipped';
+            throw new RuntimeException('Property has no Persian name.');
         }
-
         $enName = $this->nullableString($property['name_en'] ?? null);
 
-        // Existing mappings are read-only in catalog recovery. This workflow
-        // only fills missing maps and never rewrites already curated data.
-        $existingPropertyMap = AccommodationProviderMap::query()
+        // An existing provider/property mapping is authoritative even when its name changes.
+        $map = AccommodationProviderMap::query()
             ->where('provider_id', $this->providerId)
             ->where('provider_property_id', $propertyId)
             ->first();
 
-        if ($existingPropertyMap !== null) {
-            if (!Accommodation::query()->whereKey($existingPropertyMap->accommodation_id)->exists()) {
-                throw new RuntimeException(
-                    'Existing GRS map points to a missing accommodation.'
-                );
+        $new = false;
+        if ($map) {
+            $hotel = Accommodation::query()->find($map->accommodation_id);
+            if (!$hotel) {
+                throw new RuntimeException('Existing GRS map points to a missing accommodation.');
+            }
+        } else {
+            $cityId = ProviderCityMap::query()
+                ->where('provider_id', $this->providerId)
+                ->where('provider_city_id', (string) ($property['city_id'] ?? ''))
+                ->value('city_id');
+
+            if (!$cityId) {
+                return 'skipped';
             }
 
-            return 'mapped';
-        }
-
-        $cityId = ProviderCityMap::query()
-            ->where('provider_id', $this->providerId)
-            ->where('provider_city_id', (string) ($property['city_id'] ?? ''))
-            ->value('city_id');
-
-        if (!$cityId) {
-            return 'skipped';
-        }
-
-        $matched = $this->findUnambiguousMatch(
-            (int) $cityId,
-            $property,
-            $faName,
-            $enName
-        );
-
-        // Catalog sync is update/map-only. A provider hotel that cannot be
-        // matched safely to an existing local hotel is intentionally ignored.
-        if ($matched === null) {
-            return 'skipped';
-        }
-
-        // Serialize competing mappings for the same local hotel. This prevents
-        // parallel catalog batches from binding two GRS properties to one
-        // Accommodation even though the database has no such unique key.
-        $hotel = Accommodation::query()
-            ->whereKey((int) $matched->id)
-            ->lockForUpdate()
-            ->first();
-
-        if ($hotel === null) {
-            return 'skipped';
-        }
-
-        // Another batch may have created the exact property map while this job
-        // was waiting for the accommodation lock.
-        $propertyMap = AccommodationProviderMap::query()
-            ->where('provider_id', $this->providerId)
-            ->where('provider_property_id', $propertyId)
-            ->first();
-
-        if ($propertyMap !== null) {
-            if ((int) $propertyMap->accommodation_id !== (int) $hotel->id) {
-                throw new RuntimeException(
-                    'GRS property was concurrently mapped to a different accommodation.'
-                );
+            $hotel = $this->findUnambiguousMatch((int) $cityId, $property, $faName, $enName);
+            if (!$hotel) {
+                $providerType = $property['type'] ?? null;
+                $providerTypeEn = $property['type_en'] ?? null;
+                $typeId = $types->resolveId($providerType, $providerTypeEn);
+                $hotel = Accommodation::query()->create([
+                    'city_id' => $cityId,
+                    'fa_name' => $faName,
+                    'en_name' => $enName,
+                    'accommodation_type_id' => $typeId,
+                    'star' => is_numeric($property['star'] ?? null) ? (int) $property['star'] : null,
+                    'grade' => $this->nullableString($property['grade'] ?? null),
+                    'address' => $this->nullableString($property['address'] ?? null),
+                    'lat' => $this->coordinate($property['latitude'] ?? null, -90, 90),
+                    'lng' => $this->coordinate($property['longitude'] ?? null, -180, 180),
+                    'is_active' => true,
+                ]);
+                $new = true;
             }
 
-            return 'mapped';
-        }
+            // Never silently bind another GRS listing to an already-linked local hotel.
+            if (AccommodationProviderMap::query()
+                ->where('provider_id', $this->providerId)
+                ->where('accommodation_id', $hotel->id)
+                ->where('provider_property_id', '!=', $propertyId)
+                ->exists()) {
+                throw new RuntimeException('Accommodation already maps to another GRS property; manual review required.');
+            }
 
-        $conflictingHotelMap = AccommodationProviderMap::query()
-            ->where('provider_id', $this->providerId)
-            ->where('accommodation_id', (int) $hotel->id)
-            ->where('provider_property_id', '!=', $propertyId)
-            ->first();
-
-        if ($conflictingHotelMap !== null) {
-            throw new RuntimeException(
-                'Accommodation already maps to another GRS property; no automatic change was made.'
+            $map = AccommodationProviderMap::query()->firstOrCreate(
+                ['provider_id' => $this->providerId, 'provider_property_id' => $propertyId],
+                ['accommodation_id' => $hotel->id, 'fa_name' => $faName, 'en_name' => $enName]
             );
         }
 
-        AccommodationProviderMap::query()->create([
-            'provider_id' => $this->providerId,
-            'provider_property_id' => $propertyId,
-            'accommodation_id' => (int) $hotel->id,
-            'fa_name' => $faName,
-            'en_name' => $enName,
-        ]);
+        // Provider metadata belongs to the map; do not overwrite the canonical local hotel.
+        $map->update(['fa_name' => $faName, 'en_name' => $enName]);
+        $this->attachFacilities($hotel, $property['facilities'] ?? [], $facilityLookup);
 
-        return 'mapped';
+        return $new ? 'created' : 'mapped';
     }
 
-    private function findUnambiguousMatch(
-        int $cityId,
-        array $property,
-        string $faName,
-        ?string $enName,
-    ): ?Accommodation {
-        $candidates = Accommodation::query()
-            ->where('city_id', $cityId)
-            ->get([
-                'id',
-                'city_id',
-                'fa_name',
-                'en_name',
-                'address',
-                'lat',
-                'lng',
-                'star',
-            ]);
-
+    private function findUnambiguousMatch(int $cityId, array $property, string $faName, ?string $enName): ?Accommodation
+    {
+        $candidates = Accommodation::query()->where('city_id', $cityId)->get();
         $faKey = $this->normalize($faName, true);
-        if ($faKey !== '') {
-            $matches = $candidates
-                ->filter(
-                    fn (Accommodation $hotel): bool =>
-                        $this->normalize($hotel->fa_name, true) === $faKey
-                )
-                ->values();
-
-            if ($matches->count() === 1) {
-                return $matches->first();
-            }
-
-            if ($matches->count() > 1) {
-                return $this->refineDuplicateNameMatches(
-                    $matches,
-                    $property,
-                    $enName
-                );
-            }
+        $matches = $candidates->filter(fn (Accommodation $hotel) => $this->normalize($hotel->fa_name, true) === $faKey);
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+        if ($matches->count() > 1) {
+            throw new RuntimeException('Ambiguous Persian hotel name; manual review required.');
         }
 
         if ($enName !== null) {
             $enKey = $this->normalize($enName, true);
-
-            if ($enKey !== '') {
-                $matches = $candidates
-                    ->filter(
-                        fn (Accommodation $hotel): bool =>
-                            $hotel->en_name !== null
-                            && $this->normalize($hotel->en_name, true) === $enKey
-                    )
-                    ->values();
-
-                if ($matches->count() === 1) {
-                    return $matches->first();
-                }
-
-                if ($matches->count() > 1) {
-                    return $this->refineByLocation($matches, $property);
-                }
+            $matches = $candidates->filter(fn (Accommodation $hotel) =>
+                $hotel->en_name !== null && $this->normalize($hotel->en_name, true) === $enKey
+            );
+            if ($matches->count() === 1) {
+                return $matches->first();
+            }
+            if ($matches->count() > 1) {
+                throw new RuntimeException('Ambiguous English hotel name; manual review required.');
             }
         }
 
-        return $this->refineByLocation($candidates, $property);
-    }
-
-    private function refineDuplicateNameMatches(
-        $matches,
-        array $property,
-        ?string $providerEnName,
-    ): ?Accommodation {
-        if ($providerEnName !== null) {
-            $enKey = $this->normalize($providerEnName, true);
-
-            if ($enKey !== '') {
-                $englishMatches = $matches
-                    ->filter(
-                        fn (Accommodation $hotel): bool =>
-                            $hotel->en_name !== null
-                            && $this->normalize($hotel->en_name, true) === $enKey
-                    )
-                    ->values();
-
-                if ($englishMatches->count() === 1) {
-                    return $englishMatches->first();
-                }
-
-                if ($englishMatches->count() > 1) {
-                    $matches = $englishMatches;
-                }
-            }
-        }
-
-        return $this->refineByLocation($matches, $property);
-    }
-
-    private function refineByLocation($candidates, array $property): ?Accommodation
-    {
+        // Different name: match only on the same normalized address AND close valid coordinates.
         $address = $this->normalize($property['address'] ?? null);
         $lat = $this->coordinate($property['latitude'] ?? null, -90, 90);
         $lng = $this->coordinate($property['longitude'] ?? null, -180, 180);
-
         if ($address === '' || $lat === null || $lng === null) {
             return null;
         }
+        $matches = $candidates->filter(fn (Accommodation $hotel) =>
+            $hotel->lat !== null && $hotel->lng !== null &&
+            abs((float) $hotel->lat - $lat) <= 0.00015 &&
+            abs((float) $hotel->lng - $lng) <= 0.00015 &&
+            $this->normalize($hotel->address) === $address &&
+            (!is_numeric($property['star'] ?? null) || $hotel->star === null ||
+                (int) $hotel->star === (int) $property['star'])
+        );
+        if ($matches->count() > 1) {
+            throw new RuntimeException('Ambiguous address/coordinate hotel match; manual review required.');
+        }
 
-        $matches = $candidates
-            ->filter(function (Accommodation $hotel) use (
-                $property,
-                $address,
-                $lat,
-                $lng
-            ): bool {
-                if ($hotel->lat === null || $hotel->lng === null) {
-                    return false;
-                }
-
-                if (abs((float) $hotel->lat - $lat) > 0.00015) {
-                    return false;
-                }
-
-                if (abs((float) $hotel->lng - $lng) > 0.00015) {
-                    return false;
-                }
-
-                if ($this->normalize($hotel->address) !== $address) {
-                    return false;
-                }
-
-                return !is_numeric($property['star'] ?? null)
-                    || $hotel->star === null
-                    || (int) $hotel->star === (int) $property['star'];
-            })
-            ->values();
-
-        return $matches->count() === 1
-            ? $matches->first()
-            : null;
+        return $matches->first();
     }
 
-    private function coordinate(
-        mixed $value,
-        float $minimum,
-        float $maximum,
-    ): ?float {
+    private function loadFacilities(): array
+    {
+        $groupNames = [];
+        $facilityNames = [];
+        foreach ($this->properties as $property) {
+            foreach (is_array($property['facilities'] ?? null) ? $property['facilities'] : [] as $facility) {
+                if (!is_array($facility)) {
+                    continue;
+                }
+                $groupNames[] = trim((string) ($facility['group_name'] ?? 'سایر')) ?: 'سایر';
+                $facilityNames[] = trim((string) ($facility['name'] ?? ''));
+            }
+        }
+        if ($facilityNames === []) {
+            return [];
+        }
+        $groups = FacilityGroup::query()->whereIn('fa_name', array_unique($groupNames))->get();
+        $groupNameById = $groups->pluck('fa_name', 'id')->all();
+        $result = [];
+        foreach (Facility::query()->whereIn('facility_group_id', $groups->pluck('id'))
+            ->whereIn('fa_name', array_unique($facilityNames))->get() as $facility) {
+            $groupName = $groupNameById[$facility->facility_group_id] ?? null;
+            if ($groupName !== null) {
+                $result[$groupName."\0".$facility->fa_name] = $facility->id;
+            }
+        }
+        return $result;
+    }
+
+    private function attachFacilities(Accommodation $hotel, mixed $facilities, array $lookup): void
+    {
+        if (!is_array($facilities)) {
+            return;
+        }
+        $ids = [];
+        foreach ($facilities as $facility) {
+            if (!is_array($facility)) {
+                continue;
+            }
+            $group = trim((string) ($facility['group_name'] ?? 'سایر')) ?: 'سایر';
+            $name = trim((string) ($facility['name'] ?? ''));
+            $id = $lookup[$group."\0".$name] ?? null;
+            if ($id !== null) {
+                $description = $this->nullableString($facility['description'] ?? null);
+                $ids[$id] = $description === null ? [] : ['description' => mb_substr($description, 0, 500)];
+            }
+        }
+        if ($ids !== []) {
+            // Do not detach facilities from another provider or manually entered data.
+            $hotel->facilities()->syncWithoutDetaching($ids);
+        }
+    }
+
+    private function coordinate(mixed $value, float $minimum, float $maximum): ?float
+    {
         if (!is_numeric($value)) {
             return null;
         }
-
         $coordinate = (float) $value;
-
-        return is_finite($coordinate)
-            && $coordinate >= $minimum
-            && $coordinate <= $maximum
-                ? $coordinate
-                : null;
+        return is_finite($coordinate) && $coordinate >= $minimum && $coordinate <= $maximum
+            ? $coordinate
+            : null;
     }
 
     private function nullableString(mixed $value): ?string
     {
-        $value = is_scalar($value)
-            ? trim((string) $value)
-            : '';
-
-        return $value === ''
-            ? null
-            : $value;
+        $value = is_scalar($value) ? trim((string) $value) : '';
+        return $value === '' ? null : $value;
     }
 
-    private function normalize(
-        mixed $value,
-        bool $stripHotelPrefix = false,
-    ): string {
-        $value = mb_strtolower(
-            $this->nullableString($value) ?? '',
-            'UTF-8'
-        );
-
-        $value = str_replace(
-            ['ي', 'ى', 'ك', '‌', 'ـ'],
-            ['ی', 'ی', 'ک', ' ', ''],
-            $value
-        );
-
-        $value = trim(
-            preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value) ?? $value
-        );
-
+    private function normalize(mixed $value, bool $stripHotelPrefix = false): string
+    {
+        $value = mb_strtolower($this->nullableString($value) ?? '', 'UTF-8');
+        $value = str_replace(['ي', 'ى', 'ك', '‌', 'ـ'], ['ی', 'ی', 'ک', ' ', ''], $value);
+        $value = trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value) ?? $value);
         if ($stripHotelPrefix) {
-            $value = trim(
-                preg_replace('/^(?:هتل|hotel)\s+/u', '', $value)
-                    ?? $value
-            );
+            $value = trim(preg_replace('/^(?:هتل|hotel)\s+/u', '', $value) ?? $value);
         }
-
         return $value;
     }
 }
