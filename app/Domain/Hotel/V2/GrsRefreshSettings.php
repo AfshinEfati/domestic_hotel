@@ -11,7 +11,7 @@ final class GrsRefreshSettings
     {
         return [
             'default_days' => 90,
-            'api_cooldown_minutes' => 15,
+            'api_cooldown_minutes' => 1,
             'scheduler_enabled' => false,
         ];
     }
