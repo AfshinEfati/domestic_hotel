@@ -96,6 +96,12 @@ class GrsPriceRefreshScheduleService
         return $selected;
     }
 
+    /** @return Collection<int, HotelPriceRefreshSchedule> */
+    public function activeForMappingRepair(): Collection
+    {
+        return $this->schedules->activeForMappingRepair();
+    }
+
     public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
     {
         return $this->schedules->active($id, $gdsId);

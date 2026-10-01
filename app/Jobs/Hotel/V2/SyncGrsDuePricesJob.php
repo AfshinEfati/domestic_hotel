@@ -56,6 +56,8 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
         $schedules->assertReady();
 
+        $repairQueued = false;
+
         // SSP.gds_id identifies GDS accommodations.id. Dispatch does not alter due time.
         foreach ($schedules->due($provider) as $schedule) {
             $gdsId = (int) $schedule->gds_id;
@@ -70,40 +72,32 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
             $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
-            if ($gdsId <= 0 || $map === null || $grsId === '') {
-                $status = match (true) {
-                    $gdsId <= 0 => 'شناسه GDS نامعتبر است',
-                    $map === null => 'مپ هتل برای GRS وجود ندارد',
-                    default => 'شناسه هتل تأمین‌کننده در مپ خالی است',
-                };
+            if ($gdsId <= 0) {
+                $alerts->custom(
+                    'شناسه نامعتبر هتل در صف نرخ و ظرفیت',
+                    'Schedule فعال GRS شناسه هتل داخلی معتبر ندارد و امکان ترمیم خودکار مپ وجود ندارد.',
+                    [
+                        'Schedule ID' => (int) $schedule->id,
+                        'GDS ID' => $gdsId,
+                        'تأمین‌کننده' => (string) $provider->code,
+                    ],
+                    level: 'warning',
+                    tags: ['DomesticHotel', 'MapRepair', 'GRS'],
+                );
 
-                $fields = [
-                    'Schedule ID' => (int) $schedule->id,
-                    'GDS ID' => $gdsId,
-                    'تأمین‌کننده' => (string) $provider->code,
-                    'وضعیت مپ' => $status,
-                ];
+                $schedules->mappingIssueHandled((int) $schedule->id, $gdsId);
+                continue;
+            }
 
-                if ($gdsId > 0) {
-                    $hotelName = trim((string) ($schedules->accommodationById($gdsId)?->fa_name ?? ''));
-                    if ($hotelName !== '') {
-                        $fields['هتل'] = $hotelName;
-                    }
+            if ($map === null || $grsId === '') {
+                if (!$repairQueued) {
+                    RepairMissingGrsAccommodationMapsJob::dispatch((int) $provider->id)
+                        ->onQueue('grs-hotels');
+                    $repairQueued = true;
                 }
 
-                $alerts->custom(
-                    'ناهماهنگی مپ هتل GRS',
-                    'هتل فعال در صف بروزرسانی نرخ و ظرفیت، مپ معتبر GRS ندارد.',
-                    $fields,
-                );
-
-                // Do not report a fake success, but do move the due time forward
-                // so one bad mapping cannot generate an alert on every dispatcher run.
-                $schedules->mappingIssueHandled(
-                    (int) $schedule->id,
-                    $gdsId
-                );
-
+                // Do not advance the schedule yet. The repair job first attempts to
+                // rebuild the missing property map from the authoritative GRS catalog.
                 continue;
             }
 

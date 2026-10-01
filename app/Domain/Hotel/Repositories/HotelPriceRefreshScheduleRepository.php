@@ -45,6 +45,16 @@ class HotelPriceRefreshScheduleRepository
             ->get();
     }
 
+    /** @return Collection<int, HotelPriceRefreshSchedule> */
+    public function activeForMappingRepair(): Collection
+    {
+        return HotelPriceRefreshSchedule::query()
+            ->where('is_active', true)
+            ->whereNotNull('gds_id')
+            ->orderBy('id')
+            ->get(['id', 'gds_id', 'refresh_interval_minutes']);
+    }
+
     public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
     {
         return HotelPriceRefreshSchedule::query()

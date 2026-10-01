@@ -118,6 +118,29 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
     }
 
     /**
+     * Full catalog used only for repairing broken accommodation mappings.
+     *
+     * @throws RequestException
+     * @throws ConnectionException
+     */
+    public function fetchAllPropertiesForMapping(): array
+    {
+        $this->authenticate();
+
+        $res = $this->client()
+            ->get('/v1/properties', [
+                'page' => 1,
+                'count' => 10000000,
+            ])
+            ->throw()
+            ->json();
+
+        $properties = data_get($res, 'value.properties', []);
+
+        return is_array($properties) ? $properties : [];
+    }
+
+    /**
      * @throws RequestException
      * @throws ConnectionException
      */
@@ -193,9 +216,10 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         ])->throw()->json();
         $rooms = data_get($res, 'value.rooms', []);
         return collect($rooms)->flatMap(function ($room) {
+            $propertyId = (string)data_get($room, 'property_id', '');
             $roomTypeId = (string)data_get($room, 'room_type_id', '');
             $ratePlans  = data_get($room, 'rate_plans', []);
-            return collect($ratePlans)->flatMap(function ($rp) use ($roomTypeId) {
+            return collect($ratePlans)->flatMap(function ($rp) use ($propertyId, $roomTypeId) {
                 $rpId   = (string)data_get($rp, 'id', '');
                 $rpName = data_get($rp, 'name', '');
                 $prices = data_get($rp, 'prices', []);
@@ -213,6 +237,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
                     'room_type_id'   => $roomTypeId,
                     'rate_plan_id'   => $rpId,
                     'rate_plan_name' => $rpName,
+                    'provider_property_id' => $propertyId,
                 ]);
             });
         });

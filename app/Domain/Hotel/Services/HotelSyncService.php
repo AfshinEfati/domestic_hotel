@@ -74,6 +74,23 @@ readonly class HotelSyncService
             return;
         }
 
+        $returnedPropertyIds = $availability
+            ->pluck('provider_property_id')
+            ->filter(fn ($id) => $id !== null && trim((string) $id) !== '')
+            ->map(fn ($id) => trim((string) $id))
+            ->unique()
+            ->values();
+
+        if (
+            $returnedPropertyIds->count() > 1
+            || ($returnedPropertyIds->count() === 1
+                && $returnedPropertyIds->first() !== $providerPropertyId)
+        ) {
+            throw new RuntimeException(
+                'GRS availability response belongs to a different provider property.'
+            );
+        }
+
         $map = $this->accommodationMaps->findForProviderProperty((int) $provider->id, $providerPropertyId);
         if ($map === null) {
             return;
