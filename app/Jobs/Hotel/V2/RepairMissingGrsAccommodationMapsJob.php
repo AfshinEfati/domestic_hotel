@@ -109,6 +109,23 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
 
         $result = $repair->repair($provider, $missing, $catalog);
 
+        foreach ($result['repaired'] as $gdsId => $propertyId) {
+            $map = $schedules->mapForAccommodation(
+                (int) $gdsId,
+                (int) $provider->id
+            );
+
+            if (
+                $map !== null
+                && trim((string) $map->provider_property_id) === trim((string) $propertyId)
+            ) {
+                SyncGrsHotelDetailsJob::dispatch(
+                    (int) $provider->id,
+                    (int) $map->id
+                )->onQueue('grs-details');
+            }
+        }
+
         foreach ($result['unresolved'] as $gdsId => $failure) {
             $scheduleRows = $activeSchedules
                 ->filter(fn ($schedule) => (int) $schedule->gds_id === (int) $gdsId);
@@ -134,7 +151,8 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
             }
         }
 
-        // Repaired schedules stay due. The regular one-minute dispatcher will
-        // pick them up immediately on its next run and build room/rate mappings.
+        // Repaired schedules stay due. The dedicated details job owns hotel,
+        // room and rate-plan synchronization; the next price scan only persists
+        // availability after those mappings are ready.
     }
 }
