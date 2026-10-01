@@ -128,6 +128,7 @@ class GRSAdapter extends BaseAdapter implements ProviderAdapterInterface
         $this->authenticate();
 
         $res = $this->client()
+            ->timeout(45)
             ->get('/v1/properties', [
                 'page' => 1,
                 'count' => 10000000,
