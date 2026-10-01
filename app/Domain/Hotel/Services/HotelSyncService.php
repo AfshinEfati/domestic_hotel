@@ -6,7 +6,6 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
-use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\RatePlanProviderMapRepositoryInterface;
