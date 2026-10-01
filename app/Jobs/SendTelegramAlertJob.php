@@ -19,8 +19,25 @@ final class SendTelegramAlertJob implements ShouldQueue
     public int $tries = 3;
     public int $timeout = 25;
 
-    /** @param array<string, mixed> $notification */
-    public function __construct(public readonly array $notification) {}
+    /** @var array<string, mixed>|null */
+    public ?array $notification = null;
+
+    /**
+     * Kept for jobs that were serialized before the rich-message migration.
+     * New jobs use $notification only.
+     */
+    public ?string $message = null;
+
+    /** @param array<string, mixed>|string $notification */
+    public function __construct(array|string $notification)
+    {
+        if (is_array($notification)) {
+            $this->notification = $notification;
+            return;
+        }
+
+        $this->message = $notification;
+    }
 
     public function backoff(): array
     {
@@ -38,8 +55,35 @@ final class SendTelegramAlertJob implements ShouldQueue
             return;
         }
 
+        $notification = $this->notification;
+
+        if ($notification === null && $this->message !== null) {
+            $notification = [
+                'level' => 'error',
+                'source' => 'domestic_hotel',
+                'title' => 'هشدار سرویس هتل',
+                'message' => $this->message,
+                'fields' => [],
+                'tags' => ['DomesticHotel', 'LegacyAlert'],
+                'actions' => [
+                    [
+                        'text' => 'مشاهده Horizon',
+                        'url' => (string) ($config['horizon_url']
+                            ?? 'https://newhotel.shahansafar.ir/horizon/dashboard'),
+                        'style' => 'primary',
+                    ],
+                ],
+                'silent' => false,
+                'rtl' => true,
+            ];
+        }
+
+        if ($notification === null) {
+            return;
+        }
+
         $payload = array_merge(
-            $this->notification,
+            $notification,
             [
                 'token' => $token,
                 'chat_id' => $chatId,
