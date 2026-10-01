@@ -39,6 +39,25 @@ class AccommodationRepository extends BaseRepository implements AccommodationRep
         return parent::store($data);
     }
 
+    public function existingIds(array $ids): array
+    {
+        $ids = collect($ids)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        return $this->model->newQuery()
+            ->whereIn('id', $ids->all())
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+    }
+
     public function getList(array $filters): iterable
     {
         $query = $this->model->query();
