@@ -83,26 +83,19 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
 
         $enName = $this->nullableString($property['name_en'] ?? null);
 
-        // Existing provider/property mapping is authoritative. Never touch the
-        // canonical Accommodation. Only refresh provider-owned map metadata.
+        // Existing mappings are read-only in catalog recovery. This workflow
+        // only fills missing maps and never rewrites already curated data.
         $existingPropertyMap = AccommodationProviderMap::query()
             ->where('provider_id', $this->providerId)
             ->where('provider_property_id', $propertyId)
             ->first();
 
         if ($existingPropertyMap !== null) {
-            $hotel = Accommodation::query()->find($existingPropertyMap->accommodation_id);
-
-            if ($hotel === null) {
+            if (!Accommodation::query()->whereKey($existingPropertyMap->accommodation_id)->exists()) {
                 throw new RuntimeException(
                     'Existing GRS map points to a missing accommodation.'
                 );
             }
-
-            $existingPropertyMap->update([
-                'fa_name' => $faName,
-                'en_name' => $enName,
-            ]);
 
             return 'mapped';
         }
@@ -154,11 +147,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                     'GRS property was concurrently mapped to a different accommodation.'
                 );
             }
-
-            $propertyMap->update([
-                'fa_name' => $faName,
-                'en_name' => $enName,
-            ]);
 
             return 'mapped';
         }
