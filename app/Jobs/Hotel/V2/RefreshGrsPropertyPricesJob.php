@@ -95,9 +95,41 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             // Each actual HTTP call consumes the provider's existing quota.
             // Persist provider-returned dates even when outside the requested window.
-            $service->crawlAvailabilityForProperty($provider, $adapter, $grsId, $from, $to);
+            $mappingsReady = $service->crawlAvailabilityForProperty(
+                $provider,
+                $adapter,
+                $grsId,
+                $from,
+                $to
+            );
+
             if ($adapter->supplementalError !== null) {
                 throw $adapter->supplementalError;
+            }
+
+            if (!$mappingsReady) {
+                $currentMap = $schedules->mapForAccommodation(
+                    $this->gdsId,
+                    (int) $provider->id
+                );
+
+                if (
+                    $currentMap !== null
+                    && trim((string) $currentMap->provider_property_id) !== ''
+                ) {
+                    SyncGrsHotelDetailsJob::dispatch(
+                        (int) $provider->id,
+                        (int) $currentMap->id
+                    )->onQueue('grs-details');
+                } else {
+                    RepairMissingGrsAccommodationMapsJob::dispatch(
+                        (int) $provider->id
+                    )->onQueue('grs-hotels');
+                }
+
+                // Mapping repair belongs to the catalog/details flows. Do not mark
+                // this price refresh successful and do not fail it as an app error.
+                return;
             }
 
             // Empty/partial provider data is a normal provider outcome. Persist whatever
