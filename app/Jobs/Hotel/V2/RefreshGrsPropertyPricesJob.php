@@ -145,7 +145,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $schedules->persisted($this->scheduleId, $this->gdsId);
         } catch (GrsApiQuotaExceeded $e) {
             // Quota is already exhausted; do not advance the SSP due time.
-            $this->release(min(60, max(1, $e->retryAfterSeconds)));
+            $this->release(max(1, $e->retryAfterSeconds));
         } catch (RequestException $e) {
             $status = $e->response?->status();
 
@@ -166,7 +166,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
                 // Provider throttling is temporary. Keep the schedule due and retry
                 // this same job after the shared GRS cooldown instead of failing it.
-                $this->release(min(60, max(1, $retryAfter)));
+                $this->release(max(1, $retryAfter));
 
                 return;
             }
