@@ -73,11 +73,28 @@ class GrsPriceRefreshScheduleService
         do {
             $batch = $this->schedules->due($capacity, $offset);
 
+            $existingAccommodationIds = collect(
+                $this->accommodations->existingIds(
+                    $batch
+                        ->pluck('gds_id')
+                        ->map(fn ($id): int => (int) $id)
+                        ->filter(fn (int $id): bool => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all()
+                )
+            )->flip();
+
             foreach ($batch as $schedule) {
                 $gdsId = (int) $schedule->gds_id;
-                $map = $gdsId > 0
-                    ? $this->mapForAccommodation($gdsId, (int) $provider->id)
-                    : null;
+
+                // Shared SSP may contain stale/orphan hotel IDs. They are not
+                // actionable in Domestic Hotel and must be ignored silently.
+                if ($gdsId <= 0 || !$existingAccommodationIds->has($gdsId)) {
+                    continue;
+                }
+
+                $map = $this->mapForAccommodation($gdsId, (int) $provider->id);
 
                 if ($map?->is_disabled === true) {
                     continue;
@@ -99,7 +116,30 @@ class GrsPriceRefreshScheduleService
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function activeForMappingRepair(): Collection
     {
-        return $this->schedules->activeForMappingRepair();
+        $schedules = $this->schedules->activeForMappingRepair();
+
+        if ($schedules->isEmpty()) {
+            return $schedules;
+        }
+
+        $existingAccommodationIds = collect(
+            $this->accommodations->existingIds(
+                $schedules
+                    ->pluck('gds_id')
+                    ->map(fn ($id): int => (int) $id)
+                    ->filter(fn (int $id): bool => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all()
+            )
+        )->flip();
+
+        return $schedules
+            ->filter(
+                fn (HotelPriceRefreshSchedule $schedule): bool =>
+                    $existingAccommodationIds->has((int) $schedule->gds_id)
+            )
+            ->values();
     }
 
     public function active(int $id, int $gdsId): ?HotelPriceRefreshSchedule
