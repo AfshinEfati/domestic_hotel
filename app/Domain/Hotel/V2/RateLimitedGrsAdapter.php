@@ -99,7 +99,16 @@ class RateLimitedGrsAdapter extends GRSAdapter
         }
         $retryAfter = $e->response->header('Retry-After');
         $configuredSeconds = GrsRefreshSettings::from($this->provider)['api_cooldown_minutes'] * 60;
-        $seconds = is_numeric($retryAfter) ? max($configuredSeconds, (int) $retryAfter) : $configuredSeconds;
+
+        // A provider 429 must slow this request down, but availability refreshes
+        // should resume quickly. Never hold the whole GRS flow for more than
+        // one minute, even when the provider sends a larger Retry-After value.
+        $requestedSeconds = is_numeric($retryAfter)
+            ? max(1, (int) $retryAfter)
+            : max(1, $configuredSeconds);
+
+        $seconds = min(60, $requestedSeconds);
+
         Cache::put(self::COOLDOWN, time() + $seconds, $seconds);
     }
 }
