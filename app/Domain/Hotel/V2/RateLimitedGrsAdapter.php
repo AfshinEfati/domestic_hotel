@@ -15,6 +15,9 @@ class RateLimitedGrsAdapter extends GRSAdapter
 {
     private const LIMITER = 'grs-availability';
     private const COOLDOWN = 'grs-v2-api-cooldown';
+    private const MAX_REQUESTS_PER_MINUTE = 10;
+    private const RATE_WINDOW_SECONDS = 60;
+    private const PROVIDER_429_COOLDOWN_SECONDS = 120;
 
     public ?Collection $lastAvailability = null;
     public ?\Throwable $supplementalError = null;
@@ -77,18 +80,19 @@ class RateLimitedGrsAdapter extends GRSAdapter
 
     private function acquireQuota(): void
     {
-        $max = min(10, max(1, (int) data_get($this->provider->config, 'availability_rate_limit.max_requests', 10)));
-        $seconds = max(60, (int) data_get($this->provider->config, 'availability_rate_limit.window_minutes', 1) * 60);
-
-        Cache::lock('grs-v2-api-quota-lock', 10)->block(5, function () use ($max, $seconds): void {
+        Cache::lock('grs-v2-api-quota-lock', 10)->block(5, function (): void {
             $cooldown = self::cooldownSeconds();
             if ($cooldown > 0) {
                 throw new GrsApiQuotaExceeded($cooldown);
             }
-            if (RateLimiter::tooManyAttempts(self::LIMITER, $max)) {
-                throw new GrsApiQuotaExceeded(max(1, RateLimiter::availableIn(self::LIMITER)));
+
+            if (RateLimiter::tooManyAttempts(self::LIMITER, self::MAX_REQUESTS_PER_MINUTE)) {
+                throw new GrsApiQuotaExceeded(
+                    max(1, RateLimiter::availableIn(self::LIMITER))
+                );
             }
-            RateLimiter::hit(self::LIMITER, $seconds);
+
+            RateLimiter::hit(self::LIMITER, self::RATE_WINDOW_SECONDS);
         });
     }
 
@@ -97,17 +101,11 @@ class RateLimitedGrsAdapter extends GRSAdapter
         if ($e->response?->status() !== 429) {
             return;
         }
-        $retryAfter = $e->response->header('Retry-After');
-        $configuredSeconds = GrsRefreshSettings::from($this->provider)['api_cooldown_minutes'] * 60;
-
-        // A provider 429 must slow this request down, but availability refreshes
-        // should resume quickly. Never hold the whole GRS flow for more than
-        // one minute, even when the provider sends a larger Retry-After value.
-        $requestedSeconds = is_numeric($retryAfter)
-            ? max(1, (int) $retryAfter)
-            : max(1, $configuredSeconds);
-
-        $seconds = min(60, $requestedSeconds);
+        // This provider does not return a usable Retry-After value. A real
+        // provider-side 429 pauses all GRS availability traffic for exactly
+        // two minutes. During the cooldown acquireQuota() rejects locally,
+        // therefore no HTTP request is sent to the provider.
+        $seconds = self::PROVIDER_429_COOLDOWN_SECONDS;
 
         Cache::put(self::COOLDOWN, time() + $seconds, $seconds);
     }
