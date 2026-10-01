@@ -9,8 +9,6 @@ use Throwable;
 
 final class TelegramAlertService
 {
-    public function __construct(private readonly TelegramAlertFormatter $formatter) {}
-
     public function providerFailure(
         string $provider,
         string $operation,
@@ -38,12 +36,15 @@ final class TelegramAlertService
             'تأمین‌کننده' => $provider,
             'عملیات' => $operation,
         ];
+
         if ($httpStatus !== null) {
             $fields['HTTP'] = $httpStatus;
         }
+
         if ($errorCode !== null && preg_match('/^[A-Za-z0-9_.:-]{1,48}$/D', $errorCode)) {
             $fields['کد خطا'] = $errorCode;
         }
+
         if ($reason !== null && trim($reason) !== '') {
             $fields['علت'] = $reason;
         }
@@ -53,11 +54,13 @@ final class TelegramAlertService
             : "HTTP: {$httpStatus}\nType: {$kind}";
 
         $this->enqueue(
-            'خطای تأمین‌کننده',
-            $description,
-            $fields,
-            $technical,
-            implode('|', [$provider, $operation, $kind, $httpStatus, $errorCode, $reason]),
+            level: 'error',
+            title: 'خطای تأمین‌کننده',
+            description: $description,
+            fields: $fields,
+            details: $technical,
+            tags: ['DomesticHotel', 'ProviderError', strtoupper($provider)],
+            fingerprint: implode('|', [$provider, $operation, $kind, $httpStatus, $errorCode, $reason]),
         );
     }
 
@@ -76,7 +79,6 @@ final class TelegramAlertService
         array $context = [],
     ): void {
         $fields = [
-            'دسته' => 'Provider rate limit',
             'تأمین‌کننده' => $provider,
             'عملیات' => $operation,
             'HTTP' => 429,
@@ -96,17 +98,19 @@ final class TelegramAlertService
             $fields['علت تأمین‌کننده'] = $reason;
         }
 
-        $snippet = 'HTTP: 429';
+        $details = 'HTTP: 429';
         if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
-            $snippet .= "\nRetry after: {$retryAfterSeconds}s";
+            $details .= "\nRetry after: {$retryAfterSeconds}s";
         }
 
         $this->enqueue(
-            'محدودیت تعداد درخواست تأمین‌کننده',
-            'تعداد درخواست‌ها از حد مجاز تأمین‌کننده عبور کرده است؛ درخواست با تأخیر دوباره ارسال می‌شود.',
-            $fields,
-            $snippet,
-            implode('|', ['rate-limit', $provider, $operation]),
+            level: 'warning',
+            title: 'محدودیت تعداد درخواست تأمین‌کننده',
+            description: 'تعداد درخواست‌ها از حد مجاز تأمین‌کننده عبور کرده است؛ درخواست با تأخیر دوباره ارسال می‌شود.',
+            fields: $fields,
+            details: $details,
+            tags: ['DomesticHotel', 'RateLimit', strtoupper($provider)],
+            fingerprint: implode('|', ['rate-limit', $provider, $operation]),
         );
     }
 
@@ -132,7 +136,6 @@ final class TelegramAlertService
         };
 
         $fields = [
-            'دسته' => 'Provider availability data',
             'تأمین‌کننده' => $provider,
             'هتل' => $hotelName,
             'شناسه هتل' => $accommodationId,
@@ -159,11 +162,13 @@ final class TelegramAlertService
         }
 
         $this->enqueue(
-            'هشدار نرخ و ظرفیت تأمین‌کننده',
-            $description,
-            $fields,
-            $httpStatus === null ? null : "HTTP: {$httpStatus}\nIssue: {$issue}",
-            implode('|', [
+            level: 'warning',
+            title: 'هشدار نرخ و ظرفیت تأمین‌کننده',
+            description: $description,
+            fields: $fields,
+            details: $httpStatus === null ? null : "HTTP: {$httpStatus}\nIssue: {$issue}",
+            tags: ['DomesticHotel', 'Availability', strtoupper($provider)],
+            fingerprint: implode('|', [
                 'availability',
                 $provider,
                 $accommodationId,
@@ -182,7 +187,8 @@ final class TelegramAlertService
     public function internalFailure(Throwable $exception): void
     {
         $class = $exception::class;
-        $location = basename($exception->getFile()) . ':' . $exception->getLine();
+        $location = basename($exception->getFile()).':'.$exception->getLine();
+
         $category = $exception instanceof QueryException
             ? 'Database'
             : ($exception instanceof \TypeError || $exception instanceof \Error
@@ -194,22 +200,23 @@ final class TelegramAlertService
             : $exception->getMessage();
 
         $this->enqueue(
-            'خطای داخلی سرویس',
-            'یک خطای واقعی در اجرای Domestic Hotel رخ داده است.',
-            [
+            level: 'error',
+            title: 'خطای داخلی سرویس',
+            description: 'یک خطای واقعی در اجرای Domestic Hotel رخ داده است.',
+            fields: [
                 'دسته' => $category,
                 'نوع خطا' => $class,
                 'علت' => $message,
                 'محل' => $location,
             ],
-            "Exception: {$class}\nMessage: {$message}\nLocation: {$location}",
-            "internal|{$class}|{$location}|".$message,
+            details: "Exception: {$class}\nMessage: {$message}\nLocation: {$location}",
+            tags: ['DomesticHotel', 'InternalError'],
+            fingerprint: "internal|{$class}|{$location}|".$message,
         );
     }
 
     /**
-     * Explicit extension point for sanitized application alerts. When the proxy
-     * supports HTML parse mode the optional snippet renders as a code block.
+     * Explicit extension point for sanitized application alerts.
      *
      * @param array<string, string|int> $fields
      */
@@ -218,22 +225,31 @@ final class TelegramAlertService
         string $description,
         array $fields = [],
         ?string $technicalSnippet = null,
+        string $level = 'warning',
+        array $tags = ['DomesticHotel', 'SystemAlert'],
     ): void {
         $this->enqueue(
-            $title,
-            $description,
-            $fields,
-            $technicalSnippet,
-            'custom|' . sha1($title . '|' . $description . '|' . json_encode($fields)),
+            level: $level,
+            title: $title,
+            description: $description,
+            fields: $fields,
+            details: $technicalSnippet,
+            tags: $tags,
+            fingerprint: 'custom|'.sha1($title.'|'.$description.'|'.json_encode($fields)),
         );
     }
 
-    /** @param array<string, string|int> $fields */
+    /**
+     * @param array<string, string|int> $fields
+     * @param array<int, string> $tags
+     */
     private function enqueue(
+        string $level,
         string $title,
         string $description,
         array $fields,
-        ?string $snippet,
+        ?string $details,
+        array $tags,
         string $fingerprint,
     ): void {
         $config = config('services.telegram_alert', []);
@@ -246,7 +262,8 @@ final class TelegramAlertService
             return;
         }
 
-        $key = 'domestic_hotel:telegram:' . sha1($fingerprint);
+        $key = 'domestic_hotel:telegram:'.sha1($fingerprint);
+
         try {
             if (!Cache::add($key, true, 300)) {
                 return;
@@ -255,10 +272,30 @@ final class TelegramAlertService
             // Cache downtime must not block best-effort alert delivery.
         }
 
+        $notification = [
+            'level' => $level,
+            'source' => 'domestic_hotel',
+            'title' => $title,
+            'message' => $description,
+            'fields' => $fields,
+            'details' => $details,
+            'details_title' => 'جزئیات فنی',
+            'tags' => $tags,
+            'actions' => [
+                [
+                    'text' => 'مشاهده Horizon',
+                    'url' => (string) ($config['horizon_url'] ?? 'https://newhotel.shahansafar.ir/horizon/dashboard'),
+                    'style' => 'primary',
+                ],
+            ],
+            'silent' => false,
+            'rtl' => true,
+        ];
+
         try {
-            SendTelegramAlertJob::dispatch(
-                $this->formatter->format($title, $description, $fields, $snippet)
-            )->onQueue('default')->afterCommit();
+            SendTelegramAlertJob::dispatch($notification)
+                ->onQueue('default')
+                ->afterCommit();
         } catch (Throwable) {
             // Alerting must never change the outcome of provider calls.
         }

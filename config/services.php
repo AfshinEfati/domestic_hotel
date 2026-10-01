@@ -36,11 +36,16 @@ return [
 
     // Secrets stay in the server's untracked .env, never in Git history.
     'telegram_alert' => [
-        'url' => 'https://ehotelo.com/api/telegram/send-message',
+        'url' => env(
+            'TELEGRAM_ALERT_URL',
+            'https://ehotelo.com/api/v2/telegram/rich-message'
+        ),
         'token' => env('TELEGRAM_ALERT_TOKEN'),
         'chat_id' => env('TELEGRAM_ALERT_CHAT_ID'),
-        // Set to parse_mode only if the company proxy forwards it to Telegram.
-        'parse_mode_field' => env('TELEGRAM_ALERT_PARSE_MODE_FIELD', 'parse_mode'),
+        'horizon_url' => env(
+            'TELEGRAM_ALERT_HORIZON_URL',
+            'https://newhotel.shahansafar.ir/horizon/dashboard'
+        ),
     ],
 
 ];

@@ -6,9 +6,11 @@ use App\Exceptions\TelegramAlertDeliveryException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 final class SendTelegramAlertJob implements ShouldQueue
 {
@@ -17,7 +19,8 @@ final class SendTelegramAlertJob implements ShouldQueue
     public int $tries = 3;
     public int $timeout = 25;
 
-    public function __construct(public readonly string $message) {}
+    /** @param array<string, mixed> $notification */
+    public function __construct(public readonly array $notification) {}
 
     public function backoff(): array
     {
@@ -27,57 +30,58 @@ final class SendTelegramAlertJob implements ShouldQueue
     public function handle(): void
     {
         $config = config('services.telegram_alert', []);
-        if (empty($config['token']) || empty($config['chat_id'])) {
+        $url = trim((string) ($config['url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        $chatId = trim((string) ($config['chat_id'] ?? ''));
+
+        if ($url === '' || $token === '' || $chatId === '') {
             return;
         }
 
-        $payload = [
-            'token' => $config['token'],
-            'chatId' => $config['chat_id'],
-            'message' => $this->message,
-        ];
+        $payload = array_merge(
+            $this->notification,
+            [
+                'token' => $token,
+                'chat_id' => $chatId,
+            ]
+        );
 
-        // HTML styling requires the company proxy to forward this parameter.
-        $field = (string) ($config['parse_mode_field'] ?? '');
-        if ($field !== '') {
-            $payload[$field] = 'HTML';
-        }
-
-        // This proxy request is never tagged as a provider; delivery cannot recurse.
-        $send = static fn (array $data) => Http::asJson()
-            ->connectTimeout(3)
-            ->timeout(8)
-            ->post((string) ($config['url'] ?? ''), $data);
-
-        $response = $send($payload);
-
-        // If the company's published four-field schema rejects parse_mode,
-        // still deliver a readable plain-text alert instead of losing it.
-        if ($field !== '' && in_array($response->status(), [400, 422], true)) {
-            unset($payload[$field]);
-            $plain = str_replace(
-                ['<pre>', '</pre>', '<br>', '<br/>', '<br />'],
-                ["\n", "\n", "\n", "\n", "\n"],
-                $this->message
+        try {
+            // The gateway URL never contains the Telegram bot token.
+            $response = Http::asJson()
+                ->acceptJson()
+                ->connectTimeout(3)
+                ->timeout(12)
+                ->post($url, $payload);
+        } catch (ConnectionException) {
+            throw new TelegramAlertDeliveryException(
+                'Unable to connect to the company Telegram rich-message gateway.'
             );
-            $payload['message'] = html_entity_decode(
-                strip_tags($plain),
-                ENT_QUOTES | ENT_HTML5,
-                'UTF-8'
+        } catch (Throwable $e) {
+            throw new TelegramAlertDeliveryException(
+                'Telegram rich-message delivery failed before receiving a gateway response.',
+                previous: $e
             );
-            $response = $send($payload);
         }
-
-        // The Laravel HTTP client does not throw on unsuccessful HTTP responses by default.
-        $response->throw();
 
         $body = $response->json();
-        if (is_array($body) && (
-            ($body['ok'] ?? null) === false
-            || ($body['success'] ?? null) === false
-        )) {
-            throw new TelegramAlertDeliveryException('Company Telegram proxy rejected the message.');
+
+        if (!$response->successful()) {
+            throw new TelegramAlertDeliveryException(
+                'Company Telegram rich-message gateway returned HTTP '.$response->status().'.'
+            );
+        }
+
+        if (
+            is_array($body)
+            && (
+                ($body['success'] ?? null) === false
+                || ($body['ok'] ?? null) === false
+            )
+        ) {
+            throw new TelegramAlertDeliveryException(
+                'Company Telegram rich-message gateway rejected the alert.'
+            );
         }
     }
-
 }
