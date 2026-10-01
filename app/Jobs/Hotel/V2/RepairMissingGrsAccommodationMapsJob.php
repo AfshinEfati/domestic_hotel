@@ -93,7 +93,7 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
         if ($catalog === []) {
             $alerts->custom(
                 'ترمیم مپ GRS انجام نشد',
-                'Catalog هتل‌های GRS خالی بود و هیچ مپی تغییر نکرد.',
+                'Catalog هتل‌های GRS خالی بود؛ هیچ مپی تغییر نکرد و Job بعداً دوباره تلاش می‌کند.',
                 [
                     'تأمین‌کننده' => 'grs',
                     'تعداد هتل بدون مپ' => count($missing),
@@ -102,6 +102,8 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
                 tags: ['DomesticHotel', 'MapRepair', 'GRS'],
             );
 
+            $seconds = GrsRefreshSettings::from($provider)['api_cooldown_minutes'] * 60;
+            $this->release(max(60, $seconds));
             return;
         }
 
