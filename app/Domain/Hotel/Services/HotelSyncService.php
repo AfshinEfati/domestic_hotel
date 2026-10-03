@@ -3,6 +3,7 @@
 namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Domain\Hotel\Exceptions\InvalidProviderAvailabilityDataException;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Repositories\AccommodationRepository;
 use App\Domain\Hotel\Repositories\RoomCalendarRepository;
@@ -16,6 +17,9 @@ use RuntimeException;
 
 readonly class HotelSyncService
 {
+    private const UNSIGNED_INT_MAX = 4_294_967_295;
+    private const UNSIGNED_SMALL_INT_MAX = 65_535;
+
     public function __construct(
         private CityRepository $cityRepo,
         private AccommodationRepository $accRepo,
@@ -65,6 +69,8 @@ readonly class HotelSyncService
      * Returns false when the hotel/room/rate-plan mappings need to be repaired
      * by the dedicated GRS details workflow. This price path never creates
      * Accommodation, RoomType or RatePlan records.
+     *
+     * @throws InvalidProviderAvailabilityDataException
      */
     public function crawlAvailabilityForProperty(
         Provider $provider,
@@ -76,6 +82,14 @@ readonly class HotelSyncService
         $availability = $adapter->fetchAvailability($providerPropertyId, $from, $to);
         if ($availability->isEmpty()) {
             return true;
+        }
+
+        // Validate the complete provider payload before any calendar write. A single
+        // unsafe row rejects this whole response so we never persist a partial view
+        // of a provider response whose numeric data is known to be corrupted.
+        $issues = $this->availabilityDataIssues($availability);
+        if ($issues !== []) {
+            throw new InvalidProviderAvailabilityDataException($issues);
         }
 
         $returnedPropertyIds = $availability
@@ -171,6 +185,118 @@ readonly class HotelSyncService
         return true;
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function availabilityDataIssues(Collection $availability): array
+    {
+        $issues = [];
+        $limits = [
+            'rack_rate' => self::UNSIGNED_INT_MAX,
+            'daily_rate' => self::UNSIGNED_INT_MAX,
+            'grs_rate' => self::UNSIGNED_INT_MAX,
+            'min_stay' => self::UNSIGNED_SMALL_INT_MAX,
+            'max_stay' => self::UNSIGNED_SMALL_INT_MAX,
+            'inventory' => self::UNSIGNED_SMALL_INT_MAX,
+        ];
+
+        foreach ($availability->values() as $index => $row) {
+            if (!is_array($row)) {
+                $issues[] = [
+                    'row' => $index,
+                    'field' => '_row',
+                    'value' => get_debug_type($row),
+                    'expected' => 'array',
+                ];
+                continue;
+            }
+
+            $day = $row['day'] ?? null;
+            if (!$this->isValidCalendarDay($day)) {
+                $issues[] = $this->issueContext(
+                    $row,
+                    $index,
+                    'day',
+                    $day,
+                    'valid YYYY-MM-DD date'
+                );
+            }
+
+            foreach ($limits as $field => $max) {
+                $value = $row[$field] ?? null;
+                if (!$this->isNullableUnsignedIntegerWithin($value, $max)) {
+                    $issues[] = $this->issueContext(
+                        $row,
+                        $index,
+                        $field,
+                        $value,
+                        "null or integer between 0 and {$max}"
+                    );
+                }
+            }
+        }
+
+        return $issues;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function issueContext(
+        array $row,
+        int $index,
+        string $field,
+        mixed $value,
+        string $expected,
+    ): array {
+        return [
+            'row' => $index,
+            'day' => $row['day'] ?? null,
+            'provider_property_id' => $row['provider_property_id'] ?? null,
+            'room_type_id' => $row['room_type_id'] ?? null,
+            'rate_plan_id' => $row['rate_plan_id'] ?? null,
+            'field' => $field,
+            'value' => $value,
+            'expected' => $expected,
+        ];
+    }
+
+    private function isNullableUnsignedIntegerWithin(mixed $value, int $max): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        if (is_int($value)) {
+            return $value >= 0 && $value <= $max;
+        }
+
+        if (!is_string($value) || preg_match('/^\d+$/D', $value) !== 1) {
+            return false;
+        }
+
+        $normalized = ltrim($value, '0');
+        $normalized = $normalized === '' ? '0' : $normalized;
+        $maxString = (string) $max;
+
+        return strlen($normalized) < strlen($maxString)
+            || (strlen($normalized) === strlen($maxString)
+                && strcmp($normalized, $maxString) <= 0);
+    }
+
+    private function isValidCalendarDay(mixed $value): bool
+    {
+        if (!is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) !== 1) {
+            return false;
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->format('Y-m-d') === $value;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     private function missingProviderIds(Collection $availability, string $key, Collection $existingMaps): Collection
     {
         return $this->extractProviderIds($availability, $key)
@@ -213,16 +339,7 @@ readonly class HotelSyncService
     {
         return $rows
             ->map(function (array $row) {
-                $day = $row['day'] ?? null;
-                if (!$day) {
-                    return null;
-                }
-
-                try {
-                    $day = CarbonImmutable::parse($day)->format('Y-m-d');
-                } catch (\Throwable) {
-                    return null;
-                }
+                $day = CarbonImmutable::parse((string) $row['day'])->format('Y-m-d');
 
                 return [
                     'day' => $day,
@@ -237,18 +354,15 @@ readonly class HotelSyncService
                     'inventory' => $this->toNullableInt($row['inventory'] ?? null),
                 ];
             })
-            ->filter()
             ->values();
     }
 
     private function toNullableInt(mixed $value): ?int
     {
-        if (is_int($value)) {
-            return $value;
+        if ($value === null) {
+            return null;
         }
-        if (is_numeric($value)) {
-            return (int) $value;
-        }
-        return null;
+
+        return (int) $value;
     }
 }
