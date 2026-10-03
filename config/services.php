@@ -40,9 +40,6 @@ return [
             'TELEGRAM_ALERT_URL',
             'https://ehotelo.com/api/v2/telegram/rich-message'
         ),
-        // Optional company-gateway endpoint for multipart Telegram documents.
-        // Keep empty until the notification service exposes this contract.
-        'file_url' => env('TELEGRAM_ALERT_FILE_URL'),
         'token' => env('TELEGRAM_ALERT_TOKEN'),
         'chat_id' => env('TELEGRAM_ALERT_CHAT_ID'),
         'horizon_url' => env(
