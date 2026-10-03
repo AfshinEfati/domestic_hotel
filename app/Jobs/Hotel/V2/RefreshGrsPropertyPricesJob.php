@@ -2,10 +2,12 @@
 
 namespace App\Jobs\Hotel\V2;
 
+use App\Domain\Hotel\Exceptions\InvalidProviderAvailabilityDataException;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
+use App\Services\Alerts\ProviderDiagnosticAlertService;
 use App\Services\Alerts\TelegramAlertService;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -45,10 +47,12 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
     public function handle(
         HotelSyncService $service,
         GrsPriceRefreshScheduleService $schedules,
+        ProviderDiagnosticAlertService $diagnostics,
         ?TelegramAlertService $alerts = null,
     ): void {
         $alerts ??= app(TelegramAlertService::class);
         $provider = null;
+        $adapter = null;
         $grsId = '';
         $hotelName = 'هتل #' . $this->gdsId;
         $from = null;
@@ -143,6 +147,25 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 $started
             );
             $schedules->persisted($this->scheduleId, $this->gdsId);
+        } catch (InvalidProviderAvailabilityDataException $e) {
+            // Provider data corruption is not an internal application failure.
+            // The complete response was rejected before any calendar write.
+            $diagnostics->invalidGrsAvailability(
+                $hotelName,
+                $this->gdsId,
+                $grsId,
+                $e->issues,
+                $adapter instanceof RateLimitedGrsAdapter
+                    ? $adapter->lastAvailabilityExchange
+                    : null,
+            );
+
+            $schedules->providerAnomalyHandled(
+                $this->scheduleId,
+                $this->gdsId
+            );
+
+            return;
         } catch (GrsApiQuotaExceeded $e) {
             // Quota is already exhausted; do not advance the SSP due time.
             $this->release(max(1, $e->retryAfterSeconds));
@@ -296,5 +319,4 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
         return $message !== '' ? $message : null;
     }
-
 }
