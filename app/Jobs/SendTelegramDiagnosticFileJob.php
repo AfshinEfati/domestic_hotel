@@ -34,7 +34,7 @@ final class SendTelegramDiagnosticFileJob implements ShouldQueue
     public function handle(): void
     {
         $config = config('services.telegram_alert', []);
-        $url = trim((string) ($config['file_url'] ?? ''));
+        $url = trim((string) ($config['url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
         $chatId = trim((string) ($config['chat_id'] ?? ''));
 
@@ -43,8 +43,9 @@ final class SendTelegramDiagnosticFileJob implements ShouldQueue
         }
 
         try {
-            // File delivery still goes through the company Telegram gateway.
-            // The bot token is a multipart field and never appears in the URL.
+            // The existing rich-message endpoint is also the single company
+            // gateway entry point for diagnostic documents. When a document
+            // is attached, the gateway handles it as a Telegram file message.
             $response = Http::attach(
                 'document',
                 $this->content,
@@ -61,7 +62,7 @@ final class SendTelegramDiagnosticFileJob implements ShouldQueue
                 ]);
         } catch (ConnectionException) {
             throw new TelegramAlertDeliveryException(
-                'Unable to connect to the company Telegram diagnostic-file gateway.'
+                'Unable to connect to the company Telegram rich-message gateway.'
             );
         } catch (Throwable $e) {
             throw new TelegramAlertDeliveryException(
@@ -74,7 +75,7 @@ final class SendTelegramDiagnosticFileJob implements ShouldQueue
 
         if (!$response->successful()) {
             throw new TelegramAlertDeliveryException(
-                'Company Telegram diagnostic-file gateway returned HTTP '.$response->status().'.'
+                'Company Telegram rich-message gateway returned HTTP '.$response->status().'.'
             );
         }
 
@@ -86,7 +87,7 @@ final class SendTelegramDiagnosticFileJob implements ShouldQueue
             )
         ) {
             throw new TelegramAlertDeliveryException(
-                'Company Telegram diagnostic-file gateway rejected the document.'
+                'Company Telegram rich-message gateway rejected the diagnostic document.'
             );
         }
     }
