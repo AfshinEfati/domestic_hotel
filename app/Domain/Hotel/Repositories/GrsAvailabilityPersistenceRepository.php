@@ -67,20 +67,45 @@ class GrsAvailabilityPersistenceRepository
             ->where('provider_id', $providerId)
             ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_room_type_id', array_keys($roomProviderIds))
-            ->pluck('room_type_id', 'provider_room_type_id')->all();
+            ->pluck('room_type_id', 'provider_room_type_id')
+            ->all();
+
         $rateIds = RatePlanProviderMap::query()
             ->where('provider_id', $providerId)
             ->where('accommodation_provider_map_id', $accommodationProviderMapId)
             ->whereIn('provider_rate_plan_id', array_keys($rateProviderIds))
-            ->pluck('rate_plan_id', 'provider_rate_plan_id')->all();
+            ->pluck('rate_plan_id', 'provider_rate_plan_id')
+            ->all();
+
         if (count($roomIds) !== count($roomProviderIds) || count($rateIds) !== count($rateProviderIds)) {
             throw new RuntimeException('GRS room/rate-plan maps remain incomplete; refresh not marked successful.');
         }
 
-        if (RoomType::query()->where('accommodation_id', $accommodationId)
-                ->whereIn('id', array_values($roomIds))->count() !== count($roomIds) ||
-            RatePlan::query()->where('accommodation_id', $accommodationId)
-                ->whereIn('id', array_values($rateIds))->count() !== count($rateIds)) {
+        // Several provider room/rate IDs may legitimately point to the same local
+        // RoomType/RatePlan. Validate the unique local targets, not the number of
+        // provider mappings, otherwise a valid many-to-one mapping is reported as
+        // belonging to another accommodation.
+        $uniqueRoomIds = array_values(array_unique(array_map(
+            static fn ($id): int => (int) $id,
+            array_values($roomIds)
+        )));
+
+        $uniqueRateIds = array_values(array_unique(array_map(
+            static fn ($id): int => (int) $id,
+            array_values($rateIds)
+        )));
+
+        $validRoomCount = RoomType::query()
+            ->where('accommodation_id', $accommodationId)
+            ->whereIn('id', $uniqueRoomIds)
+            ->count();
+
+        $validRateCount = RatePlan::query()
+            ->where('accommodation_id', $accommodationId)
+            ->whereIn('id', $uniqueRateIds)
+            ->count();
+
+        if ($validRoomCount !== count($uniqueRoomIds) || $validRateCount !== count($uniqueRateIds)) {
             throw new RuntimeException('GRS room/rate-plan mappings belong to a different accommodation.');
         }
 
@@ -90,6 +115,7 @@ class GrsAvailabilityPersistenceRepository
             $expected[$roomIds[$roomProviderId].'|'.$rateIds[$rateProviderId].'|'.$day] = true;
             $days[$day] = true;
         }
+
         $persisted = RoomCalendar::query()
             ->where('provider_id', $providerId)
             ->where('accommodation_id', $accommodationId)
@@ -97,11 +123,17 @@ class GrsAvailabilityPersistenceRepository
             ->where('updated_at', '>=', $started)
             ->whereIn('day', array_keys($days))
             ->get(['room_type_id', 'rate_plan_id', 'day']);
+
         foreach ($persisted as $calendar) {
-            unset($expected[$calendar->room_type_id.'|'.$calendar->rate_plan_id.'|'.substr((string) $calendar->day, 0, 10)]);
+            unset($expected[
+                $calendar->room_type_id.'|'.$calendar->rate_plan_id.'|'.substr((string) $calendar->day, 0, 10)
+            ]);
         }
+
         if ($expected !== []) {
-            throw new RuntimeException('GRS price/stock rows not fully saved: '.count($expected).' calendar dimensions missing.');
+            throw new RuntimeException(
+                'GRS price/stock rows not fully saved: '.count($expected).' calendar dimensions missing.'
+            );
         }
 
         return count($rows);
