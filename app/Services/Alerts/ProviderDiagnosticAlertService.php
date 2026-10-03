@@ -69,7 +69,7 @@ final class ProviderDiagnosticAlertService
     ): void {
         $config = config('services.telegram_alert', []);
         if (
-            trim((string) ($config['file_url'] ?? '')) === ''
+            trim((string) ($config['url'] ?? '')) === ''
             || trim((string) ($config['token'] ?? '')) === ''
             || trim((string) ($config['chat_id'] ?? '')) === ''
             || config('queue.default') === 'sync'
