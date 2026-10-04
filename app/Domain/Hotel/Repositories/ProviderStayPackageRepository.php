@@ -7,9 +7,10 @@ use App\Models\ProviderStayPackage;
 final class ProviderStayPackageRepository
 {
     /**
-     * A provider without package rows has no package restriction. When packages exist,
-     * the selected stay must be continuously covered by one or more adjacent/overlapping
-     * provider package windows without a gap.
+     * A provider without active package rows has no package restriction. When active
+     * packages exist, the selected stay must be continuously covered by one or more
+     * adjacent/overlapping package windows without a gap. Historical inactive package
+     * rows never constrain a new sale.
      */
     public function allowsStay(
         int $providerId,
@@ -20,6 +21,7 @@ final class ProviderStayPackageRepository
     ): bool {
         $base = ProviderStayPackage::query()
             ->where('provider_id', $providerId)
+            ->where('is_active', true)
             ->whereHas('accommodationProviderMap', fn ($query) => $query->where('accommodation_id', $accommodationId))
             ->whereHas('roomTypeProviderMap', fn ($query) => $query->where('room_type_id', $roomTypeId));
 
