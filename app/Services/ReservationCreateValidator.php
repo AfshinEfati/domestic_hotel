@@ -36,8 +36,12 @@ readonly class ReservationCreateValidator
     public function validate(array $data, ?int $reservationId = null): array
     {
         $failure = static fn (int $status, string $error): array => [
-            'status' => $status, 'error' => $error, 'total' => null, 'rooms' => [],
+            'status' => $status,
+            'error' => $error,
+            'total' => null,
+            'rooms' => [],
         ];
+
         $checkIn = CarbonImmutable::parse($data['check_in']);
         $checkOut = CarbonImmutable::parse($data['check_out']);
         $days = [];
@@ -51,6 +55,7 @@ readonly class ReservationCreateValidator
 
         $accommodationId = (int) $data['hotel']['accommodation_id'];
         $selectedCalendarsByRoom = [];
+
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
             $byDate = [];
             foreach ($roomSelection['calendar'] as $night) {
@@ -70,14 +75,37 @@ readonly class ReservationCreateValidator
 
             $first = $byDate[$days[0]];
             foreach ($byDate as $calendar) {
-                if ((int) $calendar->provider_id !== (int) $first->provider_id
+                if (
+                    (int) $calendar->provider_id !== (int) $first->provider_id
                     || (int) $calendar->room_type_id !== (int) $first->room_type_id
-                    || (int) $calendar->rate_plan_id !== (int) $first->rate_plan_id) {
+                    || (int) $calendar->rate_plan_id !== (int) $first->rate_plan_id
+                ) {
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendars for a room must share one offer across every night.');
                 }
             }
 
             $selectedCalendarsByRoom[$index] = $byDate;
+        }
+
+        // Provider state is only an outbound-integration switch. If any selected
+        // supplier cannot be contacted, do not perform provider price validation.
+        // The ticket has already been created from the local offer and must continue
+        // to READY_FOR_PAYMENT so procurement can be handled by the manual workflow.
+        foreach ($selectedCalendarsByRoom as $byDate) {
+            /** @var RoomCalendar $first */
+            $first = $byDate[$days[0]];
+            $provider = $this->providers->find((int) $first->provider_id);
+            if ($provider === null) {
+                return $failure(ReservationStatus::CHECKED, 'Selected provider no longer exists.');
+            }
+            if (!$provider->is_active || !$provider->is_online) {
+                return [
+                    'status' => ReservationStatus::READY_FOR_PAYMENT,
+                    'error' => null,
+                    'total' => null,
+                    'rooms' => [],
+                ];
+            }
         }
 
         $results = [];
@@ -93,16 +121,16 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::CHECKED, 'Selected provider no longer exists.');
             }
 
+            if (!$calendar->provider_property_id || !$calendar->provider_room_type_id || !$calendar->provider_rate_plan_id) {
+                return $failure(ReservationStatus::CHECKED, 'Selected calendar has incomplete provider mappings.');
+            }
+
             $roomType = $calendar->roomType;
             if (!$roomType || $roomType->out_of_service || (int) $roomType->accommodation_id !== $accommodationId) {
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
-            $ratePlan = $calendar->ratePlan;
-            $hasForeignGuest = collect($roomSelection['guests'] ?? [])->contains(
-                static fn (array $guest): bool => isset($guest['country_id']) && (int) $guest['country_id'] !== 1,
-            );
-            if ($hasForeignGuest && (!$ratePlan || !$ratePlan->is_foreign_guest)) {
+            if (!$this->ratePlanAllowsGuests($calendar, $roomSelection['guests'] ?? [])) {
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected rate plan does not allow foreign guests.');
             }
 
@@ -116,72 +144,54 @@ readonly class ReservationCreateValidator
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected stay does not match the provider package dates.');
             }
 
-            $canValidateOnline = $provider->is_active && $provider->is_online;
-            if ($canValidateOnline && (!$calendar->provider_property_id || !$calendar->provider_room_type_id || !$calendar->provider_rate_plan_id)) {
-                return $failure(ReservationStatus::CHECKED, 'Selected calendar has incomplete provider mappings.');
-            }
-
-            if ($canValidateOnline) {
-                $key = $provider->id . ':' . $calendar->provider_property_id;
-                if (!array_key_exists($key, $cachedAvailability)) {
-                    try {
-                        /** @var ProviderAdapterInterface $adapter */
-                        $adapter = app()->makeWith(ProviderAdapterInterface::class, ['provider' => $provider]);
-                        $adapter->withRequestLogContext(
-                            reservationId: $reservationId,
-                            handlerClass: self::class,
-                            handlerMethod: __FUNCTION__,
-                            force: true,
-                        );
-                        $cachedAvailability[$key] = $adapter->fetchAvailability(
-                            (string) $calendar->provider_property_id,
-                            $checkIn,
-                            $checkOut
-                        );
-                    } catch (Throwable $exception) {
-                        report($exception);
-                        return $failure(ReservationStatus::CHECKED, 'Provider price validation failed.');
-                    }
+            $key = $provider->id . ':' . $calendar->provider_property_id;
+            if (!array_key_exists($key, $cachedAvailability)) {
+                try {
+                    /** @var ProviderAdapterInterface $adapter */
+                    $adapter = app()->makeWith(ProviderAdapterInterface::class, ['provider' => $provider]);
+                    $adapter->withRequestLogContext(
+                        reservationId: $reservationId,
+                        handlerClass: self::class,
+                        handlerMethod: __FUNCTION__,
+                        force: true,
+                    );
+                    $cachedAvailability[$key] = $adapter->fetchAvailability(
+                        (string) $calendar->provider_property_id,
+                        $checkIn,
+                        $checkOut,
+                    );
+                } catch (Throwable $exception) {
+                    report($exception);
+                    return $failure(ReservationStatus::CHECKED, 'Provider price validation failed.');
                 }
-
-                $rows = $cachedAvailability[$key]->filter(static fn (array $row): bool =>
-                    (string) ($row['room_type_id'] ?? '') === (string) $calendar->provider_room_type_id
-                    && (string) ($row['rate_plan_id'] ?? '') === (string) $calendar->provider_rate_plan_id
-                )->keyBy('day');
-            } else {
-                // Supplier state never stops the Domestic Hotel GDS. Use the already
-                // selected local snapshots and continue into the manual purchase flow.
-                $rows = collect($byDate)->mapWithKeys(static function (RoomCalendar $item): array {
-                    $day = $item->day->toDateString();
-                    return [$day => [
-                        'day' => $day,
-                        'inventory' => $item->inventory,
-                        'rack_rate' => $item->rack_rate,
-                        'daily_rate' => $item->daily_rate,
-                        'grs_rate' => $item->grs_rate,
-                        'child_daily_rate' => $item->child_daily_rate,
-                        'infant_daily_rate' => $item->infant_daily_rate,
-                        'extend_bed_daily_rate' => $item->extend_bed_daily_rate,
-                        'min_stay' => $item->min_stay,
-                        'max_stay' => $item->max_stay,
-                        'cta' => $item->cta,
-                        'ctd' => $item->ctd,
-                        'closed' => $item->closed,
-                    ]];
-                });
             }
+
+            $rows = $cachedAvailability[$key]->filter(static fn (array $row): bool =>
+                (string) ($row['room_type_id'] ?? '') === (string) $calendar->provider_room_type_id
+                && (string) ($row['rate_plan_id'] ?? '') === (string) $calendar->provider_rate_plan_id
+            )->keyBy('day');
 
             $live = collect();
             foreach ($days as $offset => $day) {
                 $row = $rows->get($day);
                 $inventory = $row['inventory'] ?? null;
-                if (!$row || ($row['closed'] ?? false) || $inventory === null || (int) $inventory < 1
-                    || !array_key_exists('daily_rate', $row) || $row['daily_rate'] === null) {
+                if (
+                    !$row
+                    || ($row['closed'] ?? false)
+                    || $inventory === null
+                    || (int) $inventory < 1
+                    || !array_key_exists('daily_rate', $row)
+                    || $row['daily_rate'] === null
+                ) {
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room has no capacity or rate for the full stay.');
                 }
-                if (($offset === 0 && ($row['cta'] ?? false)) || ($offset === $nights - 1 && ($row['ctd'] ?? false))
+
+                if (
+                    ($offset === 0 && ($row['cta'] ?? false))
+                    || ($offset === $nights - 1 && ($row['ctd'] ?? false))
                     || (($row['min_stay'] ?? null) !== null && $nights < (int) $row['min_stay'])
-                    || (($row['max_stay'] ?? null) !== null && $nights > (int) $row['max_stay'])) {
+                    || (($row['max_stay'] ?? null) !== null && $nights > (int) $row['max_stay'])
+                ) {
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected stay is restricted by provider rules.');
                 }
 
@@ -218,6 +228,7 @@ readonly class ReservationCreateValidator
             if ($nightly === null) {
                 return $failure(ReservationStatus::CHECKED, 'Cannot calculate the selected room price.');
             }
+
             $results[$index] = [
                 'price' => array_sum(array_column($nightly, 'price')),
                 'provider_id' => (int) $provider->id,
@@ -233,10 +244,17 @@ readonly class ReservationCreateValidator
         ];
     }
 
+    /**
+     * Validate local hotel/room/guest compatibility before the reservation rows are
+     * inserted. This validation never depends on supplier operational state.
+     *
+     * @throws ValidationException
+     */
     public function validateGuestSelection(array $data): array
     {
         $errors = [];
         $checkIn = CarbonImmutable::parse($data['check_in'])->startOfDay();
+        $checkOut = CarbonImmutable::parse($data['check_out'])->startOfDay();
         $accommodationId = (int) $data['hotel']['accommodation_id'];
 
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
@@ -267,6 +285,22 @@ readonly class ReservationCreateValidator
                 continue;
             }
 
+            if (!$this->ratePlanAllowsGuests($calendar, $roomSelection['guests'] ?? [])) {
+                $errors[$roomKey][] = 'Selected rate plan does not allow foreign guests.';
+                continue;
+            }
+
+            if (!$this->stayPackages->allowsStay(
+                (int) $calendar->provider_id,
+                $accommodationId,
+                (int) $room->id,
+                $checkIn->toDateString(),
+                $checkOut->toDateString(),
+            )) {
+                $errors[$roomKey][] = 'Selected stay does not match the provider package dates.';
+                continue;
+            }
+
             $policy = $calendar->accommodation?->childPolicy;
             if ($policy && !$policy->status) {
                 $policy = null;
@@ -294,12 +328,28 @@ readonly class ReservationCreateValidator
         return $data;
     }
 
+    private function ratePlanAllowsGuests(RoomCalendar $calendar, array $guests): bool
+    {
+        $hasForeignGuest = collect($guests)->contains(static function (array $guest): bool {
+            $countryCode = strtoupper(trim((string) ($guest['country_code'] ?? '')));
+            if ($countryCode !== '') {
+                return $countryCode !== 'IRN';
+            }
+
+            // `countries.id = 1` is the canonical Iran row in this project. This is
+            // only a fallback for internal callers that do not carry country_code.
+            return isset($guest['country_id']) && (int) $guest['country_id'] !== 1;
+        });
+
+        return !$hasForeignGuest || (bool) ($calendar->ratePlan?->is_foreign_guest ?? false);
+    }
+
     /** @return array<string,mixed>|null */
     private function buildGuestPlan(
         $room,
         array $guests,
         ?HotelChildPolicy $policy,
-        CarbonImmutable $checkIn
+        CarbonImmutable $checkIn,
     ): ?array {
         $capacity = (int) $room->capacity;
         $extraCapacity = max(0, (int) $room->extra_capacity);
@@ -329,7 +379,10 @@ readonly class ReservationCreateValidator
             }
 
             $kind = $infantEligible ? 'infant' : 'child';
-            $guestTypes[$index] = $kind === 'infant' ? ReservationGuestType::INFANT : ReservationGuestType::CHILD;
+            $guestTypes[$index] = $kind === 'infant'
+                ? ReservationGuestType::INFANT
+                : ReservationGuestType::CHILD;
+
             $service = $guest['service'] ?? ReservationGuestService::NO_SERVICE;
             if ($service === ReservationGuestService::WITH_SERVICE) {
                 $withServiceGuestCount++;
@@ -436,6 +489,7 @@ readonly class ReservationCreateValidator
         if (!$birthday) {
             return null;
         }
+
         $birth = CarbonImmutable::createFromFormat('Y-m-d', $birthday);
         if (!$birth instanceof CarbonImmutable) {
             return null;
@@ -461,7 +515,7 @@ readonly class ReservationCreateValidator
         array $guests,
         array $days,
         Collection $live,
-        CarbonImmutable $checkIn
+        CarbonImmutable $checkIn,
     ): ?array {
         $capacity = (int) $room->capacity;
         if ($capacity < 1) {
@@ -495,13 +549,16 @@ readonly class ReservationCreateValidator
                 $providerStayBase = (int) $calendar->getAttribute('stay_total_rate');
             }
 
+            // Explicit supplier passenger prices are authoritative, including zero.
+            // Only null means the provider did not quote that passenger type and the
+            // canonical hotel policy must calculate the fallback amount.
             $childRate = $calendar->child_daily_rate !== null
                 ? (int) $calendar->child_daily_rate
                 : $this->policyRate(
                     $base,
                     $capacity,
                     $policy?->child_pricing_type ?? 'adult',
-                    $policy?->child_pricing_value
+                    $policy?->child_pricing_value,
                 );
             $infantRate = $calendar->infant_daily_rate !== null
                 ? (int) $calendar->infant_daily_rate
@@ -509,7 +566,7 @@ readonly class ReservationCreateValidator
                     $base,
                     $capacity,
                     $policy?->infant_pricing_type ?? 'adult',
-                    $policy?->infant_pricing_value
+                    $policy?->infant_pricing_value,
                 );
 
             if (
@@ -536,10 +593,9 @@ readonly class ReservationCreateValidator
             $nightly[] = ['date' => $day, 'price' => $total];
         }
 
-        // Calendar prices are indicative for SnappTrip. When an adapter supplies a
-        // definitive full-stay base rate from the provider availability endpoint,
-        // reconcile only the base-room difference into the final night. Other providers
-        // simply omit this optional attribute and retain their nightly calculation.
+        // SnappTrip calendar prices are indicative. The adapter may attach the
+        // definitive full-stay base rate from the live availability endpoint. Keep
+        // provider-neutral pricing code by reconciling only that optional base delta.
         if ($providerStayBase !== null && $nightly !== []) {
             $delta = $providerStayBase - $calendarBaseTotal;
             $last = array_key_last($nightly);
