@@ -14,6 +14,9 @@ class RoomTypeProviderMap extends Model
         'provider_id',
         'accommodation_provider_map_id',
         'provider_room_type_id',
+        'provider_adult_capacity',
+        'provider_child_capacity',
+        'provider_extra_capacity',
         'fa_name',
         'en_name',
         'created_at',
@@ -26,12 +29,14 @@ class RoomTypeProviderMap extends Model
         'provider_id' => 'integer',
         'accommodation_provider_map_id' => 'integer',
         'provider_room_type_id' => 'string',
+        'provider_adult_capacity' => 'integer',
+        'provider_child_capacity' => 'integer',
+        'provider_extra_capacity' => 'integer',
         'fa_name' => 'string',
         'en_name' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
-
 
     protected static function booted(): void
     {
