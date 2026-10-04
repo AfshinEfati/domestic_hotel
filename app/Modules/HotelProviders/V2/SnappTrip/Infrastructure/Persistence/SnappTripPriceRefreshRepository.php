@@ -68,6 +68,14 @@ final class SnappTripPriceRefreshRepository
             ->get();
     }
 
+    public function findForProvider(Provider $provider, int $stateId): ?ProviderPriceRefreshState
+    {
+        return ProviderPriceRefreshState::query()
+            ->whereKey($stateId)
+            ->where('provider_id', $provider->id)
+            ->first();
+    }
+
     public function mapForState(Provider $provider, ProviderPriceRefreshState $state): ?AccommodationProviderMap
     {
         return AccommodationProviderMap::query()
