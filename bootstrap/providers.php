@@ -8,6 +8,7 @@ return [
     App\Providers\SystemSettingServiceProvider::class,
     App\Providers\HotelPricingServiceProvider::class,
     App\Providers\HotelServiceProvider::class,
+    App\Modules\HotelProviders\V2\SnappTrip\SnappTripServiceProvider::class,
     App\Providers\ReservationServiceProvider::class,
     App\Providers\RoomTypeNameServiceProvider::class,
     App\Providers\RuleServiceProvider::class,
