@@ -14,6 +14,7 @@ class AccommodationTypeResolver
         'اقامتگاه سنتی' => 1,
         'traditional residence' => 1,
         'traditional accommodation' => 1,
+        'traditionalhouse' => 1,
         'خانه مسافر' => 2,
         'traveler house' => 2,
         'traveller house' => 2,
@@ -37,6 +38,8 @@ class AccommodationTypeResolver
         'privilege inn' => 8,
         'مهمانسرا' => 9,
         'inn' => 9,
+        'guesthouse' => 9,
+        'guest house' => 9,
         'هتل بوتیک' => 10,
         'boutique' => 10,
         'boutique hotel' => 10,
@@ -54,6 +57,7 @@ class AccommodationTypeResolver
         'residential unit' => 15,
         'پانسیون' => 16,
         'pension' => 16,
+        'pansion' => 16,
     ];
 
     /** @var array<int, int|null> */
@@ -82,7 +86,6 @@ class AccommodationTypeResolver
         $id = $this->canonicalId($providerType, $providerEnglishType);
         if ($id !== null) {
             if (!array_key_exists($id, $this->resolvedCanonicalIds)) {
-                // Resolve the seeded ID from the database; never create canonical types.
                 $this->resolvedCanonicalIds[$id] = $this->types->find($id)?->id;
             }
             if ($this->resolvedCanonicalIds[$id] !== null) {
