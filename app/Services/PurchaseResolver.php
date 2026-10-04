@@ -49,8 +49,6 @@ class PurchaseResolver implements PurchaseResolverInterface
             throw new InvalidArgumentException('Selected provider was not found.');
         }
 
-        // Direct-hotel providers are accounting/procurement entities only. They belong
-        // to exactly one accommodation and must never be reused for another hotel.
         $isDirectHotelProvider = (int) $provider->provider_type === ProviderType::HOTEL_DIRECT;
 
         if (
@@ -72,9 +70,10 @@ class PurchaseResolver implements PurchaseResolverInterface
             throw new InvalidArgumentException('Selected provider is not mapped to the reservation hotel.');
         }
 
-        // Provider availability takes priority over credit and manual purchase rules.
+        // Provider operational state controls outbound procurement only. It never
+        // invalidates the local reservation or historical provider data.
         if (
-            (int) $provider->provider_type === ProviderType::HOTEL_DIRECT
+            $isDirectHotelProvider
             || !$provider->is_active
             || !$provider->is_online
         ) {
@@ -94,8 +93,20 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
-        // Rules apply to this concrete provider purchase amount, not blindly to the
-        // whole reservation. A global rule (all nullable dimensions) matches every purchase.
+        // A provider can be fully online for catalog/availability while procurement
+        // remains explicitly manual. The strict false check preserves legacy providers
+        // that do not define this capability flag at all.
+        if (data_get($provider->config, 'purchase.online_enabled') === false) {
+            return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
+                reservationHotelId: $hotel->id,
+                providerId: $providerId,
+                purchaseMode: PurchaseMethod::OFFLINE,
+                manualReason: PurchaseManualReason::PROVIDER_MANUAL_ONLY,
+                manualReasonText: 'خرید آفلاین شد؛ خرید آنلاین این تأمین‌کننده در GDS فعال نیست.',
+            );
+        }
+
         $orderAmount ??= (int) $reservation->sale_amount;
 
         $rule = $this->manualRuleRepository->findMatching(
@@ -117,8 +128,6 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
-        // Credit matters only when no explicit manual rule already forced offline.
-        // All values here are IRR.
         $credit = $this->creditBalanceRepository->findByProviderId($providerId);
 
         if ($credit === null || $credit->synced_at === null) {
@@ -147,7 +156,6 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
-        // This is only eligibility: no reservation purchase or provider API call happens here.
         return new PurchaseResolutionDTO(
             reservationId: (int) $reservation->id,
             reservationHotelId: $hotel->id,
@@ -156,11 +164,6 @@ class PurchaseResolver implements PurchaseResolverInterface
         );
     }
 
-    /**
-     * Call when the purchase decision is committed, not for a preview. Each call that
-     * selects offline purchase records a reason; purchase orchestration must make its
-     * own command idempotent before invoking this method on retried requests.
-     */
     public function resolveAndRecord(int $reservationId, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
     {
         $resolution = $this->resolve($reservationId, $providerId, $orderAmount);
