@@ -70,18 +70,23 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             }
 
             $map = $schedules->mapForAccommodation($this->gdsId, (int) $provider->id);
-            $grsId = trim((string) ($map?->provider_property_id ?? ''));
+
+            // A price/availability worker must never discover or repair a missing
+            // accommodation/provider mapping. If the map disappeared after dispatch,
+            // stop silently before constructing the adapter or making provider HTTP.
+            if (
+                $map === null
+                || $map->is_disabled === true
+                || trim((string) $map->provider_property_id) === ''
+            ) {
+                return;
+            }
+
+            $grsId = trim((string) $map->provider_property_id);
             $accommodation = $schedules->accommodationById($this->gdsId);
             $hotelName = trim((string) ($accommodation?->fa_name ?? ''))
                 ?: trim((string) ($accommodation?->en_name ?? ''))
                 ?: $hotelName;
-            if ($map?->is_disabled === true) {
-                return;
-            }
-
-            if ($grsId === '') {
-                throw new RuntimeException('GRS provider property ID missing from local accommodation map.');
-            }
 
             $from = CarbonImmutable::today('Asia/Tehran');
             $to = $from->addDays($this->days);
@@ -119,20 +124,17 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
                 if (
                     $currentMap !== null
+                    && $currentMap->is_disabled !== true
                     && trim((string) $currentMap->provider_property_id) !== ''
                 ) {
                     SyncGrsHotelDetailsJob::dispatch(
                         (int) $provider->id,
                         (int) $currentMap->id
                     )->onQueue('grs-details');
-                } else {
-                    RepairMissingGrsAccommodationMapsJob::dispatch(
-                        (int) $provider->id
-                    )->onQueue('grs-hotels');
                 }
 
-                // Mapping repair belongs to the catalog/details flows. Do not mark
-                // this price refresh successful and do not fail it as an app error.
+                // Room/rate-plan mapping repair belongs to the details flow. A missing
+                // accommodation/provider map is not repaired from price refresh.
                 return;
             }
 

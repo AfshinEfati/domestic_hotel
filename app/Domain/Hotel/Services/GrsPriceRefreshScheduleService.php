@@ -4,6 +4,7 @@ namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
+use App\Domain\Hotel\V2\GrsApiQuota;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
@@ -66,7 +67,7 @@ class GrsPriceRefreshScheduleService
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function due(Provider $provider): Collection
     {
-        $capacity = min(10, max(1, (int) data_get($provider->config, 'availability_rate_limit.max_requests', 10)));
+        $capacity = GrsApiQuota::maxRequests($provider);
         $selected = collect();
         $offset = 0;
 
@@ -96,7 +97,14 @@ class GrsPriceRefreshScheduleService
 
                 $map = $this->mapForAccommodation($gdsId, (int) $provider->id);
 
-                if ($map?->is_disabled === true) {
+                // Price/availability refresh is allowed only for a hotel that is
+                // explicitly mapped to this provider. Missing/blank/disabled maps
+                // are not repair candidates here and must not consume refresh capacity.
+                if (
+                    $map === null
+                    || $map->is_disabled === true
+                    || trim((string) $map->provider_property_id) === ''
+                ) {
                     continue;
                 }
 

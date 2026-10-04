@@ -3,8 +3,10 @@
 namespace App\Jobs\Hotel\V2;
 
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
-use App\Exceptions\ProviderDataException;
+use App\Domain\Hotel\V2\GrsApiQuota;
+use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
 use App\Domain\Hotel\V2\GrsHotelDetailsClient;
+use App\Exceptions\ProviderDataException;
 use App\Services\HotelChildPolicyTextParser;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
@@ -12,13 +14,12 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
 
-/** No availability, price schedule, room calendar or shared GRS API quota. */
+/** GRS details sync shares the same provider-wide background API quota as availability. */
 class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -53,29 +54,16 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
             || !$provider->is_active || !$provider->is_online) {
             throw new RuntimeException('GRS details provider is missing, inactive, offline or changed.');
         }
+
         $map = $repository->mappedHotel($this->providerId, $this->mapId);
         if ($map === null || $map->accommodation === null) {
             throw new RuntimeException('GRS details mapping or local hotel no longer exists.');
         }
 
-        // Separate from the availability quota. Six-second dispatch spacing
-        // plus this independent counter prevent catch-up bursts after downtime.
         try {
-            $wait = Cache::store('redis')->lock('grs-v2-details-request-lock', 10)
-                ->block(5, static function (): int {
-                    $key = 'grs-v2-details-requests';
-                    if (RateLimiter::tooManyAttempts($key, 10)) {
-                        return max(1, RateLimiter::availableIn($key));
-                    }
-                    RateLimiter::hit($key, 60);
-                    return 0;
-                });
-        } catch (LockTimeoutException) {
-            $this->release(10);
-            return;
-        }
-        if ($wait > 0) {
-            $this->release($wait + 1);
+            GrsApiQuota::acquire($provider);
+        } catch (GrsApiQuotaExceeded $e) {
+            $this->release(max(1, $e->retryAfterSeconds));
             return;
         }
 
@@ -85,6 +73,14 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
             $details = $client->fetch($provider, $propertyId);
         } catch (ProviderDataException) {
             return;
+        } catch (RequestException $e) {
+            if ($e->response?->status() === 429) {
+                GrsApiQuota::registerProvider429();
+                $this->release(max(1, GrsApiQuota::cooldownSeconds()));
+                return;
+            }
+
+            throw $e;
         }
 
         try {
@@ -95,6 +91,5 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
             $this->release(10);
             return;
         }
-
     }
 }

@@ -7,18 +7,10 @@ use Closure;
 use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\RateLimiter;
 
-/** Both availability and the necessary supplemental room request use one API quota. */
+/** Availability traffic participates in the shared provider-wide GRS background quota. */
 class RateLimitedGrsAdapter extends GRSAdapter
 {
-    private const LIMITER = 'grs-availability';
-    private const COOLDOWN = 'grs-v2-api-cooldown';
-    private const MAX_REQUESTS_PER_MINUTE = 10;
-    private const RATE_WINDOW_SECONDS = 60;
-    private const PROVIDER_429_COOLDOWN_SECONDS = 120;
-
     public ?Collection $lastAvailability = null;
     public ?\Throwable $supplementalError = null;
 
@@ -142,25 +134,12 @@ class RateLimitedGrsAdapter extends GRSAdapter
 
     public static function cooldownSeconds(): int
     {
-        return max(0, (int) Cache::get(self::COOLDOWN, 0) - time());
+        return GrsApiQuota::cooldownSeconds();
     }
 
     private function acquireQuota(): void
     {
-        Cache::lock('grs-v2-api-quota-lock', 10)->block(5, function (): void {
-            $cooldown = self::cooldownSeconds();
-            if ($cooldown > 0) {
-                throw new GrsApiQuotaExceeded($cooldown);
-            }
-
-            if (RateLimiter::tooManyAttempts(self::LIMITER, self::MAX_REQUESTS_PER_MINUTE)) {
-                throw new GrsApiQuotaExceeded(
-                    max(1, RateLimiter::availableIn(self::LIMITER))
-                );
-            }
-
-            RateLimiter::hit(self::LIMITER, self::RATE_WINDOW_SECONDS);
-        });
+        GrsApiQuota::acquire($this->provider);
     }
 
     private function handleHttpError(RequestException $e): void
@@ -169,12 +148,9 @@ class RateLimitedGrsAdapter extends GRSAdapter
             return;
         }
 
-        // This provider does not return a usable Retry-After value. A real
-        // provider-side 429 pauses all GRS availability traffic for exactly
-        // two minutes. During the cooldown acquireQuota() rejects locally,
-        // therefore no HTTP request is sent to the provider.
-        $seconds = self::PROVIDER_429_COOLDOWN_SECONDS;
-
-        Cache::put(self::COOLDOWN, time() + $seconds, $seconds);
+        // GRS does not provide a usable Retry-After value. A provider-side 429
+        // pauses every background GRS request participating in the shared gate
+        // for five minutes; no provider HTTP is sent while the cooldown is active.
+        GrsApiQuota::registerProvider429();
     }
 }

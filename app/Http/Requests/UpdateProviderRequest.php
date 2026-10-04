@@ -20,7 +20,7 @@ class UpdateProviderRequest extends FormRequest
             'code' => 'sometimes|nullable',
             'config' => 'sometimes|nullable|array',
             'config.availability_rate_limit' => 'sometimes|nullable|array',
-            'config.availability_rate_limit.max_requests' => 'sometimes|nullable|integer|min:1|max:10',
+            'config.availability_rate_limit.max_requests' => 'sometimes|nullable|integer|min:1',
             'config.availability_rate_limit.window_minutes' => 'sometimes|nullable|integer|min:1',
             'config.price_refresh' => 'sometimes|nullable|array',
             'config.price_refresh.default_days' => 'sometimes|integer|min:1|max:3650',
