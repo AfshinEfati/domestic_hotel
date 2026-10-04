@@ -15,6 +15,8 @@ class ProviderStayPackage extends Model
         'title',
         'check_in',
         'check_out',
+        'is_active',
+        'last_seen_at',
         'package_key',
     ];
 
@@ -24,6 +26,8 @@ class ProviderStayPackage extends Model
         'room_type_provider_map_id' => 'integer',
         'check_in' => 'date',
         'check_out' => 'date',
+        'is_active' => 'boolean',
+        'last_seen_at' => 'datetime',
     ];
 
     public function accommodationProviderMap(): BelongsTo
