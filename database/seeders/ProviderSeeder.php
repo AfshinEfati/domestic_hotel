@@ -8,6 +8,7 @@ use App\Domain\Hotel\Providers\PartoAdapter;
 use App\Domain\Hotel\Providers\SnappTripAdapter;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Illuminate\Database\Seeder;
 
 class ProviderSeeder extends Seeder
@@ -82,18 +83,38 @@ class ProviderSeeder extends Seeder
             ]
         );
 
-        Provider::query()->firstOrCreate(
-            ['code' => 'snap'],
+        $snappDefaults = SnappTripSettings::defaults();
+        $snapp = Provider::query()->firstOrCreate(
+            ['code' => SnappTripSettings::PROVIDER_CODE],
             [
                 'fa_name' => 'اسنپ تریپ',
                 'en_name' => 'SnappTrip',
                 'class' => SnappTripAdapter::class,
-                'config' => [
-                    'base_url' => 'https://b2bapiv2.snapptrip.com/',
-                    'token' => '9EcxDBS7gmfvh5HaHDtjjxQhEVRHaPJP6hegUJ5FBerz8Cam3Xt6X97k8rf5GDGL',
-                ],
+                'config' => $snappDefaults,
                 'is_online' => false,
             ]
         );
+
+        // Existing installations may already have a real SnappTrip key stored under
+        // the legacy token key. Move it to api_key in the database without ever
+        // reintroducing the credential into source control. Fresh installs receive
+        // only the explicit api_key_snapptrip placeholder.
+        $snappConfig = is_array($snapp->config) ? $snapp->config : [];
+        if (
+            (!isset($snappConfig['api_key']) || trim((string) $snappConfig['api_key']) === '')
+            && isset($snappConfig['token'])
+            && trim((string) $snappConfig['token']) !== ''
+        ) {
+            $snappConfig['api_key'] = $snappConfig['token'];
+        }
+        unset($snappConfig['token']);
+
+        $snappMerged = array_replace_recursive($snappDefaults, $snappConfig);
+        if ($snappMerged !== ($snapp->config ?? [])) {
+            $snapp->forceFill([
+                'class' => SnappTripAdapter::class,
+                'config' => $snappMerged,
+            ])->save();
+        }
     }
 }
