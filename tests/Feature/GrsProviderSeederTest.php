@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Database\Seeders\ProviderSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -11,7 +12,7 @@ use Tests\TestCase;
 
 class GrsProviderSeederTest extends TestCase
 {
-    public function test_existing_provider_seeder_cleans_old_grs_keys_without_overriding_admin_settings(): void
+    public function test_existing_provider_seeder_preserves_admin_state_and_migrates_snapptrip_config(): void
     {
         Schema::dropIfExists('providers');
         Schema::create('providers', function (Blueprint $table): void {
@@ -51,7 +52,11 @@ class GrsProviderSeederTest extends TestCase
         ]);
         Provider::query()->create([
             'fa_name' => 'Snap', 'code' => 'snap',
-            'config' => ['token' => 'snap-admin-token'],
+            'config' => [
+                'token' => 'snap-admin-token',
+                'rate_limit' => ['max_requests' => 77],
+                'purchase' => ['online_enabled' => false],
+            ],
             'is_active' => false, 'is_online' => true,
         ]);
 
@@ -82,8 +87,16 @@ class GrsProviderSeederTest extends TestCase
         $this->assertTrue($parto->is_online);
 
         $snap = Provider::query()->where('code', 'snap')->firstOrFail();
-        $this->assertSame(['token' => 'snap-admin-token'], $snap->config);
+        $this->assertSame('snap-admin-token', data_get($snap->config, 'api_key'));
+        $this->assertArrayNotHasKey('token', $snap->config);
+        $this->assertSame(77, data_get($snap->config, 'rate_limit.max_requests'));
+        $this->assertSame(1, data_get($snap->config, 'rate_limit.window_minutes'));
+        $this->assertTrue(data_get($snap->config, 'static_sync.scheduler_enabled'));
+        $this->assertTrue(data_get($snap->config, 'price_refresh.scheduler_enabled'));
+        $this->assertFalse(data_get($snap->config, 'purchase.online_enabled'));
         $this->assertFalse($snap->is_active);
         $this->assertTrue($snap->is_online);
+
+        $this->assertSame('api_key_snapptrip', SnappTripSettings::API_KEY_PLACEHOLDER);
     }
 }
