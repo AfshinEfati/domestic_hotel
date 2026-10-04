@@ -27,4 +27,27 @@ class SnappTripMoneyTest extends TestCase
         $this->expectException(RuntimeException::class);
         SnappTripMoney::toInternal(-1);
     }
+
+    public function test_nested_raw_provider_payload_converts_only_monetary_fields(): void
+    {
+        $normalized = SnappTripMoney::normalizeProviderPayload([
+            'filter' => ['min_price' => 100],
+            'items' => [[
+                'room' => [
+                    'price' => 1_000_000,
+                    'child_price' => 0,
+                    'extra_foreigner_price' => 200_000,
+                    'discount_percent' => 10,
+                ],
+            ]],
+        ]);
+
+        // Unknown fields are intentionally untouched; only documented provider money
+        // keys cross the module boundary through the automatic normalizer.
+        $this->assertSame(100, $normalized['filter']['min_price']);
+        $this->assertSame(10_000_000, $normalized['items'][0]['room']['price']);
+        $this->assertSame(0, $normalized['items'][0]['room']['child_price']);
+        $this->assertSame(2_000_000, $normalized['items'][0]['room']['extra_foreigner_price']);
+        $this->assertSame(10, $normalized['items'][0]['room']['discount_percent']);
+    }
 }
