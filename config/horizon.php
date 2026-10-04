@@ -3,83 +3,24 @@
 use Illuminate\Support\Str;
 
 return [
-
-    /*
-    |--------------------------------------------------------------------------
-    | Horizon Domain
-    |--------------------------------------------------------------------------
-    |
-    | This is the subdomain where Horizon will be accessible from. If this
-    | setting is null, Horizon will reside under the same domain as the
-    | application. Otherwise, this value will serve as the subdomain.
-    |
-    */
-
     'domain' => env('HORIZON_DOMAIN'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Horizon Path
-    |--------------------------------------------------------------------------
-    |
-    | This is the URI path where Horizon will be accessible from. If this
-    | setting is null, Horizon will reside under the same domain as the
-    | application. Otherwise, this value will serve as the subdomain.
-    */
-
     'path' => env('HORIZON_PATH', 'horizon'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Horizon Redis Connection
-    |--------------------------------------------------------------------------
-    |
-    | This is the name of the Redis connection where Horizon will store the
-    | meta information required for it to function. It includes the list
-    | of supervisors, failed jobs, job metrics, and other information.
-    */
-
     'use' => 'default',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Horizon Redis Prefix
-    |--------------------------------------------------------------------------
-    |
-    | This prefix is used for all Horizon data in Redis.
-    */
-
     'prefix' => env(
         'HORIZON_PREFIX',
         Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
     ),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Horizon Route Middleware
-    |--------------------------------------------------------------------------
-    */
-
     'middleware' => ['web'],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Queue Wait Time Thresholds
-    |--------------------------------------------------------------------------
-    */
 
     'waits' => [
         'redis:default' => 60,
         'redis:grs-hotels' => 60,
         'redis:grs-prices' => 60,
         'redis:grs-details' => 60,
+        'redis:snapptrip-static' => 60,
+        'redis:snapptrip-prices' => 60,
+        'redis:snapptrip-operations' => 60,
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Job Trimming Times
-    |--------------------------------------------------------------------------
-    */
 
     'trim' => [
         'recent' => 60,
@@ -90,21 +31,7 @@ return [
         'monitored' => 10080,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Silenced Jobs
-    |--------------------------------------------------------------------------
-    */
-
-    'silenced' => [
-        // App\Jobs\ExampleJob::class,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Metrics
-    |--------------------------------------------------------------------------
-    */
+    'silenced' => [],
 
     'metrics' => [
         'trim_snapshots' => [
@@ -113,27 +40,8 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Fast Termination
-    |--------------------------------------------------------------------------
-    */
-
     'fast_termination' => false,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Memory Limit (MB)
-    |--------------------------------------------------------------------------
-    */
-
     'memory_limit' => 64,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Queue Worker Configuration
-    |--------------------------------------------------------------------------
-    */
 
     'defaults' => [
         'supervisor-1' => [
@@ -163,6 +71,20 @@ return [
             'timeout' => 80,
             'nice' => 0,
         ],
+        'supervisor-snapptrip' => [
+            'connection' => 'redis',
+            'queue' => ['snapptrip-static', 'snapptrip-prices', 'snapptrip-operations'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => env('HORIZON_JOB_TRIES', 2),
+            'timeout' => 100,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -177,6 +99,11 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-snapptrip' => [
+                'maxProcesses' => 6,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -185,6 +112,9 @@ return [
             ],
             'supervisor-grs-details' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-snapptrip' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],
