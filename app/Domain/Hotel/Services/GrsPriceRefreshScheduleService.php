@@ -4,6 +4,7 @@ namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
+use App\Domain\Hotel\V2\GrsApiQuota;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
@@ -66,7 +67,7 @@ class GrsPriceRefreshScheduleService
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function due(Provider $provider): Collection
     {
-        $capacity = min(10, max(1, (int) data_get($provider->config, 'availability_rate_limit.max_requests', 10)));
+        $capacity = GrsApiQuota::maxRequests($provider);
         $selected = collect();
         $offset = 0;
 
