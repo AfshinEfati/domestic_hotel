@@ -26,6 +26,9 @@ class RoomCalendarRepository
             'rack_rate' => $r['rack_rate'] ?? null,
             'daily_rate' => $r['daily_rate'] ?? null,
             'grs_rate' => $r['grs_rate'] ?? null,
+            'child_daily_rate' => $r['child_daily_rate'] ?? null,
+            'infant_daily_rate' => $r['infant_daily_rate'] ?? null,
+            'extend_bed_daily_rate' => $r['extend_bed_daily_rate'] ?? null,
             'min_stay' => $r['min_stay'] ?? null,
             'max_stay' => $r['max_stay'] ?? null,
             'cta' => (bool)($r['cta'] ?? false),
@@ -44,8 +47,11 @@ class RoomCalendarRepository
             $payload,
             ['room_type_id', 'rate_plan_id', 'day', 'provider_id'],
             [
-                'rack_rate','daily_rate','grs_rate',
-                'min_stay','max_stay','cta','ctd','closed','inventory','updated_at'
+                'rack_rate', 'daily_rate', 'grs_rate',
+                'child_daily_rate', 'infant_daily_rate', 'extend_bed_daily_rate',
+                'min_stay', 'max_stay', 'cta', 'ctd', 'closed', 'inventory',
+                'provider_property_id', 'provider_room_type_id', 'provider_rate_plan_id',
+                'updated_at',
             ]
         );
     }
