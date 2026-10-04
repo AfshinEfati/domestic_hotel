@@ -14,6 +14,7 @@ class RatePlanProviderMap extends Model
         'provider_id',
         'accommodation_provider_map_id',
         'provider_rate_plan_id',
+        'provider_metadata',
         'fa_name',
         'en_name',
         'created_at',
@@ -26,12 +27,12 @@ class RatePlanProviderMap extends Model
         'provider_id' => 'integer',
         'accommodation_provider_map_id' => 'integer',
         'provider_rate_plan_id' => 'string',
+        'provider_metadata' => 'array',
         'fa_name' => 'string',
         'en_name' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
-
 
     protected static function booted(): void
     {
