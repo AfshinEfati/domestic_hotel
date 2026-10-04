@@ -159,11 +159,13 @@ final class SnappTripGateway
         );
     }
 
-    /** SnappTrip city search shape retained, with all provider amounts normalized to IRR. */
+    /** SnappTrip city search shape retained; request/output amounts cross the currency boundary here. */
     public function cityAvailability(array $payload): array
     {
         return SnappTripMoney::normalizeProviderPayload(
-            $this->client->cityAvailability($payload),
+            $this->client->cityAvailability(
+                SnappTripMoney::normalizeRequestPayload($payload),
+            ),
         );
     }
 
