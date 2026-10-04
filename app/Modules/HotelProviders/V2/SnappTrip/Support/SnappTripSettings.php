@@ -7,12 +7,13 @@ use App\Models\Provider;
 final class SnappTripSettings
 {
     public const PROVIDER_CODE = 'snap';
+    public const API_KEY_PLACEHOLDER = 'api_key_snapptrip';
 
     public static function defaults(): array
     {
         return [
             'base_url' => 'https://b2bapiv2.snapptrip.com/',
-            'api_key' => 'api_key_snapptrip',
+            'api_key' => self::API_KEY_PLACEHOLDER,
             'rate_limit' => [
                 'max_requests' => 120,
                 'window_minutes' => 1,
@@ -22,7 +23,7 @@ final class SnappTripSettings
                 'interval_hours' => 24,
             ],
             'price_refresh' => [
-                'scheduler_enabled' => false,
+                'scheduler_enabled' => true,
                 'default_days' => 90,
             ],
             'purchase' => [
@@ -36,9 +37,10 @@ final class SnappTripSettings
         $defaults = self::defaults();
         $config = is_array($provider?->config) ? $provider->config : [];
         $merged = array_replace_recursive($defaults, $config);
+        $rawBaseUrl = trim((string) ($merged['base_url'] ?? ''));
 
         return [
-            'base_url' => rtrim(trim((string) ($merged['base_url'] ?? '')), '/').'/',
+            'base_url' => $rawBaseUrl === '' ? '' : rtrim($rawBaseUrl, '/').'/',
             'api_key' => trim((string) ($merged['api_key'] ?? '')),
             'rate_limit' => [
                 'max_requests' => self::boundedInt(
@@ -69,7 +71,7 @@ final class SnappTripSettings
             'price_refresh' => [
                 'scheduler_enabled' => self::boolValue(
                     data_get($merged, 'price_refresh.scheduler_enabled'),
-                    false,
+                    true,
                 ),
                 'default_days' => self::boundedInt(
                     data_get($merged, 'price_refresh.default_days'),
