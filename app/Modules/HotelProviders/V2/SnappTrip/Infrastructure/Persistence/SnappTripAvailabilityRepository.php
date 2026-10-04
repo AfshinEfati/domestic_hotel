@@ -6,6 +6,8 @@ use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 use App\Models\ProviderStayPackage;
 use App\Models\RoomCalendar;
+use App\Models\RoomTypeProviderMap;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -120,19 +122,58 @@ final class SnappTripAvailabilityRepository
                 ]);
             }
 
-            $this->persistPackages($provider, $map, $packages);
+            // Rack/package restrictions are provider-room stay windows, not a foreign
+            // rate-plan dimension. Synchronize them once from the domestic calendar and
+            // retain stale rows as inactive history instead of deleting provider data.
+            if (!$foreigner) {
+                $this->synchronizePackages($provider, $map, $packages, $rows);
+            }
 
             return $normalized->values();
         });
     }
 
-    /** @param array<int,array<string,mixed>> $packages */
-    public function persistPackages(Provider $provider, AccommodationProviderMap $map, array $packages): void
-    {
+    /**
+     * @param array<int,array<string,mixed>> $packages
+     * @param array<int,array<string,mixed>> $calendarRows
+     */
+    private function synchronizePackages(
+        Provider $provider,
+        AccommodationProviderMap $map,
+        array $packages,
+        array $calendarRows,
+    ): void {
+        $days = collect($calendarRows)
+            ->filter(fn ($row): bool => is_array($row) && trim((string) ($row['day'] ?? '')) !== '')
+            ->pluck('day')
+            ->map(fn ($day): string => CarbonImmutable::parse((string) $day)->toDateString())
+            ->sort()
+            ->values();
+
+        // An empty provider calendar gives us no trustworthy refresh window. Preserve
+        // the last known package state rather than deactivating historical/current data
+        // based on an ambiguous empty response.
+        if ($days->isEmpty()) {
+            return;
+        }
+
+        $refreshFrom = (string) $days->first();
+        $refreshTo = CarbonImmutable::parse((string) $days->last())->addDay()->toDateString();
+        $seenAt = now();
+
+        ProviderStayPackage::query()
+            ->where('provider_id', $provider->id)
+            ->where('accommodation_provider_map_id', $map->id)
+            ->where('is_active', true)
+            ->where('check_out', '>', $refreshFrom)
+            ->where('check_in', '<', $refreshTo)
+            ->update(['is_active' => false]);
+
         foreach ($packages as $package) {
             if (!is_array($package)) {
                 continue;
             }
+
             $providerRoomId = trim((string) ($package['provider_room_type_id'] ?? ''));
             $checkIn = trim((string) ($package['check_in'] ?? ''));
             $checkOut = trim((string) ($package['check_out'] ?? ''));
@@ -140,7 +181,7 @@ final class SnappTripAvailabilityRepository
                 continue;
             }
 
-            $roomMap = \App\Models\RoomTypeProviderMap::query()
+            $roomMap = RoomTypeProviderMap::query()
                 ->where('provider_id', $provider->id)
                 ->where('accommodation_provider_map_id', $map->id)
                 ->where('provider_room_type_id', $providerRoomId)
@@ -161,6 +202,8 @@ final class SnappTripAvailabilityRepository
                     'title' => $title === '' ? null : $title,
                     'check_in' => $checkIn,
                     'check_out' => $checkOut,
+                    'is_active' => true,
+                    'last_seen_at' => $seenAt,
                 ],
             );
         }
@@ -175,6 +218,7 @@ final class SnappTripAvailabilityRepository
     ): bool {
         $base = ProviderStayPackage::query()
             ->where('provider_id', $providerId)
+            ->where('is_active', true)
             ->whereHas('accommodationProviderMap', fn ($query) => $query->where('accommodation_id', $accommodationId))
             ->whereHas('roomTypeProviderMap', fn ($query) => $query->where('room_type_id', $roomTypeId));
 
