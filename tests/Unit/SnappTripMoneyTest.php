@@ -31,7 +31,7 @@ class SnappTripMoneyTest extends TestCase
     public function test_nested_raw_provider_payload_converts_only_monetary_fields(): void
     {
         $normalized = SnappTripMoney::normalizeProviderPayload([
-            'filter' => ['min_price' => 100],
+            'filter' => ['min_price' => 100, 'max_price' => 900],
             'items' => [[
                 'room' => [
                     'price' => 1_000_000,
@@ -42,12 +42,25 @@ class SnappTripMoneyTest extends TestCase
             ]],
         ]);
 
-        // Unknown fields are intentionally untouched; only documented provider money
-        // keys cross the module boundary through the automatic normalizer.
-        $this->assertSame(100, $normalized['filter']['min_price']);
+        $this->assertSame(1_000, $normalized['filter']['min_price']);
+        $this->assertSame(9_000, $normalized['filter']['max_price']);
         $this->assertSame(10_000_000, $normalized['items'][0]['room']['price']);
         $this->assertSame(0, $normalized['items'][0]['room']['child_price']);
         $this->assertSame(2_000_000, $normalized['items'][0]['room']['extra_foreigner_price']);
         $this->assertSame(10, $normalized['items'][0]['room']['discount_percent']);
+    }
+
+    public function test_city_search_request_price_filters_are_converted_from_irr_to_toman(): void
+    {
+        $payload = SnappTripMoney::normalizeRequestPayload([
+            'city_id' => 1,
+            'min_price' => 10_000_000,
+            'max_price' => 25_000_000,
+            'stars' => [4, 5],
+        ]);
+
+        $this->assertSame(1_000_000, $payload['min_price']);
+        $this->assertSame(2_500_000, $payload['max_price']);
+        $this->assertSame([4, 5], $payload['stars']);
     }
 }
