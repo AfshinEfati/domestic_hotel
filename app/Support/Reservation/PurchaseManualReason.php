@@ -9,6 +9,7 @@ final class PurchaseManualReason
     public const INACTIVE_PROVIDER = 3;
     public const INSUFFICIENT_CREDIT = 4;
     public const CREDIT_UNAVAILABLE = 5;
+    public const PROVIDER_MANUAL_ONLY = 6;
 
     public static function get(int $reason): ?array
     {
@@ -18,6 +19,7 @@ final class PurchaseManualReason
             self::INACTIVE_PROVIDER => ['code' => self::INACTIVE_PROVIDER, 'name' => 'inactive_provider', 'fa_name' => 'تأمین‌کننده غیرفعال'],
             self::INSUFFICIENT_CREDIT => ['code' => self::INSUFFICIENT_CREDIT, 'name' => 'insufficient_credit', 'fa_name' => 'اعتبار ناکافی تأمین‌کننده'],
             self::CREDIT_UNAVAILABLE => ['code' => self::CREDIT_UNAVAILABLE, 'name' => 'credit_unavailable', 'fa_name' => 'اطلاعات اعتبار تأمین‌کننده ناموجود'],
+            self::PROVIDER_MANUAL_ONLY => ['code' => self::PROVIDER_MANUAL_ONLY, 'name' => 'provider_manual_only', 'fa_name' => 'خرید دستی تأمین‌کننده'],
             default => null,
         };
     }
