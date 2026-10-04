@@ -6,6 +6,24 @@ use RuntimeException;
 
 final class SnappTripMoney
 {
+    /** @var string[] */
+    private const PROVIDER_MONEY_FIELDS = [
+        'price',
+        'price_off',
+        'child_price',
+        'infant_price',
+        'extra_bed_price',
+        'extra_foreigner_price',
+        'discount',
+        'discount_amount',
+        'original_sell_price',
+        'balance',
+        'service_fee',
+        'user_penalty',
+        'user_penalty_total',
+        'user_refund_amount',
+    ];
+
     public static function toInternal(mixed $toman): ?int
     {
         if ($toman === null || $toman === '') {
@@ -36,5 +54,26 @@ final class SnappTripMoney
         }
 
         return intdiv((int) $rial, 10);
+    }
+
+    /**
+     * Normalize monetary fields in raw SnappTrip response shapes that are exposed by
+     * the module without a dedicated canonical mapper. Keys not listed as provider
+     * money fields, such as discount_percent or user_penalty_percent, are untouched.
+     */
+    public static function normalizeProviderPayload(array $payload): array
+    {
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $payload[$key] = self::normalizeProviderPayload($value);
+                continue;
+            }
+
+            if (in_array((string) $key, self::PROVIDER_MONEY_FIELDS, true)) {
+                $payload[$key] = self::toInternal($value);
+            }
+        }
+
+        return $payload;
     }
 }
