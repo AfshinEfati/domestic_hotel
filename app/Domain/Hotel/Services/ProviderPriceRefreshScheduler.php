@@ -3,27 +3,24 @@
 namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
+use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use RuntimeException;
 
-/** One provider read per tick; individual handlers own their own pricing rules. */
+/** One provider read per tick; individual modules own settings, jobs and API rules. */
 class ProviderPriceRefreshScheduler
 {
-    /** @var array<string, class-string<PriceRefreshSchedulerHandler>> */
-    private const HANDLERS = [
-        'grs' => GrsScheduledPriceRefresh::class,
-    ];
-
-    public function __construct(private readonly ProviderRepositoryInterface $providers)
-    {
+    public function __construct(
+        private readonly ProviderRepositoryInterface $providers,
+        private readonly HotelProviderRegistry $registry,
+    ) {
     }
 
     public function dispatch(): int
     {
         $eligible = 0;
-        // getAll() runs one repository query; no per-provider DB lookup in the scheduler.
         foreach ($this->providers->getAll() as $provider) {
-            $handlerClass = self::HANDLERS[(string) $provider->code] ?? null;
+            $handlerClass = $this->registry->priceRefreshHandler((string) $provider->code);
             if ($handlerClass === null) {
                 continue;
             }
