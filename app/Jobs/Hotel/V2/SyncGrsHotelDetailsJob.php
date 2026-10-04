@@ -61,7 +61,7 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
         }
 
         try {
-            GrsApiQuota::acquire();
+            GrsApiQuota::acquire($provider);
         } catch (GrsApiQuotaExceeded $e) {
             $this->release(max(1, $e->retryAfterSeconds));
             return;
