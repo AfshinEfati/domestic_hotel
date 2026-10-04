@@ -19,39 +19,25 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
         parent::__construct($repository);
     }
 
-    /**
-     * @return iterable<RoomCalendar>
-     */
     public function index(): iterable
     {
-        /** @var iterable<RoomCalendar> */
         return parent::index();
     }
 
     public function show(int|string $id): ?RoomCalendar
     {
-        /** @var RoomCalendar|null */
         return parent::show($id);
     }
 
-    /**
-     * @param RoomCalendarDTO|array $payload
-     * @return RoomCalendar
-     */
     public function store(mixed $payload): RoomCalendar
     {
         if ($payload instanceof RoomCalendarDTO) {
             $payload = $payload->toArray();
         }
 
-        /** @var RoomCalendar */
         return parent::store($payload);
     }
 
-    /**
-     * @param int|string $id
-     * @param RoomCalendarDTO|array $payload
-     */
     public function update(int|string $id, mixed $payload): bool
     {
         if ($payload instanceof RoomCalendarDTO) {
@@ -85,21 +71,18 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
     public function getAvailableRoomsByAccommodationId(array $request): array
     {
         $accommodationId = (int) $request['hotel_id'];
-
         $checkIn = isset($request['checkin'])
             ? Carbon::createFromFormat('Y-m-d', $request['checkin'])->startOfDay()
             : now()->startOfDay();
-
         $checkOut = isset($request['checkout'])
             ? Carbon::createFromFormat('Y-m-d', $request['checkout'])->startOfDay()
             : $checkIn->copy()->addDays(90);
 
-        $calendars = $this->repository
-            ->getAvailableByAccommodationId(
-                $accommodationId,
-                $checkIn->toDateString(),
-                $checkOut->toDateString()
-            );
+        $calendars = $this->repository->getAvailableByAccommodationId(
+            $accommodationId,
+            $checkIn->toDateString(),
+            $checkOut->toDateString()
+        );
 
         $rooms = $calendars
             ->groupBy('room_type_id')
@@ -120,14 +103,13 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                             'meal_type' => $ratePlan?->meal_type,
                             'food_board_type' => $ratePlan?->food_board_type,
                             'cancelable' => $ratePlan?->cancelable,
-
+                            'is_foreign_guest' => $ratePlan?->is_foreign_guest,
                             'calendar' => $ratePlanCalendars
                                 ->map(fn ($calendar) => [
-                                    'id'=>$calendar->id,
+                                    'id' => $calendar->id,
                                     'day' => $calendar->day?->format('Y-m-d'),
                                     'inventory' => $calendar->inventory,
                                     'provider_id' => $calendar->provider_id,
-
                                     'rack_rate' => $calendar->rack_rate,
                                     'daily_rate' => $calendar->daily_rate,
                                     'grs_rate' => $calendar->grs_rate,
@@ -135,7 +117,6 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                                         $calendar->grs_rate,
                                         $calendar->provider_id
                                     ),
-
                                     'baby_cot_rack_rate' => $calendar->baby_cot_rack_rate,
                                     'baby_cot_daily_rate' => $calendar->baby_cot_daily_rate,
                                     'baby_cot_grs_rate' => $calendar->baby_cot_grs_rate,
@@ -143,7 +124,8 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                                         $calendar->baby_cot_grs_rate,
                                         $calendar->provider_id
                                     ),
-
+                                    'child_daily_rate' => $calendar->child_daily_rate,
+                                    'infant_daily_rate' => $calendar->infant_daily_rate,
                                     'extend_bed_rack_rate' => $calendar->extend_bed_rack_rate,
                                     'extend_bed_daily_rate' => $calendar->extend_bed_daily_rate,
                                     'extend_bed_grs_rate' => $calendar->extend_bed_grs_rate,
@@ -151,7 +133,6 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                                         $calendar->extend_bed_grs_rate,
                                         $calendar->provider_id
                                     ),
-
                                     'min_stay' => $calendar->min_stay,
                                     'max_stay' => $calendar->max_stay,
                                     'cta' => $calendar->cta,
@@ -171,7 +152,6 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                     'single_bed_count' => $room->single_bed_count,
                     'double_bed_count' => $room->double_bed_count,
                     'sofa_bed_count' => $room->sofa_bed_count,
-
                     'room_type_name' => $room->roomTypeName
                         ? [
                             'id' => $room->roomTypeName->id,
@@ -179,7 +159,6 @@ class RoomCalendarService extends BaseService implements RoomCalendarServiceInte
                             'en_name' => $room->roomTypeName->en_name,
                         ]
                         : null,
-
                     'rate_plans' => $ratePlans,
                 ];
             })
