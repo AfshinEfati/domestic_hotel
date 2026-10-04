@@ -35,7 +35,7 @@ class SnappTripMapperTest extends TestCase
         $this->assertSame(2, $row['min_stay']);
     }
 
-    public function test_foreign_calendar_is_a_distinct_offer_price_not_a_separate_domain_column(): void
+    public function test_foreign_calendar_uses_the_price_returned_for_the_foreign_rate_plan_without_repricing(): void
     {
         $mapped = (new SnappTripMapper())->hotelCalendar([
             'rooms' => [[
@@ -53,7 +53,7 @@ class SnappTripMapperTest extends TestCase
 
         $row = $mapped['rows'][0];
         $this->assertTrue($row['foreigner']);
-        $this->assertSame(13_000_000, $row['daily_rate']);
+        $this->assertSame(10_000_000, $row['daily_rate']);
         $this->assertArrayNotHasKey('foreign_guest_daily_rate', $row);
     }
 }
