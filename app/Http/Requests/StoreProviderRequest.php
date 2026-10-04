@@ -20,7 +20,7 @@ class StoreProviderRequest extends FormRequest
             'code' => 'nullable',
             'config' => 'nullable|array',
             'config.availability_rate_limit' => 'nullable|array',
-            'config.availability_rate_limit.max_requests' => 'nullable|integer|min:1|max:10',
+            'config.availability_rate_limit.max_requests' => 'nullable|integer|min:1',
             'config.availability_rate_limit.window_minutes' => 'nullable|integer|min:1',
             'config.price_refresh' => 'nullable|array',
             'config.price_refresh.default_days' => 'sometimes|integer|min:1|max:3650',
