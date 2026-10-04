@@ -19,6 +19,7 @@ class AccommodationProviderDetail extends Model
         'free_transfer_policy',
         'free_transfers',
         'ratings',
+        'provider_metadata',
     ];
 
     protected $casts = [
@@ -27,6 +28,7 @@ class AccommodationProviderDetail extends Model
         'foreigners_fee' => 'boolean',
         'free_transfers' => 'array',
         'ratings' => 'array',
+        'provider_metadata' => 'array',
     ];
 
     public function accommodationProviderMap(): BelongsTo
