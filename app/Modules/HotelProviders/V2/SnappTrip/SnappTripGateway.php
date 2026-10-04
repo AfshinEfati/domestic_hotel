@@ -5,6 +5,7 @@ namespace App\Modules\HotelProviders\V2\SnappTrip;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Http\SnappTripClient;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Mapper\SnappTripMapper;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripMoney;
 use Illuminate\Support\Collection;
 
 final class SnappTripGateway
@@ -158,11 +159,15 @@ final class SnappTripGateway
         );
     }
 
+    /** SnappTrip city search shape retained, with all provider amounts normalized to IRR. */
     public function cityAvailability(array $payload): array
     {
-        return $this->client->cityAvailability($payload);
+        return SnappTripMoney::normalizeProviderPayload(
+            $this->client->cityAvailability($payload),
+        );
     }
 
+    /** SnappTrip room-calendar shape retained, with all provider amounts normalized to IRR. */
     public function roomCalendar(
         int|string $providerPropertyId,
         int|string $providerRoomId,
@@ -170,7 +175,9 @@ final class SnappTripGateway
         string $to,
         bool $foreigner = false,
     ): array {
-        return $this->client->roomCalendar($providerPropertyId, $providerRoomId, $from, $to, $foreigner);
+        return SnappTripMoney::normalizeProviderPayload(
+            $this->client->roomCalendar($providerPropertyId, $providerRoomId, $from, $to, $foreigner),
+        );
     }
 
     public function balance(): ?int
@@ -225,5 +232,10 @@ final class SnappTripGateway
     public function rejectCancellation(string $trackingCode): void
     {
         $this->client->rejectCancellation($trackingCode);
+    }
+
+    public function health(): array
+    {
+        return $this->client->health();
     }
 }
