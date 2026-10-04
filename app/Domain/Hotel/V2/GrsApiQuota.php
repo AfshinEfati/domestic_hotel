@@ -2,15 +2,20 @@
 
 namespace App\Domain\Hotel\V2;
 
+use App\Models\Provider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 /**
  * Shared quota gate for background GRS HTTP traffic.
  *
- * Availability and hotel-details requests must share the same provider-wide
- * allowance. We keep a real rolling 60-second window instead of Laravel's
- * fixed decay bucket so a minute-boundary burst cannot exceed ten requests.
+ * Availability and hotel-details requests share the same provider-wide
+ * allowance. The configured provider value is used when present; otherwise
+ * GRS keeps the historical default of 10 requests per minute.
+ *
+ * The existing providers.config.availability_rate_limit key is retained for
+ * backwards compatibility, but it is treated as the global background GRS
+ * API quota rather than an availability-only limiter.
  */
 final class GrsApiQuota
 {
@@ -18,58 +23,92 @@ final class GrsApiQuota
     private const COOLDOWN = 'grs-v2-api-cooldown';
     private const LOCK = 'grs-v2-api-quota-lock';
 
-    private const MAX_REQUESTS = 10;
-    private const WINDOW_SECONDS = 60;
-    private const REQUEST_TIMES_TTL_SECONDS = 120;
+    private const DEFAULT_MAX_REQUESTS = 10;
+    private const DEFAULT_WINDOW_MINUTES = 1;
     private const PROVIDER_429_COOLDOWN_SECONDS = 300;
 
-    public static function acquire(): void
+    public static function acquire(Provider $provider): void
     {
+        $maxRequests = self::maxRequests($provider);
+        $windowSeconds = self::windowSeconds($provider);
+        $requestTimesTtl = max(120, $windowSeconds * 2);
+
         try {
-            Cache::store('redis')->lock(self::LOCK, 10)->block(5, function (): void {
-                $cooldown = self::cooldownSeconds();
-                if ($cooldown > 0) {
-                    throw new GrsApiQuotaExceeded($cooldown);
-                }
+            Cache::store('redis')->lock(self::LOCK, 10)->block(
+                5,
+                function () use ($maxRequests, $windowSeconds, $requestTimesTtl): void {
+                    $cooldown = self::cooldownSeconds();
+                    if ($cooldown > 0) {
+                        throw new GrsApiQuotaExceeded($cooldown);
+                    }
 
-                $now = microtime(true);
-                $windowStart = $now - self::WINDOW_SECONDS;
-                $requestTimes = array_values(array_filter(
-                    (array) Cache::store('redis')->get(self::REQUEST_TIMES, []),
-                    static fn ($timestamp): bool =>
-                        is_numeric($timestamp) && (float) $timestamp > $windowStart
-                ));
+                    $now = microtime(true);
+                    $windowStart = $now - $windowSeconds;
+                    $requestTimes = array_values(array_filter(
+                        (array) Cache::store('redis')->get(self::REQUEST_TIMES, []),
+                        static fn ($timestamp): bool =>
+                            is_numeric($timestamp) && (float) $timestamp > $windowStart
+                    ));
 
-                sort($requestTimes, SORT_NUMERIC);
+                    sort($requestTimes, SORT_NUMERIC);
 
-                if (count($requestTimes) >= self::MAX_REQUESTS) {
-                    $oldest = (float) $requestTimes[0];
-                    $retryAfter = max(
-                        1,
-                        (int) ceil(($oldest + self::WINDOW_SECONDS) - $now)
-                    );
+                    if (count($requestTimes) >= $maxRequests) {
+                        $oldest = (float) $requestTimes[0];
+                        $retryAfter = max(
+                            1,
+                            (int) ceil(($oldest + $windowSeconds) - $now)
+                        );
+
+                        Cache::store('redis')->put(
+                            self::REQUEST_TIMES,
+                            $requestTimes,
+                            $requestTimesTtl
+                        );
+
+                        throw new GrsApiQuotaExceeded($retryAfter);
+                    }
+
+                    $requestTimes[] = $now;
 
                     Cache::store('redis')->put(
                         self::REQUEST_TIMES,
                         $requestTimes,
-                        self::REQUEST_TIMES_TTL_SECONDS
+                        $requestTimesTtl
                     );
-
-                    throw new GrsApiQuotaExceeded($retryAfter);
                 }
-
-                $requestTimes[] = $now;
-
-                Cache::store('redis')->put(
-                    self::REQUEST_TIMES,
-                    $requestTimes,
-                    self::REQUEST_TIMES_TTL_SECONDS
-                );
-            });
+            );
         } catch (LockTimeoutException) {
             // Local contention must never turn into an extra provider request.
             throw new GrsApiQuotaExceeded(1);
         }
+    }
+
+    public static function maxRequests(Provider $provider): int
+    {
+        $configured = data_get(
+            $provider->config,
+            'availability_rate_limit.max_requests'
+        );
+
+        if (!is_numeric($configured) || (int) $configured < 1) {
+            return self::DEFAULT_MAX_REQUESTS;
+        }
+
+        return (int) $configured;
+    }
+
+    public static function windowMinutes(Provider $provider): int
+    {
+        $configured = data_get(
+            $provider->config,
+            'availability_rate_limit.window_minutes'
+        );
+
+        if (!is_numeric($configured) || (int) $configured < 1) {
+            return self::DEFAULT_WINDOW_MINUTES;
+        }
+
+        return (int) $configured;
     }
 
     public static function registerProvider429(): void
@@ -89,5 +128,10 @@ final class GrsApiQuota
             0,
             (int) Cache::store('redis')->get(self::COOLDOWN, 0) - time()
         );
+    }
+
+    private static function windowSeconds(Provider $provider): int
+    {
+        return self::windowMinutes($provider) * 60;
     }
 }
