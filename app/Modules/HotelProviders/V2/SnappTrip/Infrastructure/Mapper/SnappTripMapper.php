@@ -170,6 +170,8 @@ final class SnappTripMapper
     /**
      * Flatten a SnappTrip hotel calendar into provider-neutral nightly rows.
      * All monetary fields cross the provider boundary here and are returned in IRR.
+     * The returned price already belongs to the selected domestic/foreign offer;
+     * extra_foreigner_price is never added a second time by the GDS.
      *
      * @return array{rows: array<int,array<string,mixed>>, packages: array<int,array<string,mixed>>}
      */
@@ -204,10 +206,7 @@ final class SnappTripMapper
                     continue;
                 }
                 $base = SnappTripMoney::toInternal($daily['price'] ?? null);
-                $foreignExtra = SnappTripMoney::toInternal($daily['extra_foreigner_price'] ?? null) ?? 0;
                 $rack = SnappTripMoney::toInternal($daily['original_sell_price'] ?? null);
-                $finalRate = $base === null ? null : $base + ($foreigner ? $foreignExtra : 0);
-                $rackRate = $rack === null ? null : $rack + ($foreigner ? $foreignExtra : 0);
                 $inventory = $this->unsignedInt($daily['availability'] ?? null);
 
                 $rows[] = [
@@ -215,8 +214,8 @@ final class SnappTripMapper
                     'day' => (string) $day,
                     'foreigner' => $foreigner,
                     'inventory' => $inventory,
-                    'rack_rate' => $rackRate,
-                    'daily_rate' => $finalRate,
+                    'rack_rate' => $rack,
+                    'daily_rate' => $base,
                     'child_daily_rate' => SnappTripMoney::toInternal($daily['child_price'] ?? null),
                     'infant_daily_rate' => null,
                     'extend_bed_daily_rate' => SnappTripMoney::toInternal($daily['extra_bed_price'] ?? null),
@@ -224,7 +223,7 @@ final class SnappTripMapper
                     'max_stay' => null,
                     'cta' => false,
                     'ctd' => false,
-                    'closed' => ($inventory ?? 0) <= 0 || $finalRate === null,
+                    'closed' => ($inventory ?? 0) <= 0 || $base === null,
                 ];
 
                 foreach (is_array($daily['racks'] ?? null) ? $daily['racks'] : [] as $dailyRack) {
@@ -263,7 +262,7 @@ final class SnappTripMapper
             }
             $pricing = is_array($item['pricing'] ?? null) ? $item['pricing'] : [];
             $base = SnappTripMoney::toInternal($pricing['price'] ?? null);
-            $foreignExtra = SnappTripMoney::toInternal($pricing['extra_foreigner_price'] ?? null) ?? 0;
+            $sell = SnappTripMoney::toInternal($pricing['original_sell_price'] ?? null);
 
             $rows[] = [
                 'provider_room_type_id' => $room['provider_room_type_id'],
@@ -272,10 +271,8 @@ final class SnappTripMapper
                 'to' => $this->string($item['to'] ?? null),
                 'foreigner' => $foreigner,
                 'inventory' => $this->unsignedInt($item['availability'] ?? null),
-                'price' => $base === null ? null : $base + ($foreigner ? $foreignExtra : 0),
-                'original_sell_price' => (($sell = SnappTripMoney::toInternal($pricing['original_sell_price'] ?? null)) === null)
-                    ? null
-                    : $sell + ($foreigner ? $foreignExtra : 0),
+                'price' => $base,
+                'original_sell_price' => $sell,
                 'child_price' => SnappTripMoney::toInternal($pricing['child_price'] ?? null),
                 'extra_bed_price' => SnappTripMoney::toInternal($pricing['extra_bed_price'] ?? null),
                 'min_stay' => $this->positiveInt($item['min_stay'] ?? null),
