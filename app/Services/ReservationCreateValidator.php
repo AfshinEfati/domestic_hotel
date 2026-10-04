@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Domain\Hotel\Repositories\ProviderStayPackageRepository;
 use App\Models\HotelChildPolicy;
 use App\Models\RoomCalendar;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
@@ -15,12 +16,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
-/** Checks the exact calendars offered to the customer, night by night; never searches for another provider. */
+/** Checks the exact calendars offered to the customer; provider recheck is optional, local validation is not. */
 readonly class ReservationCreateValidator
 {
     public function __construct(
         private RoomCalendarRepositoryInterface $calendars,
-        private ProviderRepositoryInterface     $providers,
+        private ProviderRepositoryInterface $providers,
+        private ProviderStayPackageRepository $stayPackages,
     ) {}
 
     /**
@@ -48,10 +50,6 @@ readonly class ReservationCreateValidator
         }
 
         $accommodationId = (int) $data['hotel']['accommodation_id'];
-
-        // Resolve and validate every night's calendar before contacting any provider:
-        // a reservation cannot mix hotels, and every room must offer one consistent
-        // provider/room type/rate plan across its whole stay.
         $selectedCalendarsByRoom = [];
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
             $byDate = [];
@@ -64,6 +62,10 @@ readonly class ReservationCreateValidator
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected calendar does not belong to the requested hotel.');
                 }
                 $byDate[$night['date']] = $calendar;
+            }
+
+            if (!isset($byDate[$days[0]]) || count($byDate) !== $nights) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room does not cover the full stay.');
             }
 
             $first = $byDate[$days[0]];
@@ -84,53 +86,97 @@ readonly class ReservationCreateValidator
 
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
             $byDate = $selectedCalendarsByRoom[$index];
+            /** @var RoomCalendar $calendar */
             $calendar = $byDate[$days[0]];
             $provider = $this->providers->find((int) $calendar->provider_id);
-            if (!$provider || !$provider->is_active || !$provider->is_online) {
-                return $failure(ReservationStatus::CHECKED, 'Selected provider cannot validate prices online.');
+            if ($provider === null) {
+                return $failure(ReservationStatus::CHECKED, 'Selected provider no longer exists.');
             }
-            if (!$calendar->provider_property_id || !$calendar->provider_room_type_id || !$calendar->provider_rate_plan_id) {
-                return $failure(ReservationStatus::CHECKED, 'Selected calendar has incomplete provider mappings.');
-            }
+
             $roomType = $calendar->roomType;
             if (!$roomType || $roomType->out_of_service || (int) $roomType->accommodation_id !== $accommodationId) {
                 return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room is unavailable.');
             }
 
-            // Guest type/age sent by the client are not trusted for occupancy or pricing.
-            // calculateSelectedPrice resolves the guest plan from birthday at check-in.
-
-            $key = $provider->id . ':' . $calendar->provider_property_id;
-            if (!array_key_exists($key, $cachedAvailability)) {
-                try {
-                    /** @var ProviderAdapterInterface $adapter */
-                    $adapter = app()->makeWith(ProviderAdapterInterface::class, ['provider' => $provider]);
-                    $adapter->withRequestLogContext(
-                        reservationId: $reservationId,
-                        handlerClass: self::class,
-                        handlerMethod: __FUNCTION__,
-                        force: true,
-                    );
-                    $cachedAvailability[$key] = $adapter->fetchAvailability(
-                        (string) $calendar->provider_property_id, $checkIn, $checkOut
-                    );
-                } catch (Throwable $exception) {
-                    report($exception);
-                    return $failure(ReservationStatus::CHECKED, 'Provider price validation failed.');
-                }
+            $ratePlan = $calendar->ratePlan;
+            $hasForeignGuest = collect($roomSelection['guests'] ?? [])->contains(
+                static fn (array $guest): bool => isset($guest['country_id']) && (int) $guest['country_id'] !== 1,
+            );
+            if ($hasForeignGuest && (!$ratePlan || !$ratePlan->is_foreign_guest)) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected rate plan does not allow foreign guests.');
             }
 
-            $rows = $cachedAvailability[$key]->filter(static fn (array $row): bool =>
-                (string) ($row['room_type_id'] ?? '') === (string) $calendar->provider_room_type_id
-                && (string) ($row['rate_plan_id'] ?? '') === (string) $calendar->provider_rate_plan_id
-            )->keyBy('day');
+            if (!$this->stayPackages->allowsStay(
+                (int) $provider->id,
+                $accommodationId,
+                (int) $roomType->id,
+                $checkIn->toDateString(),
+                $checkOut->toDateString(),
+            )) {
+                return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected stay does not match the provider package dates.');
+            }
+
+            $canValidateOnline = $provider->is_active && $provider->is_online;
+            if ($canValidateOnline && (!$calendar->provider_property_id || !$calendar->provider_room_type_id || !$calendar->provider_rate_plan_id)) {
+                return $failure(ReservationStatus::CHECKED, 'Selected calendar has incomplete provider mappings.');
+            }
+
+            if ($canValidateOnline) {
+                $key = $provider->id . ':' . $calendar->provider_property_id;
+                if (!array_key_exists($key, $cachedAvailability)) {
+                    try {
+                        /** @var ProviderAdapterInterface $adapter */
+                        $adapter = app()->makeWith(ProviderAdapterInterface::class, ['provider' => $provider]);
+                        $adapter->withRequestLogContext(
+                            reservationId: $reservationId,
+                            handlerClass: self::class,
+                            handlerMethod: __FUNCTION__,
+                            force: true,
+                        );
+                        $cachedAvailability[$key] = $adapter->fetchAvailability(
+                            (string) $calendar->provider_property_id,
+                            $checkIn,
+                            $checkOut
+                        );
+                    } catch (Throwable $exception) {
+                        report($exception);
+                        return $failure(ReservationStatus::CHECKED, 'Provider price validation failed.');
+                    }
+                }
+
+                $rows = $cachedAvailability[$key]->filter(static fn (array $row): bool =>
+                    (string) ($row['room_type_id'] ?? '') === (string) $calendar->provider_room_type_id
+                    && (string) ($row['rate_plan_id'] ?? '') === (string) $calendar->provider_rate_plan_id
+                )->keyBy('day');
+            } else {
+                // Supplier state never stops the Domestic Hotel GDS. Use the already
+                // selected local snapshots and continue into the manual purchase flow.
+                $rows = collect($byDate)->mapWithKeys(static function (RoomCalendar $item): array {
+                    $day = $item->day->toDateString();
+                    return [$day => [
+                        'day' => $day,
+                        'inventory' => $item->inventory,
+                        'rack_rate' => $item->rack_rate,
+                        'daily_rate' => $item->daily_rate,
+                        'grs_rate' => $item->grs_rate,
+                        'child_daily_rate' => $item->child_daily_rate,
+                        'infant_daily_rate' => $item->infant_daily_rate,
+                        'extend_bed_daily_rate' => $item->extend_bed_daily_rate,
+                        'min_stay' => $item->min_stay,
+                        'max_stay' => $item->max_stay,
+                        'cta' => $item->cta,
+                        'ctd' => $item->ctd,
+                        'closed' => $item->closed,
+                    ]];
+                });
+            }
 
             $live = collect();
             foreach ($days as $offset => $day) {
                 $row = $rows->get($day);
                 $inventory = $row['inventory'] ?? null;
                 if (!$row || ($row['closed'] ?? false) || $inventory === null || (int) $inventory < 1
-                    || !isset($row['daily_rate']) || $row['daily_rate'] === null) {
+                    || !array_key_exists('daily_rate', $row) || $row['daily_rate'] === null) {
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected room has no capacity or rate for the full stay.');
                 }
                 if (($offset === 0 && ($row['cta'] ?? false)) || ($offset === $nights - 1 && ($row['ctd'] ?? false))
@@ -139,7 +185,6 @@ readonly class ReservationCreateValidator
                     return $failure(ReservationStatus::NO_AVAILABILITY, 'Selected stay is restricted by provider rules.');
                 }
 
-                // Inventory belongs to the physical room type, not independently to its rate plans.
                 $inventoryKey = $provider->id . ':' . $calendar->room_type_id . ':' . $day;
                 $inventoryUsed[$inventoryKey] = ($inventoryUsed[$inventoryKey] ?? 0) + 1;
                 if ($inventoryUsed[$inventoryKey] > (int) $inventory) {
@@ -152,8 +197,13 @@ readonly class ReservationCreateValidator
                     'rack_rate' => $row['rack_rate'] ?? null,
                     'daily_rate' => $row['daily_rate'],
                     'grs_rate' => $row['grs_rate'] ?? null,
+                    'child_daily_rate' => $row['child_daily_rate'] ?? null,
+                    'infant_daily_rate' => $row['infant_daily_rate'] ?? null,
                     'extend_bed_daily_rate' => $row['extend_bed_daily_rate'] ?? null,
                 ]);
+                if (array_key_exists('stay_total_rate', $row)) {
+                    $fresh->setAttribute('stay_total_rate', $row['stay_total_rate']);
+                }
                 $live->put($day, $fresh);
             }
 
@@ -183,15 +233,6 @@ readonly class ReservationCreateValidator
         ];
     }
 
-
-    /**
-     * Validate the selected hotel/room against the actual guest configuration before
-     * creating any reservation rows. This is local business validation and must not
-     * depend on the external provider validation step.
-     *
-     * @return array Normalized reservation payload with server-resolved guest types.
-     * @throws ValidationException
-     */
     public function validateGuestSelection(array $data): array
     {
         $errors = [];
@@ -200,9 +241,7 @@ readonly class ReservationCreateValidator
 
         foreach ($data['hotel']['rooms'] as $index => $roomSelection) {
             $roomKey = "hotel.rooms.$index.guests";
-            $calendarEntry = collect($roomSelection['calendar'] ?? [])
-                ->firstWhere('date', $data['check_in']);
-
+            $calendarEntry = collect($roomSelection['calendar'] ?? [])->firstWhere('date', $data['check_in']);
             if ($calendarEntry === null) {
                 $errors[$roomKey][] = 'Selected room does not contain a calendar entry for check-in date.';
                 continue;
@@ -233,13 +272,7 @@ readonly class ReservationCreateValidator
                 $policy = null;
             }
 
-            $plan = $this->buildGuestPlan(
-                $room,
-                $roomSelection['guests'] ?? [],
-                $policy,
-                $checkIn,
-            );
-
+            $plan = $this->buildGuestPlan($room, $roomSelection['guests'] ?? [], $policy, $checkIn);
             if ($plan === null) {
                 $errors[$roomKey][] = sprintf(
                     'Selected guests do not fit this room after applying guest ages, hotel child policy and service conditions. Room capacity is %d + %d extra.',
@@ -261,33 +294,7 @@ readonly class ReservationCreateValidator
         return $data;
     }
 
-    /**
-     * Build the occupancy/pricing plan from birthdays, requested service and hotel policy.
-     *
-     * Business rules:
-     * - request guest.type and guest.age never decide child/adult classification;
-     * - age is calculated at check-in;
-     * - child/infant with_service needs a bed: it first consumes an unused paid
-     *   base-capacity bed; only the overflow consumes an extra bed and full adult price;
-     * - child/infant no_service uses any base capacity left after bed-requiring guests,
-     *   then hotel child/infant policy for guests beyond base capacity;
-     * - no_service guests outside policy coverage are full adult-priced but do not
-     *   consume an extra bed because no bed was requested;
-     * - adults beyond base room capacity consume extra-bed capacity as before.
-     *
-     * @return array{
-     *     adult_count:int,
-     *     base_child_count:int,
-     *     covered_child_extra:int,
-     *     covered_infant_extra:int,
-     *     uncovered_no_service_extra:int,
-     *     base_with_service_count:int,
-     *     extra_with_service_count:int,
-     *     adult_extra:int,
-     *     extra_bed_count:int,
-     *     guest_types:array<int,int>
-     * }|null
-     */
+    /** @return array<string,mixed>|null */
     private function buildGuestPlan(
         $room,
         array $guests,
@@ -296,7 +303,6 @@ readonly class ReservationCreateValidator
     ): ?array {
         $capacity = (int) $room->capacity;
         $extraCapacity = max(0, (int) $room->extra_capacity);
-
         if ($capacity < 1 || $guests === []) {
             return null;
         }
@@ -310,45 +316,28 @@ readonly class ReservationCreateValidator
             $guestTypes[$index] = ReservationGuestType::ADULT;
             $age = $this->calculateGuestAge($guest['birthday'] ?? null, $checkIn);
 
-            // Without a valid birthday/policy range the guest cannot safely receive
-            // child pricing, so it keeps full adult treatment.
             if ($age === null || $policy === null) {
                 $adultCount++;
                 continue;
             }
 
-            $infantEligible = (int) $policy->max_infant_age > 0
-                && $age < (int) $policy->max_infant_age;
-
-            $childEligible = (int) $policy->max_child_age > 0
-                && $age <= (int) $policy->max_child_age;
-
+            $infantEligible = (int) $policy->max_infant_age > 0 && $age < (int) $policy->max_infant_age;
+            $childEligible = (int) $policy->max_child_age > 0 && $age <= (int) $policy->max_child_age;
             if (!$infantEligible && !$childEligible) {
                 $adultCount++;
                 continue;
             }
 
             $kind = $infantEligible ? 'infant' : 'child';
-            $guestTypes[$index] = $kind === 'infant'
-                ? ReservationGuestType::INFANT
-                : ReservationGuestType::CHILD;
-
+            $guestTypes[$index] = $kind === 'infant' ? ReservationGuestType::INFANT : ReservationGuestType::CHILD;
             $service = $guest['service'] ?? ReservationGuestService::NO_SERVICE;
-
-            // Requested service is authoritative for bed usage. Allocation to a paid
-            // base bed or an extra bed is decided after all guests are classified.
             if ($service === ReservationGuestService::WITH_SERVICE) {
                 $withServiceGuestCount++;
                 continue;
             }
 
-            $pricingType = $kind === 'infant'
-                ? $policy->infant_pricing_type
-                : $policy->child_pricing_type;
-            $pricingValue = $kind === 'infant'
-                ? $policy->infant_pricing_value
-                : $policy->child_pricing_value;
-
+            $pricingType = $kind === 'infant' ? $policy->infant_pricing_type : $policy->child_pricing_type;
+            $pricingValue = $kind === 'infant' ? $policy->infant_pricing_value : $policy->child_pricing_value;
             $noServiceCandidates[] = [
                 'index' => $index,
                 'age' => $age,
@@ -359,16 +348,9 @@ readonly class ReservationCreateValidator
         }
 
         $adultExtra = max(0, $adultCount - $capacity);
-
-        // Normal room capacity has already been paid for. After adults take their
-        // required beds, with_service children/infants take any remaining base beds.
-        // Only their overflow requires an extra bed and a full adult surcharge.
         $baseSlotsAfterAdults = max(0, $capacity - $adultCount);
         $baseWithServiceCount = min($withServiceGuestCount, $baseSlotsAfterAdults);
         $extraWithServiceCount = max(0, $withServiceGuestCount - $baseWithServiceCount);
-
-        // no_service guests need no bed, but an unused paid base-capacity slot still
-        // prevents an additional child-policy charge.
         $baseSlotsForNoService = max(0, $baseSlotsAfterAdults - $baseWithServiceCount);
         $extraNoServiceCount = max(0, count($noServiceCandidates) - $baseSlotsForNoService);
 
@@ -379,7 +361,6 @@ readonly class ReservationCreateValidator
         });
 
         $extraCandidates = array_slice($noServiceCandidates, 0, $extraNoServiceCount);
-
         $coveredChildExtra = 0;
         $coveredInfantExtra = 0;
         $uncoveredNoServiceExtra = 0;
@@ -388,11 +369,7 @@ readonly class ReservationCreateValidator
 
         foreach ($extraCandidates as $candidate) {
             $sharedLimitAvailable = $policy !== null
-                && (
-                    $policy->max_children_covered === null
-                    || $coveredTotal < (int) $policy->max_children_covered
-                );
-
+                && ($policy->max_children_covered === null || $coveredTotal < (int) $policy->max_children_covered);
             if (!$sharedLimitAvailable) {
                 $uncoveredNoServiceExtra++;
                 continue;
@@ -402,7 +379,6 @@ readonly class ReservationCreateValidator
                 $infantPolicyAllowsNoService = $policy->infant_service_condition !== ReservationGuestService::WITH_SERVICE;
                 $infantLimitAvailable = $policy->max_infants_covered === null
                     || $coveredInfants < (int) $policy->max_infants_covered;
-
                 if ($infantPolicyAllowsNoService && $infantLimitAvailable) {
                     $coveredInfantExtra++;
                     $coveredInfants++;
@@ -435,7 +411,6 @@ readonly class ReservationCreateValidator
         }
 
         $extraBedCount = $adultExtra + $extraWithServiceCount;
-
         if ($extraBedCount > $extraCapacity) {
             return null;
         }
@@ -465,13 +440,10 @@ readonly class ReservationCreateValidator
         if (!$birth instanceof CarbonImmutable) {
             return null;
         }
+
         return max(0, (int) $birth->diffInYears($reference));
     }
 
-    /**
-     * Only relative-rate discounts can be ordered without knowing the room rate.
-     * Fixed child amounts have no universal discount ordering: they use stable age/order.
-     */
     private function policyDiscountPriority(?string $type, ?int $value): float
     {
         return match ($type) {
@@ -482,12 +454,7 @@ readonly class ReservationCreateValidator
         };
     }
 
-    /**
-     * Recalculates the selected reservation price from live rates and the
-     * server-resolved guest plan. Base room capacity is already paid for.
-     *
-     * @return array<int,array{date:string,price:int}>|null
-     */
+    /** @return array<int,array{date:string,price:int}>|null */
     private function calculateSelectedPrice(
         $room,
         RoomCalendar $selected,
@@ -512,27 +479,38 @@ readonly class ReservationCreateValidator
         }
 
         $nightly = [];
+        $calendarBaseTotal = 0;
+        $providerStayBase = null;
 
         foreach ($days as $day) {
+            /** @var RoomCalendar|null $calendar */
             $calendar = $live->get($day);
             if (!$calendar || $calendar->daily_rate === null) {
                 return null;
             }
 
             $base = (int) $calendar->daily_rate;
+            $calendarBaseTotal += $base;
+            if ($providerStayBase === null && $calendar->getAttribute('stay_total_rate') !== null) {
+                $providerStayBase = (int) $calendar->getAttribute('stay_total_rate');
+            }
 
-            $childRate = $this->policyRate(
-                $base,
-                $capacity,
-                $policy?->child_pricing_type ?? 'adult',
-                $policy?->child_pricing_value
-            );
-            $infantRate = $this->policyRate(
-                $base,
-                $capacity,
-                $policy?->infant_pricing_type ?? 'adult',
-                $policy?->infant_pricing_value
-            );
+            $childRate = $calendar->child_daily_rate !== null
+                ? (int) $calendar->child_daily_rate
+                : $this->policyRate(
+                    $base,
+                    $capacity,
+                    $policy?->child_pricing_type ?? 'adult',
+                    $policy?->child_pricing_value
+                );
+            $infantRate = $calendar->infant_daily_rate !== null
+                ? (int) $calendar->infant_daily_rate
+                : $this->policyRate(
+                    $base,
+                    $capacity,
+                    $policy?->infant_pricing_type ?? 'adult',
+                    $policy?->infant_pricing_value
+                );
 
             if (
                 ($plan['covered_child_extra'] > 0 && $childRate === null)
@@ -543,12 +521,7 @@ readonly class ReservationCreateValidator
 
             $childRate ??= 0;
             $infantRate ??= 0;
-
             $adultRate = (int) round($base / $capacity);
-
-            // Adult guests beyond normal capacity keep the provider/hotel extra-bed
-            // tariff when one exists. Only with_service children/infants that did not
-            // fit in already-paid base capacity receive a full adult surcharge.
             $adultExtraRate = $plan['adult_extra'] > 0
                 ? (int) ($calendar->extend_bed_daily_rate ?? $adultRate)
                 : 0;
@@ -560,10 +533,17 @@ readonly class ReservationCreateValidator
                 + $plan['extra_with_service_count'] * $adultRate
                 + $plan['adult_extra'] * $adultExtraRate;
 
-            $nightly[] = [
-                'date' => $day,
-                'price' => $total,
-            ];
+            $nightly[] = ['date' => $day, 'price' => $total];
+        }
+
+        // Calendar prices are indicative for SnappTrip. When an adapter supplies a
+        // definitive full-stay base rate from the provider availability endpoint,
+        // reconcile only the base-room difference into the final night. Other providers
+        // simply omit this optional attribute and retain their nightly calculation.
+        if ($providerStayBase !== null && $nightly !== []) {
+            $delta = $providerStayBase - $calendarBaseTotal;
+            $last = array_key_last($nightly);
+            $nightly[$last]['price'] = max(0, $nightly[$last]['price'] + $delta);
         }
 
         return $nightly;
@@ -572,6 +552,7 @@ readonly class ReservationCreateValidator
     private function policyRate(int $base, int $capacity, string $type, ?int $value): ?int
     {
         $person = $base / $capacity;
+
         return match ($type) {
             'adult' => (int) round($person),
             'free' => 0,
