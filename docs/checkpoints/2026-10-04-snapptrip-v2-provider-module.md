@@ -77,6 +77,8 @@ SnappTrip calendar prices are indicative. Live reservation recheck uses SnappTri
 
 SnappTrip rack/package windows are stored as provider-neutral `provider_stay_packages`; they are not stored in `room_calendars.rack_rate` because a SnappTrip rack is a stay-window constraint rather than a price column.
 
+Rack rows are historical data. A current provider refresh marks overlapping old package rows inactive and marks packages observed in the latest response active with `last_seen_at`; it does not delete stale packages. Only active packages constrain new availability/reservation requests.
+
 ## Purchase
 
 Domestic Hotel continues to use the manual procurement flow for SnappTrip by default.
@@ -111,7 +113,7 @@ Fresh SnappTrip provider configuration uses:
 - price refresh scheduler enabled;
 - online purchase disabled.
 
-The real API key must be written only to the production database/provider configuration and must never be committed to source control.
+The placeholder key is rejected for actual outbound calls. The real API key must be written only to the production database/provider configuration and must never be committed to source control.
 
 ## Queues
 
