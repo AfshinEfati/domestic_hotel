@@ -140,6 +140,8 @@ return new class extends Migration {
             $table->string('title', 500)->nullable()->comment('Provider stay package title.');
             $table->date('check_in')->comment('Inclusive package check-in date.');
             $table->date('check_out')->comment('Exclusive package check-out date.');
+            $table->boolean('is_active')->default(true)->comment('Whether this provider package is active in the latest overlapping provider refresh window.');
+            $table->timestamp('last_seen_at')->nullable()->comment('Most recent time this package was observed in a provider availability response.');
             $table->char('package_key', 64)->comment('Stable SHA-256 key for de-duplicating provider stay packages.');
             $table->timestamp('created_at')->nullable()->comment('Row creation timestamp.');
             $table->timestamp('updated_at')->nullable()->comment('Row last update timestamp.');
@@ -151,6 +153,10 @@ return new class extends Migration {
             $table->index(
                 ['provider_id', 'check_in', 'check_out'],
                 'provider_stay_packages_provider_dates_idx'
+            );
+            $table->index(
+                ['provider_id', 'is_active', 'check_in', 'check_out'],
+                'provider_stay_packages_active_dates_idx'
             );
         });
 
