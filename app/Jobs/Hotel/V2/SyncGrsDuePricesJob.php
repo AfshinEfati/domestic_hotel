@@ -56,52 +56,40 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
 
         $schedules->assertReady();
 
-        $repairQueued = false;
-
-        // SSP.gds_id identifies GDS accommodations.id. Dispatch does not alter due time.
+        // SSP.gds_id identifies GDS accommodations.id. Only schedules with an
+        // existing, enabled provider map are returned by due(). Re-check here
+        // defensively in case the map changes between selection and dispatch.
         foreach ($schedules->due($provider) as $schedule) {
             $gdsId = (int) $schedule->gds_id;
             $map = $gdsId > 0
                 ? $schedules->mapForAccommodation($gdsId, (int) $provider->id)
                 : null;
 
-            // Disabled maps are an expected state and must stay silent.
-            if ($map?->is_disabled === true) {
-                continue;
-            }
-
-            $grsId = trim((string) ($map?->provider_property_id ?? ''));
-
             if ($gdsId <= 0) {
                 $alerts->custom(
                     'شناسه نامعتبر هتل در صف نرخ و ظرفیت',
-                    'Schedule فعال GRS شناسه هتل داخلی معتبر ندارد و امکان ترمیم خودکار مپ وجود ندارد.',
+                    'Schedule فعال GRS شناسه هتل داخلی معتبر ندارد.',
                     [
                         'Schedule ID' => (int) $schedule->id,
                         'GDS ID' => $gdsId,
                         'تأمین‌کننده' => (string) $provider->code,
                     ],
                     level: 'warning',
-                    tags: ['DomesticHotel', 'MapRepair', 'GRS'],
+                    tags: ['DomesticHotel', 'GRS'],
                 );
 
                 $schedules->mappingIssueHandled((int) $schedule->id, $gdsId);
                 continue;
             }
 
-            if ($map === null || $grsId === '') {
-                if (!$repairQueued) {
-                    RepairMissingGrsAccommodationMapsJob::dispatch((int) $provider->id)
-                        ->onQueue('grs-hotels');
-                    $repairQueued = true;
-                }
+            $grsId = trim((string) ($map?->provider_property_id ?? ''));
 
-                // Do not advance the schedule yet. The repair job first attempts to
-                // rebuild the missing property map from the authoritative GRS catalog.
+            // Missing/blank/disabled provider maps are outside the price-refresh
+            // workflow. Do not repair them here and never dispatch availability.
+            if ($map === null || $map->is_disabled === true || $grsId === '') {
                 continue;
             }
 
-            // Only the GDS ID goes to the worker; it resolves the provider ID anew.
             RefreshGrsPropertyPricesJob::dispatch(
                 (int) $schedule->id,
                 $gdsId,
