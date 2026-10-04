@@ -57,6 +57,7 @@ return new class extends Migration {
             $table->text('free_transfer_policy')->nullable()->comment('Provider-declared free-transfer policy text.');
             $table->json('free_transfers')->nullable()->comment('Provider-declared supported free-transfer types.');
             $table->json('ratings')->nullable()->comment('Provider rating and review summary payload.');
+            $table->json('provider_metadata')->nullable()->comment('Provider-specific hotel metadata that has no canonical accommodation column.');
             $table->timestamp('created_at')->nullable()->comment('Row creation timestamp.');
             $table->timestamp('updated_at')->nullable()->comment('Row last update timestamp.');
         });
