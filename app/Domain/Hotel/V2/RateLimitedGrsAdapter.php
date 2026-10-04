@@ -139,7 +139,7 @@ class RateLimitedGrsAdapter extends GRSAdapter
 
     private function acquireQuota(): void
     {
-        GrsApiQuota::acquire();
+        GrsApiQuota::acquire($this->provider);
     }
 
     private function handleHttpError(RequestException $e): void
