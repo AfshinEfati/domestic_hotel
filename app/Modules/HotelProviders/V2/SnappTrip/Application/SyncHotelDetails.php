@@ -36,8 +36,6 @@ final class SyncHotelDetails
         $gateway = $this->gateways->make($provider);
         $hotels = $gateway->hotels($ids);
         $facilities = $gateway->facilities($ids);
-        $galleries = $gateway->galleries($ids);
-        $reviews = $gateway->reviews($ids);
         $rooms = $gateway->rooms($ids);
         $persisted = 0;
 
@@ -46,12 +44,11 @@ final class SyncHotelDetails
             if ($propertyId === '') {
                 continue;
             }
+
             $this->catalog->persistHotelBundle(
                 $provider,
                 $hotel,
                 $facilities->get($propertyId, []),
-                $galleries->get($propertyId, []),
-                $reviews->get($propertyId, []),
                 $rooms->get($propertyId, []),
                 $providerUrls[$propertyId] ?? null,
             );
