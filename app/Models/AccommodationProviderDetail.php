@@ -9,6 +9,7 @@ class AccommodationProviderDetail extends Model
 {
     protected $fillable = [
         'accommodation_provider_map_id',
+        'accommodation_title',
         'description',
         'provider_url',
         'is_marketplace',
@@ -18,8 +19,6 @@ class AccommodationProviderDetail extends Model
         'foreigners_fee',
         'free_transfer_policy',
         'free_transfers',
-        'ratings',
-        'provider_metadata',
     ];
 
     protected $casts = [
@@ -27,8 +26,6 @@ class AccommodationProviderDetail extends Model
         'is_marketplace' => 'boolean',
         'foreigners_fee' => 'boolean',
         'free_transfers' => 'array',
-        'ratings' => 'array',
-        'provider_metadata' => 'array',
     ];
 
     public function accommodationProviderMap(): BelongsTo
