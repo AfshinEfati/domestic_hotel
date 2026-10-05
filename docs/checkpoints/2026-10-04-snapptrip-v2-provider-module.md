@@ -41,6 +41,23 @@ Domestic Hotel itself remains available:
 - reservation live supplier price recheck is skipped and the reservation continues to the manual procurement flow;
 - no provider historical/accounting data is deleted when the provider is disabled.
 
+## Static hotel data
+
+SnappTrip hotel details sync persists the data needed by the current hotel domain:
+
+- canonical accommodation identity and location fields;
+- hotel facilities through the existing `facilities` and `accommodation_facility` structures, matching the GRS details flow;
+- room types and their canonical `capacity` / `extra_capacity` fields;
+- rate plans derived from SnappTrip `board_type`;
+- child age policy information;
+- provider-specific hotel details that do not have canonical accommodation columns.
+
+Gallery and review endpoints are intentionally not called or persisted. Facility icons are intentionally ignored because the canonical facility schema does not use them.
+
+Provider room capacities are not duplicated on `room_type_provider_maps`; SnappTrip adult and extra-bed capacities update the canonical `room_types.capacity` and `room_types.extra_capacity` fields.
+
+SnappTrip has no provider rate-plan identifier. The module therefore creates a stable room-scoped provider rate-plan mapping key (`room:{provider_room_id}:{domestic|foreign}`), while the canonical rate-plan meal semantics remain on `rate_plans`. No generic JSON metadata columns are added to provider mapping tables.
+
 ## Canonical foreign-guest rule
 
 Foreign eligibility is represented by `rate_plans.is_foreign_guest`.
@@ -136,8 +153,14 @@ All provider-outbound commands honor the provider outbound guard.
 
 ## Database changes
 
-Migration `2026_10_04_143500_add_hotel_provider_module_support_schema.php` adds explicit passenger rates and provider module support tables.
+Schema changes are intentionally split by responsibility instead of bundling unrelated models into one migration:
 
-Migration `2026_10_04_143510_add_provider_metadata_to_hotel_provider_maps.php` adds provider metadata to room/rate-plan mappings.
+- `2026_10_04_143500_add_explicit_guest_rates_to_room_calendars.php`
+- `2026_10_04_143510_create_accommodation_provider_details_table.php`
+- `2026_10_04_143520_create_provider_stay_packages_table.php`
+- `2026_10_04_143530_create_provider_cancellations_table.php`
+- `2026_10_04_143540_create_provider_price_refresh_states_table.php`
+
+No SnappTrip gallery/review tables, facility icon column, duplicated provider room capacity columns, or provider-metadata JSON columns are introduced.
 
 Every newly added migration column has an English database comment.
