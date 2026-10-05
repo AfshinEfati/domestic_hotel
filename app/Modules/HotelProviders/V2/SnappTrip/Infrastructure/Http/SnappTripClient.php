@@ -70,16 +70,6 @@ final class SnappTripClient
         return $this->get('/hotels/facilities', ['id' => $this->idList($hotelIds, 10)]);
     }
 
-    public function galleries(array $hotelIds): array
-    {
-        return $this->getOptional('/hotels/galleries', ['id' => $this->idList($hotelIds, 10)], [404]);
-    }
-
-    public function reviews(array $hotelIds): array
-    {
-        return $this->getOptional('/hotels/reviews', ['id' => $this->idList($hotelIds, 10)], [403, 404]);
-    }
-
     public function rooms(array $hotelIds): array
     {
         return $this->get('/hotels/rooms', ['id' => $this->idList($hotelIds, 10)]);
@@ -216,11 +206,6 @@ final class SnappTripClient
         return $this->request('GET', $path, query: $query);
     }
 
-    private function getOptional(string $path, array $query, array $acceptedErrorStatuses): array
-    {
-        return $this->request('GET', $path, query: $query, acceptedErrorStatuses: $acceptedErrorStatuses);
-    }
-
     private function post(string $path, array $json = []): array
     {
         return $this->request('POST', $path, json: $json);
@@ -231,7 +216,6 @@ final class SnappTripClient
         string $path,
         array $query = [],
         array $json = [],
-        array $acceptedErrorStatuses = [],
     ): array {
         $this->outboundGuard->assertAllowed($this->provider);
         $settings = SnappTripSettings::from($this->provider);
@@ -260,10 +244,6 @@ final class SnappTripClient
                 $this->provider,
                 is_numeric($retryAfter) ? (int) $retryAfter : null,
             );
-        }
-
-        if (in_array($response->status(), $acceptedErrorStatuses, true)) {
-            return [];
         }
 
         $response->throw();
