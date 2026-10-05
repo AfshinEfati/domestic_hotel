@@ -2,33 +2,41 @@
 
 namespace App\Modules\HotelProviders\V2\SnappTrip\Application;
 
+use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
-use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripPriceRefreshRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
+use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use Carbon\CarbonImmutable;
 use RuntimeException;
-use Throwable;
 
 final class RefreshScheduledAvailability
 {
     public function __construct(
         private readonly ProviderOutboundGuard $outboundGuard,
-        private readonly SnappTripPriceRefreshRepository $refresh,
+        private readonly HotelPriceRefreshScheduleRepository $schedules,
+        private readonly AccommodationProviderMapRepositoryInterface $maps,
         private readonly RefreshAvailability $availability,
     ) {
     }
 
-    public function execute(int $stateId, int $days): int
+    public function execute(int $scheduleId, int $accommodationId, int $providerId, int $days): int
     {
         $provider = $this->outboundGuard->assertAllowed(SnappTripSettings::PROVIDER_CODE);
-        $state = $this->refresh->findForProvider($provider, $stateId);
-        if ($state === null) {
+        if ((int) $provider->id !== $providerId) {
             return 0;
         }
 
-        $map = $this->refresh->mapForState($provider, $state);
-        if ($map === null) {
-            $this->refresh->markSkipped($state);
+        $schedule = $this->schedules->active($scheduleId, $accommodationId);
+        if ($schedule === null) {
+            return 0;
+        }
+
+        $map = $this->maps->findForAccommodationAndProvider($accommodationId, $providerId);
+        if (
+            $map === null
+            || $map->is_disabled
+            || trim((string) $map->provider_property_id) === ''
+        ) {
             return 0;
         }
 
@@ -38,22 +46,19 @@ final class RefreshScheduledAvailability
 
         $from = CarbonImmutable::now('Asia/Tehran')->toDateString();
         $to = CarbonImmutable::now('Asia/Tehran')->addDays($days)->toDateString();
-        $this->refresh->markRequestStarted($state);
+        $this->schedules->markRequestStarted($scheduleId, $accommodationId);
 
-        try {
-            $rows = $this->availability->execute($map, $from, $to);
-            $map->refresh();
-            if ($map->is_disabled) {
-                $this->refresh->markSkipped($state);
-                return 0;
-            }
-            $this->refresh->markHttpSuccess($state);
-            $this->refresh->markPersisted($state);
+        $rows = $this->availability->execute($map, $from, $to);
 
-            return $rows->count();
-        } catch (Throwable $exception) {
-            $this->refresh->markFailure($state, $exception->getMessage());
-            throw $exception;
+        $map->refresh();
+        if ($map->is_disabled) {
+            $this->schedules->markProviderAnomalyHandled($scheduleId, $accommodationId);
+            return 0;
         }
+
+        $this->schedules->markHttp200($scheduleId, $accommodationId);
+        $this->schedules->markPersisted($scheduleId, $accommodationId);
+
+        return $rows->count();
     }
 }

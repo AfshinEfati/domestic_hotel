@@ -23,9 +23,9 @@ GRS/Eghamat24 should be migrated to the same module architecture later without c
 
 ## Provider lifecycle
 
-Provider state controls outbound supplier operations only.
+`providers.is_active` is the provider-integration/outbound switch. `providers.is_online` is a procurement-mode flag and does not disable catalog, rate refresh, availability recheck, balance or cancellation API operations.
 
-When a provider is inactive or offline:
+When a provider is inactive:
 
 - no provider HTTP requests are allowed;
 - provider background sync and refresh jobs do no external work;
@@ -40,6 +40,20 @@ Domestic Hotel itself remains available:
 - reservation creation is not rejected because the supplier is disabled;
 - reservation live supplier price recheck is skipped and the reservation continues to the manual procurement flow;
 - no provider historical/accounting data is deleted when the provider is disabled.
+
+## Hotel-centric price refresh
+
+The shared SSP hotel schedule selects an accommodation once. The refresh scheduler then fans that hotel out to every active, enabled provider map that can supply it. Provider modules do not independently scan the full hotel schedule during normal scheduled refresh.
+
+Each provider persists its own normalized offer rows. `room_calendars` therefore intentionally keeps all provider prices with the existing canonical uniqueness:
+
+`room_type_id + rate_plan_id + day + provider_id`
+
+No cheapest-only write is performed. Search/availability evaluates complete valid stays and returns the cheapest valid offer from one provider; it never combines different providers night by night. Keeping all provider rows preserves future flexibility for online procurement rules such as success rate, balance, commission, confirmation mode or cancellation terms.
+
+Provider API quota remains provider-specific. SnappTrip allows 120 requests per minute and the scheduled hotel refresh currently performs two calendar requests per hotel (`foreigner=false` and `foreigner=true`), so the SnappTrip scheduled capacity is conservatively 60 hotels per minute. When multiple providers are enabled, the shared scheduler uses the lowest enabled provider hotel capacity so every selected hotel can be fanned out consistently.
+
+There is no provider-specific price-refresh state table. The SSP hotel schedule remains the scheduling source of truth; provider-specific quota/cooldown is kept inside each provider module.
 
 ## Static hotel data
 
@@ -159,8 +173,7 @@ Schema changes are intentionally split by responsibility instead of bundling unr
 - `2026_10_04_143510_create_accommodation_provider_details_table.php`
 - `2026_10_04_143520_create_provider_stay_packages_table.php`
 - `2026_10_04_143530_create_provider_cancellations_table.php`
-- `2026_10_04_143540_create_provider_price_refresh_states_table.php`
 
-No SnappTrip gallery/review tables, facility icon column, duplicated provider room capacity columns, or provider-metadata JSON columns are introduced.
+No provider-specific price refresh state table is introduced. No SnappTrip gallery/review tables, facility icon column, duplicated provider room capacity columns, or provider-metadata JSON columns are introduced.
 
 Every newly added migration column has an English database comment.

@@ -21,9 +21,9 @@ final class ProviderOutboundGuard
     {
         $model = $provider instanceof Provider ? $provider : $this->provider($provider);
 
-        return $model !== null
-            && $model->is_active === true
-            && $model->is_online === true;
+        // is_active is the integration/module switch. is_online controls procurement
+        // mode and must not disable catalog, availability, cancellation or other API calls.
+        return $model !== null && $model->is_active === true;
     }
 
     public function assertAllowed(Provider|string $provider): Provider

@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\AccommodationProviderMap;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
+use Illuminate\Support\Collection;
 
 class AccommodationProviderMapRepository extends BaseRepository implements AccommodationProviderMapRepositoryInterface
 {
@@ -31,6 +32,23 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->where('accommodation_id', $accommodationId)
             ->where('provider_id', $providerId)
             ->first();
+    }
+
+    /** @return Collection<int, AccommodationProviderMap> */
+    public function activeForAccommodation(int $accommodationId): Collection
+    {
+        return $this->model->newQuery()
+            ->with('provider')
+            ->where('accommodation_id', $accommodationId)
+            ->where('is_disabled', false)
+            ->whereNotNull('provider_property_id')
+            ->whereHas('provider', fn ($query) => $query->where('is_active', true))
+            ->orderBy('provider_id')
+            ->get()
+            ->filter(static fn (AccommodationProviderMap $map): bool =>
+                trim((string) $map->provider_property_id) !== ''
+            )
+            ->values();
     }
 
     public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap

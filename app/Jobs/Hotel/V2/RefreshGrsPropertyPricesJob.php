@@ -60,8 +60,8 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
         try {
             $provider = $schedules->providerById($this->providerId);
-            if ($provider === null || $provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
-                throw new RuntimeException('GRS provider inactive, offline, missing, or mismatched.');
+            if ($provider === null || $provider->code !== 'grs' || !$provider->is_active) {
+                throw new RuntimeException('GRS provider inactive, missing, or mismatched.');
             }
 
             // The shared schedule and this job carry our local accommodations.id.

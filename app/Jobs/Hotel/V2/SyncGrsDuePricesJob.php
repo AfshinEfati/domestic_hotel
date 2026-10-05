@@ -41,7 +41,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
         if ($provider === null) {
             throw new RuntimeException('GRS provider is not configured.');
         }
-        if (!$provider->is_active || !$provider->is_online) {
+        if (!$provider->is_active) {
             return;
         }
 

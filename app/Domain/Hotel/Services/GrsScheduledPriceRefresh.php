@@ -3,21 +3,52 @@
 namespace App\Domain\Hotel\Services;
 
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
+use App\Domain\Hotel\V2\GrsApiQuota;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
-use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
+use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
+use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 
-/** Only GRS settings and its own job are handled here; no queries or HTTP calls. */
+/** GRS provider policy; shared scheduler selects hotels and this class only dispatches GRS work. */
 class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
 {
-    public function dispatchIfEnabled(Provider $provider): bool
+    public function enabled(Provider $provider): bool
     {
-        if ($provider->code !== 'grs' || !$provider->is_active || !$provider->is_online ||
-            !GrsRefreshSettings::from($provider)['scheduler_enabled']) {
+        return $provider->code === 'grs'
+            && $provider->is_active
+            && GrsRefreshSettings::from($provider)['scheduler_enabled'];
+    }
+
+    public function hotelCapacityPerMinute(Provider $provider): int
+    {
+        $windowMinutes = max(1, GrsApiQuota::windowMinutes($provider));
+
+        return max(1, intdiv(GrsApiQuota::maxRequests($provider), $windowMinutes));
+    }
+
+    public function dispatch(
+        Provider $provider,
+        AccommodationProviderMap $map,
+        int $scheduleId,
+        int $accommodationId,
+    ): bool {
+        if (
+            !$this->enabled($provider)
+            || (int) $map->provider_id !== (int) $provider->id
+            || (int) $map->accommodation_id !== $accommodationId
+            || $map->is_disabled
+            || trim((string) $map->provider_property_id) === ''
+        ) {
             return false;
         }
 
-        SyncGrsDuePricesJob::dispatch();
+        RefreshGrsPropertyPricesJob::dispatch(
+            $scheduleId,
+            $accommodationId,
+            (int) $provider->id,
+            GrsRefreshSettings::from($provider)['default_days'],
+        )->onQueue('grs-prices');
+
         return true;
     }
 }

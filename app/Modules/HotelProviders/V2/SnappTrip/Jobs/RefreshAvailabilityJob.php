@@ -19,16 +19,20 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 30;
     public int $timeout = 90;
-    public int $uniqueFor = 300;
+    public int $uniqueFor = 21600;
 
-    public function __construct(public int $stateId, public int $days)
-    {
+    public function __construct(
+        public int $scheduleId,
+        public int $accommodationId,
+        public int $providerId,
+        public int $days,
+    ) {
         $this->onQueue('snapptrip-prices');
     }
 
     public function uniqueId(): string
     {
-        return 'snapptrip-v2-refresh:'.$this->stateId;
+        return 'snapptrip-v2-refresh:'.$this->accommodationId;
     }
 
     public function handle(ProviderOutboundGuard $guard, RefreshScheduledAvailability $refresh): void
@@ -38,7 +42,12 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
         }
 
         try {
-            $refresh->execute($this->stateId, $this->days);
+            $refresh->execute(
+                $this->scheduleId,
+                $this->accommodationId,
+                $this->providerId,
+                $this->days,
+            );
         } catch (SnappTripRateLimitExceeded $exception) {
             $this->release($exception->retryAfterSeconds);
         }
