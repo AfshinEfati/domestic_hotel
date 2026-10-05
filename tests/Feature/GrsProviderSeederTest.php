@@ -12,7 +12,7 @@ use Tests\TestCase;
 
 class GrsProviderSeederTest extends TestCase
 {
-    public function test_existing_provider_seeder_preserves_admin_state_and_migrates_snapptrip_config(): void
+    public function test_existing_provider_seeder_preserves_admin_state_and_cleans_snapptrip_legacy_config(): void
     {
         Schema::dropIfExists('providers');
         Schema::create('providers', function (Blueprint $table): void {
@@ -52,8 +52,9 @@ class GrsProviderSeederTest extends TestCase
         ]);
         Provider::query()->create([
             'fa_name' => 'Snap', 'code' => 'snap',
+            'class' => 'App\\Domain\\Hotel\\Providers\\SnappTripAdapter',
             'config' => [
-                'token' => 'snap-admin-token',
+                'token' => 'legacy-snap-token',
                 'rate_limit' => ['max_requests' => 77],
                 'purchase' => ['online_enabled' => false],
             ],
@@ -87,7 +88,8 @@ class GrsProviderSeederTest extends TestCase
         $this->assertTrue($parto->is_online);
 
         $snap = Provider::query()->where('code', 'snap')->firstOrFail();
-        $this->assertSame('snap-admin-token', data_get($snap->config, 'api_key'));
+        $this->assertNull($snap->class);
+        $this->assertSame(SnappTripSettings::API_KEY_PLACEHOLDER, data_get($snap->config, 'api_key'));
         $this->assertArrayNotHasKey('token', $snap->config);
         $this->assertSame(77, data_get($snap->config, 'rate_limit.max_requests'));
         $this->assertSame(1, data_get($snap->config, 'rate_limit.window_minutes'));
