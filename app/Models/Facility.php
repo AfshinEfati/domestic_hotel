@@ -11,14 +11,12 @@ class Facility extends Model
         'facility_group_id',
         'fa_name',
         'en_name',
-        'icon',
     ];
 
     protected $casts = [
         'facility_group_id' => 'integer',
         'fa_name'           => 'string',
         'en_name'           => 'string',
-        'icon'              => 'string',
     ];
 
     public function group(): BelongsTo
