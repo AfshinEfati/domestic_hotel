@@ -2,7 +2,6 @@
 
 namespace App\Modules\HotelProviders\V2\SnappTrip;
 
-use App\Domain\Hotel\Providers\SnappTripAdapter;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\HealthCommand;
@@ -14,7 +13,6 @@ use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncPricesCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncCatalogJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncPendingCancellationsJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
-use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,13 +23,6 @@ final class SnappTripServiceProvider extends ServiceProvider
         $this->app->afterResolving(
             HotelProviderRegistry::class,
             function (HotelProviderRegistry $registry): void {
-                $registry->registerAdapter(
-                    SnappTripSettings::PROVIDER_CODE,
-                    static fn ($provider, Container $container) => $container->makeWith(
-                        SnappTripAdapter::class,
-                        ['provider' => $provider],
-                    ),
-                );
                 $registry->registerPriceRefreshHandler(
                     SnappTripSettings::PROVIDER_CODE,
                     SnappTripScheduledPriceRefresh::class,
