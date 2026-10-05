@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
-use App\Domain\Hotel\Providers\SnappTripAdapter;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
@@ -89,30 +88,22 @@ class ProviderSeeder extends Seeder
             [
                 'fa_name' => 'اسنپ تریپ',
                 'en_name' => 'SnappTrip',
-                'class' => SnappTripAdapter::class,
+                'class' => null,
                 'config' => $snappDefaults,
                 'is_online' => false,
             ]
         );
 
-        // Existing installations may already have a real SnappTrip key stored under
-        // the legacy token key. Move it to api_key in the database without ever
-        // reintroducing the credential into source control. Fresh installs receive
-        // only the explicit api_key_snapptrip placeholder.
+        // SnappTrip V2 has no legacy adapter/config compatibility layer.
+        // Keep current V2 admin overrides, remove the obsolete token key, and make
+        // sure the provider is not routed through ProviderAdapterInterface.
         $snappConfig = is_array($snapp->config) ? $snapp->config : [];
-        if (
-            (!isset($snappConfig['api_key']) || trim((string) $snappConfig['api_key']) === '')
-            && isset($snappConfig['token'])
-            && trim((string) $snappConfig['token']) !== ''
-        ) {
-            $snappConfig['api_key'] = $snappConfig['token'];
-        }
         unset($snappConfig['token']);
 
         $snappMerged = array_replace_recursive($snappDefaults, $snappConfig);
-        if ($snappMerged !== ($snapp->config ?? [])) {
+        if ($snappMerged !== ($snapp->config ?? []) || $snapp->class !== null) {
             $snapp->forceFill([
-                'class' => SnappTripAdapter::class,
+                'class' => null,
                 'config' => $snappMerged,
             ])->save();
         }
