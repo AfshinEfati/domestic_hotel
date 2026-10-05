@@ -69,7 +69,7 @@ final class SnappTripGateway
             ->values();
     }
 
-    /** @return Collection<string,array<int,array{name:string,icon:?string}>> */
+    /** @return Collection<string,array<int,array{name:string}>> */
     public function facilities(array $providerPropertyIds): Collection
     {
         return collect($this->client->facilities($providerPropertyIds))
@@ -77,38 +77,6 @@ final class SnappTripGateway
             ->mapWithKeys(function (array $row): array {
                 $items = collect(is_array($row['facilities'] ?? null) ? $row['facilities'] : [])
                     ->map(fn ($facility) => is_array($facility) ? $this->mapper->facility($facility) : null)
-                    ->filter()
-                    ->values()
-                    ->all();
-
-                return [(string) $row['hotel_id'] => $items];
-            });
-    }
-
-    /** @return Collection<string,array<int,array{url:string,title:?string,description:?string}>> */
-    public function galleries(array $providerPropertyIds): Collection
-    {
-        return collect($this->client->galleries($providerPropertyIds))
-            ->filter(fn ($row) => is_array($row) && isset($row['hotel_id']))
-            ->mapWithKeys(function (array $row): array {
-                $items = collect(is_array($row['gallery'] ?? null) ? $row['gallery'] : [])
-                    ->map(fn ($media) => is_array($media) ? $this->mapper->media($media) : null)
-                    ->filter()
-                    ->values()
-                    ->all();
-
-                return [(string) $row['hotel_id'] => $items];
-            });
-    }
-
-    /** @return Collection<string,array<int,array<string,mixed>>> */
-    public function reviews(array $providerPropertyIds): Collection
-    {
-        return collect($this->client->reviews($providerPropertyIds))
-            ->filter(fn ($row) => is_array($row) && isset($row['hotel_id']))
-            ->mapWithKeys(function (array $row): array {
-                $items = collect(is_array($row['reviews'] ?? null) ? $row['reviews'] : [])
-                    ->map(fn ($review) => is_array($review) ? $this->mapper->review($review) : null)
                     ->filter()
                     ->values()
                     ->all();
