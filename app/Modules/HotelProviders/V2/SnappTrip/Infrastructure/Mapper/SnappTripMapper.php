@@ -4,7 +4,6 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Mapper;
 
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripMoney;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 
 final class SnappTripMapper
 {
@@ -67,15 +66,8 @@ final class SnappTripMapper
                 'free_transfer_policy' => $this->string($policies['free_transfer_policy'] ?? null),
                 'free_transfers' => is_array($policies['free_transfers'] ?? null) ? $policies['free_transfers'] : null,
             ],
-            'ratings' => is_array($row['reviews'] ?? null) ? $row['reviews'] : null,
-            'cover' => is_array($row['cover'] ?? null) ? $this->media($row['cover']) : null,
             'facilities' => collect(is_array($row['facilities'] ?? null) ? $row['facilities'] : [])
                 ->map(fn ($facility) => is_array($facility) ? $this->facility($facility) : null)
-                ->filter()
-                ->values()
-                ->all(),
-            'gallery' => collect(is_array($row['gallery'] ?? null) ? $row['gallery'] : [])
-                ->map(fn ($media) => is_array($media) ? $this->media($media) : null)
                 ->filter()
                 ->values()
                 ->all(),
@@ -91,22 +83,13 @@ final class SnappTripMapper
             return null;
         }
 
-        $boardType = $this->string($row['board_type'] ?? null) ?? 'room_only';
-
         return [
             'provider_room_type_id' => $id,
             'provider_property_id' => $this->id($row['hotel_id'] ?? null),
             'fa_name' => $title,
-            'board_type' => $boardType,
+            'board_type' => $this->string($row['board_type'] ?? null) ?? 'room_only',
             'adult_capacity' => $this->unsignedInt($row['adults'] ?? null),
-            'child_capacity' => $this->unsignedInt($row['children'] ?? null),
             'extra_capacity' => $this->unsignedInt($row['extra_bed'] ?? null),
-            'provider_metadata' => [
-                'accommodation_type' => $this->string($row['accommodation_type'] ?? null),
-                'description' => $this->string($row['description'] ?? null),
-                'facilities_tags' => is_array($row['facilities_tags'] ?? null) ? $row['facilities_tags'] : [],
-                'board_type' => $boardType,
-            ],
         ];
     }
 
@@ -114,57 +97,7 @@ final class SnappTripMapper
     {
         $name = $this->string($row['title'] ?? null);
 
-        return $name === null ? null : [
-            'name' => $name,
-            'icon' => $this->string($row['icon'] ?? null),
-        ];
-    }
-
-    public function media(array $row): ?array
-    {
-        $url = $this->string($row['url'] ?? null);
-
-        return $url === null ? null : [
-            'url' => $url,
-            'title' => $this->string($row['title'] ?? null),
-            'description' => $this->string($row['description'] ?? null),
-        ];
-    }
-
-    public function review(array $row): ?array
-    {
-        $id = $this->id($row['id'] ?? null);
-
-        if ($id === null) {
-            return null;
-        }
-
-        return [
-            'provider_review_id' => $id,
-            'provider_user_id' => is_numeric($row['user_id'] ?? null) ? (int) $row['user_id'] : null,
-            'full_name' => $this->string($row['fullname'] ?? null),
-            'comment' => $this->string($row['comment'] ?? null),
-            'comment_risk_level' => is_numeric($row['comment_risk_level'] ?? null)
-                ? (float) $row['comment_risk_level']
-                : null,
-            'has_ever_booked' => array_key_exists('has_ever_booked', $row) ? (bool) $row['has_ever_booked'] : null,
-            'ratings' => [
-                'clean' => $row['rate_clean'] ?? null,
-                'collective_avg' => $row['rate_collective_avg'] ?? null,
-                'facility' => $row['rate_facility'] ?? null,
-                'food_quality' => $row['rate_food_quality'] ?? null,
-                'location' => $row['rate_location'] ?? null,
-                'overall' => $row['rate_overall'] ?? null,
-                'services' => $row['rate_services'] ?? null,
-                'sleep_quality' => $row['rate_sleep_quality'] ?? null,
-                'staff' => $row['rate_staff'] ?? null,
-                'value_for_money' => $row['rate_value_for_money'] ?? null,
-            ],
-            'recommended' => array_key_exists('recommended', $row) ? (bool) $row['recommended'] : null,
-            'provider_status' => $this->string($row['status'] ?? null),
-            'registered_at' => $this->timestamp($row['registered_date'] ?? null),
-            'provider_updated_at' => $this->timestamp($row['update_date'] ?? null),
-        ];
+        return $name === null ? null : ['name' => $name];
     }
 
     /**
@@ -385,19 +318,6 @@ final class SnappTripMapper
     {
         try {
             return $this->string($value) === null ? null : CarbonImmutable::parse((string) $value)->toDateString();
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    private function timestamp(mixed $value): ?string
-    {
-        if (!is_numeric($value) || (int) $value <= 0) {
-            return null;
-        }
-
-        try {
-            return CarbonImmutable::createFromTimestamp((int) $value)->toDateTimeString();
         } catch (\Throwable) {
             return null;
         }
