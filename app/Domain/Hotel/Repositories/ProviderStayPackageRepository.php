@@ -4,7 +4,7 @@ namespace App\Domain\Hotel\Repositories;
 
 use App\Models\ProviderStayPackage;
 
-final class ProviderStayPackageRepository
+class ProviderStayPackageRepository
 {
     /**
      * A provider without active package rows has no package restriction. When active
