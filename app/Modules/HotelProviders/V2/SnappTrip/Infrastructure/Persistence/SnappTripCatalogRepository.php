@@ -5,10 +5,8 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence;
 use App\Domain\Hotel\Repositories\CityRepository;
 use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
-use App\Models\AccommodationMedia;
 use App\Models\AccommodationProviderDetail;
 use App\Models\AccommodationProviderMap;
-use App\Models\AccommodationReview;
 use App\Models\Facility;
 use App\Models\FacilityGroup;
 use App\Models\HotelChildPolicy;
@@ -58,8 +56,6 @@ final class SnappTripCatalogRepository
         Provider $provider,
         array $hotel,
         array $facilities = [],
-        array $gallery = [],
-        array $reviews = [],
         array $rooms = [],
         ?string $providerUrl = null,
     ): AccommodationProviderMap {
@@ -67,8 +63,6 @@ final class SnappTripCatalogRepository
             $provider,
             $hotel,
             $facilities,
-            $gallery,
-            $reviews,
             $rooms,
             $providerUrl,
         ): AccommodationProviderMap {
@@ -82,9 +76,6 @@ final class SnappTripCatalogRepository
             $this->persistProviderDetails($map, $hotel, $providerUrl);
             $this->persistChildPolicy((int) $map->accommodation_id, $hotel['policies'] ?? []);
             $this->persistFacilities($map, $facilities !== [] ? $facilities : ($hotel['facilities'] ?? []));
-            $this->persistMedia($provider, $map, 'cover', isset($hotel['cover']) && is_array($hotel['cover']) ? [$hotel['cover']] : []);
-            $this->persistMedia($provider, $map, 'gallery', $gallery !== [] ? $gallery : ($hotel['gallery'] ?? []));
-            $this->persistReviews($provider, $map, $reviews);
             $this->persistRooms($provider, $map, $rooms);
 
             return $map->fresh(['accommodation']) ?? $map;
@@ -108,9 +99,32 @@ final class SnappTripCatalogRepository
             throw new RuntimeException("SnappTrip room mapping {$providerRoomId} is missing for hotel {$map->provider_property_id}.");
         }
 
-        $metadata = is_array($roomMap->provider_metadata) ? $roomMap->provider_metadata : [];
-        $boardType = $this->normalizeBoardType($metadata['board_type'] ?? 'room_only');
-        $ratePlanMap = $this->ensureRatePlan($provider, $map, $boardType, $foreigner);
+        $domesticMap = RatePlanProviderMap::query()
+            ->where('provider_id', $provider->id)
+            ->where('accommodation_provider_map_id', $map->id)
+            ->where('provider_rate_plan_id', $this->providerRatePlanId($providerRoomId, false))
+            ->first();
+
+        if ($domesticMap === null) {
+            throw new RuntimeException("SnappTrip domestic rate-plan mapping is missing for room {$providerRoomId}.");
+        }
+
+        if (!$foreigner) {
+            return ['room_map' => $roomMap, 'rate_plan_map' => $domesticMap];
+        }
+
+        $domesticPlan = RatePlan::query()->find($domesticMap->rate_plan_id);
+        if ($domesticPlan === null || (int) $domesticPlan->accommodation_id !== (int) $map->accommodation_id) {
+            throw new RuntimeException("SnappTrip domestic rate-plan mapping for room {$providerRoomId} is invalid.");
+        }
+
+        $ratePlanMap = $this->ensureRatePlan(
+            $provider,
+            $map,
+            $providerRoomId,
+            $this->boardTypeFromRatePlan($domesticPlan),
+            true,
+        );
 
         return ['room_map' => $roomMap, 'rate_plan_map' => $ratePlanMap];
     }
@@ -239,6 +253,7 @@ final class SnappTripCatalogRepository
         AccommodationProviderDetail::query()->updateOrCreate(
             ['accommodation_provider_map_id' => $map->id],
             [
+                'accommodation_title' => $hotel['accommodation_title'] ?? null,
                 'description' => $hotel['description'] ?? null,
                 'provider_url' => $providerUrl,
                 'is_marketplace' => $hotel['is_marketplace'] ?? null,
@@ -248,12 +263,6 @@ final class SnappTripCatalogRepository
                 'foreigners_fee' => $policies['foreigners_fee'] ?? null,
                 'free_transfer_policy' => $policies['free_transfer_policy'] ?? null,
                 'free_transfers' => $policies['free_transfers'] ?? null,
-                'ratings' => $hotel['ratings'] ?? null,
-                'provider_metadata' => [
-                    'accommodation_title' => $hotel['accommodation_title'] ?? null,
-                    'max_infant_age' => $policies['max_infant_age'] ?? null,
-                    'max_child_age' => $policies['max_child_age'] ?? null,
-                ],
             ],
         );
     }
@@ -301,70 +310,13 @@ final class SnappTripCatalogRepository
 
             $facility = Facility::query()->firstOrCreate(
                 ['facility_group_id' => $group->id, 'fa_name' => $name],
-                ['en_name' => null, 'icon' => $row['icon'] ?? null],
+                ['en_name' => null],
             );
-            if ($facility->icon === null && $this->nullableString($row['icon'] ?? null) !== null) {
-                $facility->update(['icon' => $row['icon']]);
-            }
             $ids[$facility->id] = [];
         }
 
         if ($ids !== []) {
             $map->accommodation?->facilities()->syncWithoutDetaching($ids);
-        }
-    }
-
-    private function persistMedia(Provider $provider, AccommodationProviderMap $map, string $type, array $items): void
-    {
-        foreach ($items as $index => $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $url = $this->nullableString($row['url'] ?? null);
-            if ($url === null) {
-                continue;
-            }
-            $key = hash('sha256', $type."\0".$url);
-            AccommodationMedia::query()->updateOrCreate(
-                ['accommodation_provider_map_id' => $map->id, 'provider_media_key' => $key],
-                [
-                    'provider_id' => $provider->id,
-                    'type' => $type,
-                    'url' => $url,
-                    'title' => $row['title'] ?? null,
-                    'description' => $row['description'] ?? null,
-                    'sort_order' => (int) $index,
-                ],
-            );
-        }
-    }
-
-    private function persistReviews(Provider $provider, AccommodationProviderMap $map, array $reviews): void
-    {
-        foreach ($reviews as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $reviewId = trim((string) ($row['provider_review_id'] ?? ''));
-            if ($reviewId === '') {
-                continue;
-            }
-            AccommodationReview::query()->updateOrCreate(
-                ['accommodation_provider_map_id' => $map->id, 'provider_review_id' => $reviewId],
-                [
-                    'provider_id' => $provider->id,
-                    'provider_user_id' => $row['provider_user_id'] ?? null,
-                    'full_name' => $row['full_name'] ?? null,
-                    'comment' => $row['comment'] ?? null,
-                    'comment_risk_level' => $row['comment_risk_level'] ?? null,
-                    'has_ever_booked' => $row['has_ever_booked'] ?? null,
-                    'ratings' => $row['ratings'] ?? null,
-                    'recommended' => $row['recommended'] ?? null,
-                    'provider_status' => $row['provider_status'] ?? null,
-                    'registered_at' => $row['registered_at'] ?? null,
-                    'provider_updated_at' => $row['provider_updated_at'] ?? null,
-                ],
-            );
         }
     }
 
@@ -408,7 +360,6 @@ final class SnappTripCatalogRepository
             }
 
             $adultCapacity = $this->nullableUnsignedSmallInt($row['adult_capacity'] ?? null);
-            $childCapacity = $this->nullableUnsignedSmallInt($row['child_capacity'] ?? null);
             $extraCapacity = $this->nullableUnsignedSmallInt($row['extra_capacity'] ?? null);
             $room->update(array_filter([
                 'room_type_name_id' => $nameRecord->id,
@@ -418,17 +369,12 @@ final class SnappTripCatalogRepository
                 'out_of_service' => false,
             ], static fn ($value): bool => $value !== null));
 
-            $roomMap->update([
-                'fa_name' => $name,
-                'provider_adult_capacity' => $adultCapacity,
-                'provider_child_capacity' => $childCapacity,
-                'provider_extra_capacity' => $extraCapacity,
-                'provider_metadata' => $row['provider_metadata'] ?? [],
-            ]);
+            $roomMap->update(['fa_name' => $name]);
 
             $this->ensureRatePlan(
                 $provider,
                 $map,
+                $providerRoomId,
                 $this->normalizeBoardType($row['board_type'] ?? null),
                 false,
             );
@@ -438,28 +384,10 @@ final class SnappTripCatalogRepository
     private function ensureRatePlan(
         Provider $provider,
         AccommodationProviderMap $map,
+        string $providerRoomId,
         string $boardType,
         bool $foreigner,
     ): RatePlanProviderMap {
-        $providerPlanId = sprintf('board:%s:%s', $boardType, $foreigner ? 'foreign' : 'domestic');
-        $existing = RatePlanProviderMap::query()
-            ->where('provider_id', $provider->id)
-            ->where('accommodation_provider_map_id', $map->id)
-            ->where('provider_rate_plan_id', $providerPlanId)
-            ->first();
-
-        if ($existing !== null) {
-            $plan = RatePlan::query()->find($existing->rate_plan_id);
-            if ($plan === null || (int) $plan->accommodation_id !== (int) $map->accommodation_id) {
-                throw new RuntimeException("SnappTrip rate-plan mapping {$providerPlanId} belongs to another accommodation.");
-            }
-            if ((bool) $plan->is_foreign_guest !== $foreigner) {
-                $plan->update(['is_foreign_guest' => $foreigner]);
-            }
-
-            return $existing;
-        }
-
         [$faName, $enName, $mealType] = $this->ratePlanAttributes($boardType, $foreigner);
         $plan = RatePlan::query()->firstOrCreate(
             ['accommodation_id' => $map->accommodation_id, 'fa_name' => $faName],
@@ -476,15 +404,51 @@ final class SnappTripCatalogRepository
             'is_foreign_guest' => $foreigner,
         ]);
 
+        $providerPlanId = $this->providerRatePlanId($providerRoomId, $foreigner);
+        $existing = RatePlanProviderMap::query()
+            ->where('provider_id', $provider->id)
+            ->where('accommodation_provider_map_id', $map->id)
+            ->where('provider_rate_plan_id', $providerPlanId)
+            ->first();
+
+        if ($existing !== null) {
+            $existingPlan = RatePlan::query()->find($existing->rate_plan_id);
+            if ($existingPlan === null || (int) $existingPlan->accommodation_id !== (int) $map->accommodation_id) {
+                throw new RuntimeException("SnappTrip rate-plan mapping {$providerPlanId} belongs to another accommodation.");
+            }
+
+            $existing->update([
+                'rate_plan_id' => $plan->id,
+                'fa_name' => $faName,
+                'en_name' => $enName,
+            ]);
+
+            return $existing;
+        }
+
         return RatePlanProviderMap::query()->create([
             'rate_plan_id' => $plan->id,
             'provider_id' => $provider->id,
             'accommodation_provider_map_id' => $map->id,
             'provider_rate_plan_id' => $providerPlanId,
-            'provider_metadata' => ['board_type' => $boardType, 'foreigner' => $foreigner],
             'fa_name' => $faName,
             'en_name' => $enName,
         ]);
+    }
+
+    private function providerRatePlanId(string $providerRoomId, bool $foreigner): string
+    {
+        return sprintf('room:%s:%s', $providerRoomId, $foreigner ? 'foreign' : 'domestic');
+    }
+
+    private function boardTypeFromRatePlan(RatePlan $plan): string
+    {
+        return match ((string) $plan->meal_type) {
+            'breakfast' => 'bed_breakfast',
+            'half_board' => 'half_board',
+            'full_board' => 'full_board',
+            default => 'room_only',
+        };
     }
 
     /** @return array{0:string,1:string,2:?string} */
