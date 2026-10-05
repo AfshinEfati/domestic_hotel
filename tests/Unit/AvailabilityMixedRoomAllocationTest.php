@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Hotel\Repositories\ProviderStayPackageRepository;
 use App\Models\Accommodation;
 use App\Models\RatePlan;
 use App\Models\RoomCalendar;
@@ -36,34 +37,53 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
             ]);
             $rooms[] = $room;
 
-            foreach ($days as $dayIndex => $day) {
-                $inventory = $definition['inventory'];
-                if (is_array($inventory)) {
-                    $inventory = $inventory[$dayIndex];
-                }
+            $offers = $definition['offers'] ?? [[
+                'provider_id' => 1,
+                'rate_plan_id' => 740,
+                'inventory' => $definition['inventory'],
+                'price' => $definition['price'],
+            ]];
 
-                $calendar = new RoomCalendar([
-                    'id' => $calendarId++,
-                    'accommodation_id' => 35,
-                    'room_type_id' => $definition['id'],
-                    'rate_plan_id' => 740,
-                    'provider_id' => 1,
-                    'day' => $day,
-                    'inventory' => $inventory,
-                    'closed' => false,
-                    'daily_rate' => $definition['price'],
-                    'rack_rate' => $definition['price'],
-                    'grs_rate' => $definition['price'],
-                ]);
-                $calendar->setRelation('ratePlan', new RatePlan());
-                $calendars[] = $calendar;
+            foreach ($offers as $offer) {
+                foreach ($days as $dayIndex => $day) {
+                    $inventory = $offer['inventory'];
+                    if (is_array($inventory)) {
+                        $inventory = $inventory[$dayIndex];
+                    }
+
+                    $price = $offer['price'];
+                    if (is_array($price)) {
+                        $price = $price[$dayIndex];
+                    }
+
+                    $ratePlanId = (int) ($offer['rate_plan_id'] ?? 740);
+                    $calendar = new RoomCalendar([
+                        'id' => $calendarId++,
+                        'accommodation_id' => 35,
+                        'room_type_id' => $definition['id'],
+                        'rate_plan_id' => $ratePlanId,
+                        'provider_id' => (int) $offer['provider_id'],
+                        'day' => $day,
+                        'inventory' => $inventory,
+                        'closed' => false,
+                        'daily_rate' => $price,
+                        'rack_rate' => $price,
+                        'grs_rate' => $price,
+                    ]);
+                    $calendar->setRelation('ratePlan', (new RatePlan())->forceFill(['id' => $ratePlanId]));
+                    $calendars[] = $calendar;
+                }
             }
         }
 
         $hotel->setRelation('rooms', collect($rooms));
 
+        $stayPackages = $this->createMock(ProviderStayPackageRepository::class);
+        $stayPackages->method('allowsStay')->willReturn(true);
+
         $service = new AvailabilityFilterService(
-            $this->createMock(RoomCalendarRepositoryInterface::class)
+            $this->createMock(RoomCalendarRepositoryInterface::class),
+            $stayPackages,
         );
 
         return (new ReflectionMethod($service, 'findCheapestAvailableCombination'))
@@ -139,5 +159,36 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
         );
 
         $this->assertCount(0, $result);
+    }
+
+    public function test_multinight_price_chooses_cheapest_complete_provider_offer_without_mixing_nights(): void
+    {
+        $result = $this->select(
+            [$this->request()],
+            [[
+                'id' => 501,
+                'capacity' => 1,
+                'offers' => [
+                    [
+                        'provider_id' => 1,
+                        'rate_plan_id' => 900,
+                        'inventory' => 5,
+                        'price' => [80000000, 150000000, 80000000],
+                    ],
+                    [
+                        'provider_id' => 2,
+                        'rate_plan_id' => 900,
+                        'inventory' => 5,
+                        'price' => [100000000, 100000000, 100000000],
+                    ],
+                ],
+            ]],
+            ['2027-03-04', '2027-03-05', '2027-03-06'],
+        );
+
+        $this->assertCount(1, $result);
+        $this->assertSame(2, $result->first()->provider_id);
+        $this->assertSame(300000000, $result->first()->total_price);
+        $this->assertSame([100000000, 100000000, 100000000], $result->first()->nightly_prices);
     }
 }
