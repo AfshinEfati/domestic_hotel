@@ -17,7 +17,9 @@ Domestic Hotel remains a modular monolith. Provider integrations are isolated mo
 
 The shared Hotel domain remains canonical and provider-neutral. Provider modules own HTTP, authentication, provider rate limiting, provider response mapping, provider-specific orchestration, jobs, commands, and provider-specific persistence helpers.
 
-SnappTrip is the first provider implemented with this structure. GRS/Eghamat24 should be migrated to the same module architecture later without changing its current production behavior during the SnappTrip rollout.
+SnappTrip is implemented only through `App\Modules\HotelProviders\V2\SnappTrip`. There is no legacy `SnappTripAdapter`, no compatibility facade through `ProviderAdapterInterface`, and the SnappTrip provider row keeps `class = null`. Old `token` configuration is removed instead of migrated; only the V2 `api_key` configuration is supported.
+
+GRS/Eghamat24 should be migrated to the same module architecture later without changing its current production behavior during the SnappTrip rollout.
 
 ## Provider lifecycle
 
@@ -77,7 +79,7 @@ SnappTrip calendar prices are indicative. Live reservation recheck uses SnappTri
 
 SnappTrip rack/package windows are stored as provider-neutral `provider_stay_packages`; they are not stored in `room_calendars.rack_rate` because a SnappTrip rack is a stay-window constraint rather than a price column.
 
-Rack rows are historical data. A current provider refresh marks overlapping old package rows inactive and marks packages observed in the latest response active with `last_seen_at`; it does not delete stale packages. Only active packages constrain new availability/reservation requests.
+Rack rows are historical data. A current provider refresh marks overlapping old package rows inactive and marks packages observed in the latest response active with `last_seen_at`; it does not delete stale packages. Only active packages constrain new availability/reservation requests. Stay validation itself is centralized in the shared `ProviderStayPackageRepository`; SnappTrip does not keep a duplicate validator.
 
 ## Purchase
 
