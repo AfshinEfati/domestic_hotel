@@ -189,6 +189,13 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
         $this->assertCount(1, $result);
         $this->assertSame(2, $result->first()->provider_id);
         $this->assertSame(300000000, $result->first()->total_price);
-        $this->assertSame([100000000, 100000000, 100000000], $result->first()->nightly_prices);
+        $this->assertSame(
+            [100000000, 100000000, 100000000],
+            array_column($result->first()->nightly_prices, 'total_price'),
+        );
+        $this->assertSame(
+            [2, 2, 2],
+            array_column($result->first()->nightly_prices, 'provider_id'),
+        );
     }
 }
