@@ -11,7 +11,7 @@ use Illuminate\Console\Command;
 final class SyncHotelDetailsCommand extends Command
 {
     protected $signature = 'snapptrip:sync-details {hotel? : Optional SnappTrip hotel ID or comma-separated IDs}';
-    protected $description = 'Queue SnappTrip static details, facilities, gallery, reviews and rooms synchronization.';
+    protected $description = 'Queue SnappTrip static hotel details, facilities and rooms synchronization.';
 
     public function handle(ProviderOutboundGuard $guard, SnappTripCatalogRepository $catalog): int
     {
