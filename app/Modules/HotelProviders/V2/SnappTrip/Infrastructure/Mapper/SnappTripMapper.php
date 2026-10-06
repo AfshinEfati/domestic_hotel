@@ -16,16 +16,15 @@ final class SnappTripMapper
             return null;
         }
 
+        $state = is_array($row['state'] ?? null) ? $row['state'] : [];
+
         return [
             'id' => $id,
             'name' => $faName,
             'name_en' => $this->string($row['title_en'] ?? null),
-            'province_name' => $this->string(data_get($row, 'state.title')),
+            'provider_state_id' => $this->id($state['id'] ?? null),
+            'province_name' => $this->string($state['title'] ?? null),
             'province_name_en' => null,
-            'country_name' => 'ایران',
-            'country_name_en' => 'Iran',
-            'country_code_alpha_2' => 'IR',
-            'country_code_alpha_3' => 'IRN',
         ];
     }
 
