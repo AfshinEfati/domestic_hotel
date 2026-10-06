@@ -10,10 +10,7 @@ return new class extends Migration {
         Schema::create('accommodation_provider_details', function (Blueprint $table): void {
             $table->id()->comment('Primary key.');
             $table->foreignId('accommodation_provider_map_id')
-                ->unique()
-                ->comment('Provider-specific accommodation mapping owning these details.')
-                ->constrained('accommodation_provider_maps')
-                ->cascadeOnDelete();
+                ->comment('Provider-specific accommodation mapping owning these details.');
             $table->string('accommodation_title', 500)->nullable()->comment('Provider-specific accommodation title when it differs from the canonical hotel name.');
             $table->text('description')->nullable()->comment('Provider-specific accommodation description.');
             $table->string('provider_url', 1000)->nullable()->comment('Provider-specific accommodation URL or URL key when supplied.');
@@ -26,6 +23,18 @@ return new class extends Migration {
             $table->json('free_transfers')->nullable()->comment('Provider-declared supported free-transfer types when supplied as structured data.');
             $table->timestamp('created_at')->nullable()->comment('Row creation timestamp.');
             $table->timestamp('updated_at')->nullable()->comment('Row last update timestamp.');
+
+            $table->unique(
+                'accommodation_provider_map_id',
+                'acc_provider_details_map_unique'
+            );
+            $table->foreign(
+                'accommodation_provider_map_id',
+                'acc_provider_details_map_fk'
+            )
+                ->references('id')
+                ->on('accommodation_provider_maps')
+                ->cascadeOnDelete();
         });
     }
 
