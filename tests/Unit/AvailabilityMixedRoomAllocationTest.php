@@ -10,8 +10,8 @@ use App\Models\RoomType;
 use App\Repositories\Contracts\RoomCalendarRepositoryInterface;
 use App\Services\AvailabilityFilterService;
 use Illuminate\Support\Collection;
-use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use Tests\TestCase;
 
 class AvailabilityMixedRoomAllocationTest extends TestCase
 {
