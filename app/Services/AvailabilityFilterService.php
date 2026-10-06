@@ -259,33 +259,34 @@ class AvailabilityFilterService
             $request = $requests[$depth];
             foreach ($request['options'] as $option) {
                 $roomId = (int) $option['room']->id;
-                $newUsed = ($used[$roomId] ?? 0) + 1;
+                $inventoryPoolKey = $option['provider_id'] . ':' . $roomId;
+                $newUsed = ($used[$inventoryPoolKey] ?? 0) + 1;
                 $newLimits = $limits;
                 $valid = true;
 
                 foreach ($dates as $day) {
                     $limit = min(
-                        $limits[$roomId][$day] ?? PHP_INT_MAX,
+                        $limits[$inventoryPoolKey][$day] ?? PHP_INT_MAX,
                         $option['inventory_by_day'][$day]
                     );
                     if ($newUsed > $limit) {
                         $valid = false;
                         break;
                     }
-                    $newLimits[$roomId][$day] = $limit;
+                    $newLimits[$inventoryPoolKey][$day] = $limit;
                 }
                 if (!$valid) {
                     continue;
                 }
 
-                $newUsedByRoom = $used;
-                $newUsedByRoom[$roomId] = $newUsed;
+                $newUsedByPool = $used;
+                $newUsedByPool[$inventoryPoolKey] = $newUsed;
                 $newSelection = $selection;
                 $newSelection[$request['index']] = $option;
                 $search(
                     $depth + 1,
                     $cost + $option['price']['total_price'],
-                    $newUsedByRoom,
+                    $newUsedByPool,
                     $newLimits,
                     $newSelection
                 );
@@ -297,22 +298,24 @@ class AvailabilityFilterService
             return collect();
         }
 
-        $requiredByRoomId = [];
+        $requiredByInventoryPool = [];
         foreach ($bestSelection as $option) {
             $roomId = (int) $option['room']->id;
-            $requiredByRoomId[$roomId] = ($requiredByRoomId[$roomId] ?? 0) + 1;
+            $inventoryPoolKey = $option['provider_id'] . ':' . $roomId;
+            $requiredByInventoryPool[$inventoryPoolKey] = ($requiredByInventoryPool[$inventoryPoolKey] ?? 0) + 1;
         }
 
         $selectedRooms = [];
         foreach ($bestSelection as $requestIndex => $option) {
             $room = clone $option['room'];
+            $inventoryPoolKey = $option['provider_id'] . ':' . (int) $room->id;
             $room->setAttribute('pricing', $option['price']['pricing']);
             $room->setAttribute('total_price', $option['price']['total_price']);
             $room->setAttribute('nightly_prices', $option['price']['nightly_prices']);
             $room->setAttribute('ratePlan', $option['rate_plan']);
             $room->setAttribute('provider_id', $option['provider_id']);
             $room->setAttribute('available_inventory', $option['min_inventory']);
-            $room->setAttribute('required_inventory', $requiredByRoomId[(int) $room->id]);
+            $room->setAttribute('required_inventory', $requiredByInventoryPool[$inventoryPoolKey]);
             $room->setAttribute('requested_room_index', $requestIndex);
             $room->setAttribute('extra_bed_count', $option['price']['extra_bed_count']);
             $selectedRooms[$requestIndex] = $room;
