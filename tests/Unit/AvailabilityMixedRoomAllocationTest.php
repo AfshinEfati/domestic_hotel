@@ -198,4 +198,61 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
             array_column($result->first()->nightly_prices, 'provider_id'),
         );
     }
+
+    public function test_same_canonical_room_can_use_separate_inventory_from_different_providers(): void
+    {
+        $result = $this->select(
+            [$this->request(), $this->request()],
+            [[
+                'id' => 700,
+                'capacity' => 1,
+                'offers' => [
+                    [
+                        'provider_id' => 1,
+                        'rate_plan_id' => 910,
+                        'inventory' => 1,
+                        'price' => 10000000,
+                    ],
+                    [
+                        'provider_id' => 2,
+                        'rate_plan_id' => 920,
+                        'inventory' => 1,
+                        'price' => 11000000,
+                    ],
+                ],
+            ]],
+        );
+
+        $this->assertCount(2, $result);
+        $this->assertSame([1, 2], $result->pluck('provider_id')->sort()->values()->all());
+        $this->assertSame([1, 1], $result->pluck('required_inventory')->sort()->values()->all());
+        $this->assertSame(21000000, $result->sum('total_price'));
+    }
+
+    public function test_rate_plans_from_same_provider_share_the_same_room_inventory_pool(): void
+    {
+        $result = $this->select(
+            [$this->request(), $this->request()],
+            [[
+                'id' => 701,
+                'capacity' => 1,
+                'offers' => [
+                    [
+                        'provider_id' => 1,
+                        'rate_plan_id' => 930,
+                        'inventory' => 1,
+                        'price' => 10000000,
+                    ],
+                    [
+                        'provider_id' => 1,
+                        'rate_plan_id' => 931,
+                        'inventory' => 1,
+                        'price' => 11000000,
+                    ],
+                ],
+            ]],
+        );
+
+        $this->assertCount(0, $result);
+    }
 }
