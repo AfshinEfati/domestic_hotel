@@ -133,8 +133,8 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         );
 
         $this->assertSame(2, $scheduler->dispatch());
-        $this->assertSame([[1, 11, 101, 77, 100]], $slow->dispatched);
-        $this->assertSame([[2, 12, 102, 77, 100]], $fast->dispatched);
+        $this->assertSame([[1, 11, 101, 'cycle', 77, 100]], $slow->dispatched);
+        $this->assertSame([[2, 12, 102, 'cycle', 77, 100]], $fast->dispatched);
     }
 
     public function test_outbound_guard_uses_active_state_not_online_procurement_mode(): void
@@ -158,7 +158,7 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
 
 final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 {
-    /** @var array<int,array{int,int,int,int,int}> */
+    /** @var array<int,array{int,int,int,string,int,int}> */
     public array $dispatched = [];
 
     public function enabled(Provider $provider): bool
@@ -175,6 +175,7 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
         Provider $provider,
         AccommodationProviderMap $map,
         int $refreshStateId,
+        string $cycleKey,
         int $scheduleId,
         int $accommodationId,
         ?int $days = null,
@@ -183,6 +184,7 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
             (int) $provider->id,
             (int) $map->id,
             $refreshStateId,
+            $cycleKey,
             $scheduleId,
             $accommodationId,
         ];
@@ -193,7 +195,7 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 
 final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 {
-    /** @var array<int,array{int,int,int,int,int}> */
+    /** @var array<int,array{int,int,int,string,int,int}> */
     public array $dispatched = [];
 
     public function enabled(Provider $provider): bool
@@ -210,6 +212,7 @@ final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
         Provider $provider,
         AccommodationProviderMap $map,
         int $refreshStateId,
+        string $cycleKey,
         int $scheduleId,
         int $accommodationId,
         ?int $days = null,
@@ -218,6 +221,7 @@ final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
             (int) $provider->id,
             (int) $map->id,
             $refreshStateId,
+            $cycleKey,
             $scheduleId,
             $accommodationId,
         ];
