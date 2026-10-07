@@ -18,6 +18,7 @@ interface PriceRefreshSchedulerHandler
         Provider $provider,
         AccommodationProviderMap $map,
         int $refreshStateId,
+        string $cycleKey,
         int $scheduleId,
         int $accommodationId,
         ?int $days = null,
