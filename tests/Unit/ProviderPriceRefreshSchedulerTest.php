@@ -4,9 +4,12 @@ namespace Tests\Unit;
 
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
+use App\Domain\Hotel\Repositories\HotelProviderRefreshStateRepository;
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
+use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
+use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
@@ -16,7 +19,7 @@ use Tests\TestCase;
 
 class ProviderPriceRefreshSchedulerTest extends TestCase
 {
-    public function test_one_due_hotel_fans_out_to_every_active_mapped_provider(): void
+    public function test_one_due_hotel_fans_out_with_each_provider_own_capacity(): void
     {
         $slowProvider = (new Provider())->forceFill([
             'id' => 1,
@@ -51,20 +54,65 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
 
         $maps = $this->createMock(AccommodationProviderMapRepositoryInterface::class);
         $maps->expects($this->once())
-            ->method('activeForAccommodation')
-            ->with(100)
+            ->method('forAccommodations')
+            ->with([100])
             ->willReturn(collect([$slowMap, $fastMap]));
+        $maps->method('find')->willReturnMap([
+            [11, $slowMap],
+            [12, $fastMap],
+        ]);
 
         $schedule = (new HotelPriceRefreshSchedule())->forceFill([
             'id' => 77,
             'gds_id' => 100,
+            'next_gds_run_at' => null,
         ]);
         $schedules = $this->createMock(HotelPriceRefreshScheduleRepository::class);
         $schedules->expects($this->once())->method('assertReady');
         $schedules->expects($this->once())
             ->method('due')
-            ->with(10)
+            ->with(10000)
             ->willReturn(collect([$schedule]));
+        $schedules->expects($this->exactly(2))
+            ->method('isCurrentCycle')
+            ->with(77, 100, null)
+            ->willReturn(true);
+
+        $slowState = (new HotelProviderRefreshState())->forceFill([
+            'id' => 101,
+            'shared_schedule_id' => 77,
+            'accommodation_id' => 100,
+            'provider_id' => 1,
+            'accommodation_provider_map_id' => 11,
+            'cycle_key' => 'cycle',
+            'source_due_at' => null,
+        ]);
+        $fastState = (new HotelProviderRefreshState())->forceFill([
+            'id' => 102,
+            'shared_schedule_id' => 77,
+            'accommodation_id' => 100,
+            'provider_id' => 2,
+            'accommodation_provider_map_id' => 12,
+            'cycle_key' => 'cycle',
+            'source_due_at' => null,
+        ]);
+
+        $states = $this->createMock(HotelProviderRefreshStateRepository::class);
+        $states->method('cycleKey')->willReturn('cycle');
+        $states->expects($this->exactly(2))->method('ensure');
+        $states->expects($this->once())->method('hasOpenState')->with('cycle')->willReturn(true);
+        $states->expects($this->exactly(2))
+            ->method('claimForProvider')
+            ->willReturnCallback(static fn (int $providerId, int $capacity) => match ($providerId) {
+                1 => tap(collect([$slowState]), static function () use ($capacity): void {
+                    self::assertSame(10, $capacity);
+                }),
+                2 => tap(collect([$fastState]), static function () use ($capacity): void {
+                    self::assertSame(60, $capacity);
+                }),
+            });
+
+        $coordinator = $this->createMock(ProviderRefreshCoordinator::class);
 
         $slow = new SlowTestPriceRefreshHandler();
         $fast = new FastTestPriceRefreshHandler();
@@ -75,11 +123,18 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $registry->registerPriceRefreshHandler('slow', SlowTestPriceRefreshHandler::class);
         $registry->registerPriceRefreshHandler('fast', FastTestPriceRefreshHandler::class);
 
-        $scheduler = new ProviderPriceRefreshScheduler($providers, $maps, $schedules, $registry);
+        $scheduler = new ProviderPriceRefreshScheduler(
+            $providers,
+            $maps,
+            $schedules,
+            $states,
+            $coordinator,
+            $registry,
+        );
 
         $this->assertSame(2, $scheduler->dispatch());
-        $this->assertSame([[1, 11, 77, 100]], $slow->dispatched);
-        $this->assertSame([[2, 12, 77, 100]], $fast->dispatched);
+        $this->assertSame([[1, 11, 101, 77, 100]], $slow->dispatched);
+        $this->assertSame([[2, 12, 102, 77, 100]], $fast->dispatched);
     }
 
     public function test_outbound_guard_uses_active_state_not_online_procurement_mode(): void
@@ -103,7 +158,7 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
 
 final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 {
-    /** @var array<int,array{int,int,int,int}> */
+    /** @var array<int,array{int,int,int,int,int}> */
     public array $dispatched = [];
 
     public function enabled(Provider $provider): bool
@@ -119,10 +174,18 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
     public function dispatch(
         Provider $provider,
         AccommodationProviderMap $map,
+        int $refreshStateId,
         int $scheduleId,
         int $accommodationId,
+        ?int $days = null,
     ): bool {
-        $this->dispatched[] = [(int) $provider->id, (int) $map->id, $scheduleId, $accommodationId];
+        $this->dispatched[] = [
+            (int) $provider->id,
+            (int) $map->id,
+            $refreshStateId,
+            $scheduleId,
+            $accommodationId,
+        ];
 
         return true;
     }
@@ -130,7 +193,7 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 
 final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
 {
-    /** @var array<int,array{int,int,int,int}> */
+    /** @var array<int,array{int,int,int,int,int}> */
     public array $dispatched = [];
 
     public function enabled(Provider $provider): bool
@@ -146,10 +209,18 @@ final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
     public function dispatch(
         Provider $provider,
         AccommodationProviderMap $map,
+        int $refreshStateId,
         int $scheduleId,
         int $accommodationId,
+        ?int $days = null,
     ): bool {
-        $this->dispatched[] = [(int) $provider->id, (int) $map->id, $scheduleId, $accommodationId];
+        $this->dispatched[] = [
+            (int) $provider->id,
+            (int) $map->id,
+            $refreshStateId,
+            $scheduleId,
+            $accommodationId,
+        ];
 
         return true;
     }
