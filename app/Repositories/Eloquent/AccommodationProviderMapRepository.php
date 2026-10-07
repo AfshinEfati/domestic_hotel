@@ -51,6 +51,29 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->values();
     }
 
+    /** @param int[] $accommodationIds
+     *  @return Collection<int, AccommodationProviderMap>
+     */
+    public function forAccommodations(array $accommodationIds): Collection
+    {
+        $ids = collect($accommodationIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return $this->model->newQuery()
+            ->with('provider')
+            ->whereIn('accommodation_id', $ids->all())
+            ->orderBy('accommodation_id')
+            ->orderBy('provider_id')
+            ->get();
+    }
+
     public function findForProviderProperty(int $providerId, string $providerPropertyId): ?AccommodationProviderMap
     {
         return $this->model->newQuery()
