@@ -5,6 +5,7 @@ namespace App\Domain\Hotel\Repositories;
 use App\Models\HotelPriceRefreshSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
@@ -62,6 +63,56 @@ class HotelPriceRefreshScheduleRepository
             ->where('gds_id', $gdsId)
             ->where('is_active', true)
             ->first();
+    }
+
+    public function isCurrentCycle(int $id, int $gdsId, ?string $expectedDueAt): bool
+    {
+        $row = DB::connection('shared_ssp')
+            ->table('hotel_price_refresh_schedules')
+            ->where('id', $id)
+            ->where('gds_id', $gdsId)
+            ->where('is_active', true)
+            ->first(['next_gds_run_at']);
+
+        return $row !== null && $this->sameDueAt($row->next_gds_run_at, $expectedDueAt);
+    }
+
+    /**
+     * Advance a hotel only when the shared row still represents the same due cycle
+     * that generated the local provider states. The row lock prevents two provider
+     * workers from advancing the same cycle twice when they finish together.
+     */
+    public function markCycleCompleted(int $id, int $gdsId, ?string $expectedDueAt): bool
+    {
+        return DB::connection('shared_ssp')->transaction(function () use ($id, $gdsId, $expectedDueAt): bool {
+            $row = DB::connection('shared_ssp')
+                ->table('hotel_price_refresh_schedules')
+                ->where('id', $id)
+                ->where('gds_id', $gdsId)
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->first(['id', 'gds_id', 'next_gds_run_at', 'refresh_interval_minutes']);
+
+            if ($row === null || !$this->sameDueAt($row->next_gds_run_at, $expectedDueAt)) {
+                return false;
+            }
+
+            $minutes = max(1, (int) $row->refresh_interval_minutes);
+            $next = $this->clock()->addMinutes($minutes)->toDateTimeString();
+
+            $updated = DB::connection('shared_ssp')
+                ->table('hotel_price_refresh_schedules')
+                ->where('id', $id)
+                ->where('gds_id', $gdsId)
+                ->where('is_active', true)
+                ->update(['next_gds_run_at' => $next]);
+
+            if ($updated !== 1) {
+                throw new RuntimeException('Unable to complete the shared hotel refresh cycle.');
+            }
+
+            return true;
+        });
     }
 
     /** Called after API quota has been acquired, just before availability HTTP. */
@@ -132,6 +183,19 @@ class HotelPriceRefreshScheduleRepository
         if ($updated !== 1) {
             throw new RuntimeException("Unable to update SSP {$column}: schedule is inactive or missing.");
         }
+    }
+
+    private function sameDueAt(mixed $actual, ?string $expected): bool
+    {
+        if ($actual === null || $actual === '') {
+            return $expected === null || trim($expected) === '';
+        }
+        if ($expected === null || trim($expected) === '') {
+            return false;
+        }
+
+        return CarbonImmutable::parse($actual)->format('Y-m-d H:i:s')
+            === CarbonImmutable::parse($expected)->format('Y-m-d H:i:s');
     }
 
     private function clock(): CarbonImmutable
