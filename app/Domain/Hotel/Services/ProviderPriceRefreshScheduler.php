@@ -12,6 +12,7 @@ use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use RuntimeException;
+use Throwable;
 
 /**
  * Hotel-centric shared schedule with provider-specific local execution state.
@@ -78,14 +79,26 @@ class ProviderPriceRefreshScheduler
                     continue;
                 }
 
-                if ($handler->dispatch(
-                    $provider,
-                    $map,
-                    (int) $state->id,
-                    (int) $state->shared_schedule_id,
-                    (int) $state->accommodation_id,
-                    $days,
-                )) {
+                try {
+                    $queued = $handler->dispatch(
+                        $provider,
+                        $map,
+                        (int) $state->id,
+                        (int) $state->shared_schedule_id,
+                        (int) $state->accommodation_id,
+                        $days,
+                    );
+                } catch (Throwable $exception) {
+                    $this->coordinator->retry(
+                        (int) $state->id,
+                        ProviderRefreshOutcome::INTERNAL_ERROR,
+                        60,
+                    );
+                    report($exception);
+                    continue;
+                }
+
+                if ($queued) {
                     $dispatched++;
                     continue;
                 }
