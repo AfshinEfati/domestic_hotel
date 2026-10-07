@@ -9,7 +9,7 @@ use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 
-/** GRS provider policy; shared scheduler selects hotels and this class only dispatches GRS work. */
+/** GRS provider policy; shared coordination owns hotel selection. */
 class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
 {
     public function enabled(Provider $provider): bool
@@ -29,8 +29,10 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
     public function dispatch(
         Provider $provider,
         AccommodationProviderMap $map,
+        int $refreshStateId,
         int $scheduleId,
         int $accommodationId,
+        ?int $days = null,
     ): bool {
         if (
             !$this->enabled($provider)
@@ -42,11 +44,14 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
             return false;
         }
 
+        $days ??= GrsRefreshSettings::from($provider)['default_days'];
+
         RefreshGrsPropertyPricesJob::dispatch(
             $scheduleId,
             $accommodationId,
             (int) $provider->id,
-            GrsRefreshSettings::from($provider)['default_days'],
+            $days,
+            $refreshStateId,
         )->onQueue('grs-prices');
 
         return true;
