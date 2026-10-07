@@ -36,7 +36,8 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
         ?int $days = null,
     ): bool {
         if (
-            !$this->enabled($provider)
+            $provider->code !== 'grs'
+            || !$provider->is_active
             || (int) $map->provider_id !== (int) $provider->id
             || (int) $map->accommodation_id !== $accommodationId
             || $map->is_disabled
