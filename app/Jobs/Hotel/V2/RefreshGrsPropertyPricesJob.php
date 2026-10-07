@@ -39,13 +39,18 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         public int $providerId,
         public int $days,
         public ?int $refreshStateId = null,
+        public ?string $refreshCycleKey = null,
     ) {
         $this->onQueue('grs-prices');
     }
 
     public function uniqueId(): string
     {
-        return 'grs-property-price:'.($this->refreshStateId ?? $this->gdsId);
+        if ($this->refreshStateId !== null && $this->refreshCycleKey !== null) {
+            return 'grs-property-price:'.$this->refreshStateId.':'.$this->refreshCycleKey;
+        }
+
+        return 'grs-property-price:'.$this->gdsId;
     }
 
     public function handle(
@@ -56,10 +61,10 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         ?ProviderRefreshCoordinator $coordinator = null,
     ): void {
         $alerts ??= app(TelegramAlertService::class);
-        $coordinated = $this->refreshStateId !== null;
+        $coordinated = $this->refreshStateId !== null && $this->refreshCycleKey !== null;
         if ($coordinated) {
             $coordinator ??= app(ProviderRefreshCoordinator::class);
-            if ($coordinator->begin((int) $this->refreshStateId) === null) {
+            if ($coordinator->begin((int) $this->refreshStateId, (string) $this->refreshCycleKey) === null) {
                 return;
             }
         }
@@ -169,7 +174,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            // Compatibility path for pre-deployment jobs that were already queued.
+            // Compatibility path for jobs that were queued before coordinated provider state existed.
             $schedules->persisted($this->scheduleId, $this->gdsId);
         } catch (InvalidProviderAvailabilityDataException $e) {
             $diagnostics->invalidGrsAvailability(
@@ -276,6 +281,19 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             }
 
             if ($coordinated) {
+                if ($status === 408) {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
+                    return;
+                }
+
+                // Authentication, request validation and similar 4xx failures mean
+                // our request/configuration needs correction, so keep this cycle open.
+                if ($status !== null && $status >= 400 && $status < 500) {
+                    $alerts->internalFailure($e);
+                    $coordinator->retry((int) $this->refreshStateId, ProviderRefreshOutcome::REQUEST_ERROR, 300);
+                    return;
+                }
+
                 $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_HTTP_ERROR);
                 return;
             }
