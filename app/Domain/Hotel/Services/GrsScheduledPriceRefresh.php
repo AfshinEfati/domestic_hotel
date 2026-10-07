@@ -30,6 +30,7 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
         Provider $provider,
         AccommodationProviderMap $map,
         int $refreshStateId,
+        string $cycleKey,
         int $scheduleId,
         int $accommodationId,
         ?int $days = null,
@@ -52,6 +53,7 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
             (int) $provider->id,
             $days,
             $refreshStateId,
+            $cycleKey,
         )->onQueue('grs-prices');
 
         return true;
