@@ -22,4 +22,17 @@ final class ProviderRefreshStateStatus
     {
         return [self::PENDING, self::RETRY];
     }
+
+    public static function name(int $status): string
+    {
+        return match ($status) {
+            self::PENDING => 'pending',
+            self::QUEUED => 'queued',
+            self::PROCESSING => 'processing',
+            self::RETRY => 'retry',
+            self::DONE => 'done',
+            self::ATTEMPTED => 'attempted',
+            default => 'unknown',
+        };
+    }
 }
