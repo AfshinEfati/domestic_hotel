@@ -31,6 +31,7 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
         Provider $provider,
         AccommodationProviderMap $map,
         int $refreshStateId,
+        string $cycleKey,
         int $scheduleId,
         int $accommodationId,
         ?int $days = null,
@@ -53,6 +54,7 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
             (int) $provider->id,
             $days,
             $refreshStateId,
+            $cycleKey,
         )->onQueue('snapptrip-prices');
 
         return true;
