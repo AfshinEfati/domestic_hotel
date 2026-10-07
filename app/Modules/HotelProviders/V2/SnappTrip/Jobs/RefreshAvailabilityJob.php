@@ -106,8 +106,18 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             // been attempted for this cycle. It must not block the hotel indefinitely.
             $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
         } catch (RequestException $exception) {
-            if ($exception->response?->status() === 429) {
+            $status = $exception->response?->status();
+            if ($status === 429) {
                 $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::RATE_LIMITED, 60);
+                return;
+            }
+
+            // Invalid credentials, request shape and other non-timeout 4xx responses
+            // indicate our integration/configuration needs correction. Keep the hotel
+            // cycle open and retry instead of treating them as a provider-side outcome.
+            if ($status !== null && $status >= 400 && $status < 500 && !in_array($status, [404, 408], true)) {
+                $alerts->internalFailure($exception);
+                $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::REQUEST_ERROR, 300);
                 return;
             }
 
