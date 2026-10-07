@@ -16,6 +16,7 @@ final class ProviderRefreshOutcome
     public const SCHEDULER_DISABLED = 'scheduler_disabled';
     public const CYCLE_SUPERSEDED = 'cycle_superseded';
     public const RATE_LIMITED = 'rate_limited';
+    public const REQUEST_ERROR = 'request_error';
     public const INTERNAL_ERROR = 'internal_error';
     public const PERSISTENCE_ERROR = 'persistence_error';
     public const MAPPING_NOT_READY = 'mapping_not_ready';
