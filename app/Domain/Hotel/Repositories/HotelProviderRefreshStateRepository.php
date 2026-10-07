@@ -35,13 +35,13 @@ class HotelProviderRefreshStateRepository
         $cycleKey = $this->cycleKey($scheduleId, $accommodationId, $sourceDueAt);
         $state = HotelProviderRefreshState::query()->firstOrCreate(
             [
-                'cycle_key' => $cycleKey,
+                'accommodation_id' => $accommodationId,
                 'provider_id' => (int) $provider->id,
             ],
             [
                 'shared_schedule_id' => $scheduleId,
-                'accommodation_id' => $accommodationId,
                 'accommodation_provider_map_id' => (int) $map->id,
+                'cycle_key' => $cycleKey,
                 'source_due_at' => $sourceDueAt,
                 'status' => $dispatchable
                     ? ProviderRefreshStateStatus::PENDING
@@ -51,13 +51,37 @@ class HotelProviderRefreshStateRepository
             ]
         );
 
+        // The shared schedule cannot open a new cycle until the previous cycle is
+        // terminal. Reuse the same hotel/provider row and reset only cycle-scoped
+        // execution fields, keeping last_success_at as useful provider history.
+        if ((string) $state->cycle_key !== $cycleKey) {
+            $state->forceFill([
+                'shared_schedule_id' => $scheduleId,
+                'accommodation_provider_map_id' => (int) $map->id,
+                'cycle_key' => $cycleKey,
+                'source_due_at' => $sourceDueAt,
+                'status' => $dispatchable
+                    ? ProviderRefreshStateStatus::PENDING
+                    : ProviderRefreshStateStatus::ATTEMPTED,
+                'outcome' => $dispatchable ? null : $terminalOutcome,
+                'attempts' => 0,
+                'next_attempt_at' => null,
+                'queued_at' => null,
+                'started_at' => null,
+                'last_attempt_at' => null,
+                'completed_at' => $dispatchable ? null : now(),
+                'lease_expires_at' => null,
+            ])->save();
+
+            return $state->fresh();
+        }
+
         if (in_array((int) $state->status, ProviderRefreshStateStatus::terminal(), true)) {
             return $state;
         }
 
         $changes = [
             'shared_schedule_id' => $scheduleId,
-            'accommodation_id' => $accommodationId,
             'accommodation_provider_map_id' => (int) $map->id,
         ];
 
@@ -115,6 +139,7 @@ class HotelProviderRefreshStateRepository
 
             $query = HotelProviderRefreshState::query()
                 ->whereKey($candidate->id)
+                ->where('cycle_key', (string) $candidate->cycle_key)
                 ->where('status', (int) $candidate->status);
 
             if (in_array((int) $candidate->status, ProviderRefreshStateStatus::claimable(), true)) {
@@ -142,11 +167,12 @@ class HotelProviderRefreshStateRepository
         return $claimed;
     }
 
-    public function start(int $stateId): ?HotelProviderRefreshState
+    public function start(int $stateId, string $cycleKey): ?HotelProviderRefreshState
     {
         $now = CarbonImmutable::now();
         $updated = HotelProviderRefreshState::query()
             ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
             ->where('status', ProviderRefreshStateStatus::QUEUED)
             ->update([
                 'status' => ProviderRefreshStateStatus::PROCESSING,
