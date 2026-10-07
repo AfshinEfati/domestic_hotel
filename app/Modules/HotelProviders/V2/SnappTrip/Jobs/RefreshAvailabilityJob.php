@@ -34,13 +34,18 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
         public int $providerId,
         public int $days,
         public ?int $refreshStateId = null,
+        public ?string $refreshCycleKey = null,
     ) {
         $this->onQueue('snapptrip-prices');
     }
 
     public function uniqueId(): string
     {
-        return 'snapptrip-v2-refresh:'.($this->refreshStateId ?? $this->accommodationId);
+        if ($this->refreshStateId !== null && $this->refreshCycleKey !== null) {
+            return 'snapptrip-v2-refresh:'.$this->refreshStateId.':'.$this->refreshCycleKey;
+        }
+
+        return 'snapptrip-v2-refresh:'.$this->accommodationId;
     }
 
     public function handle(
@@ -50,10 +55,10 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
         ProviderRefreshCoordinator $coordinator,
         TelegramAlertService $alerts,
     ): void {
-        // Backward-compatible direct invocation is kept only for old/manual jobs
-        // already present in a queue during deployment. New scheduler jobs always
-        // carry refreshStateId and are coordinated through local provider state.
-        if ($this->refreshStateId === null) {
+        // Backward-compatible direct invocation is kept only for jobs already present
+        // in a queue during deployment. New scheduler jobs always carry both state ID
+        // and cycle key so an old job can never mutate a newer hotel/provider cycle.
+        if ($this->refreshStateId === null || $this->refreshCycleKey === null) {
             if (!$guard->allows(SnappTripSettings::PROVIDER_CODE)) {
                 return;
             }
@@ -65,7 +70,7 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $state = $coordinator->begin($this->refreshStateId);
+        $state = $coordinator->begin($this->refreshStateId, $this->refreshCycleKey);
         if ($state === null) {
             return;
         }
@@ -102,8 +107,6 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
                 max(1, $exception->retryAfterSeconds),
             );
         } catch (ConnectionException) {
-            // A provider that cannot answer this otherwise-valid outbound request has
-            // been attempted for this cycle. It must not block the hotel indefinitely.
             $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
         } catch (RequestException $exception) {
             $status = $exception->response?->status();
@@ -112,9 +115,6 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            // Invalid credentials, request shape and other non-timeout 4xx responses
-            // indicate our integration/configuration needs correction. Keep the hotel
-            // cycle open and retry instead of treating them as a provider-side outcome.
             if ($status !== null && $status >= 400 && $status < 500 && !in_array($status, [404, 408], true)) {
                 $alerts->internalFailure($exception);
                 $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::REQUEST_ERROR, 300);
