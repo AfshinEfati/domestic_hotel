@@ -84,6 +84,7 @@ class ProviderPriceRefreshScheduler
                         $provider,
                         $map,
                         (int) $state->id,
+                        (string) $state->cycle_key,
                         (int) $state->shared_schedule_id,
                         (int) $state->accommodation_id,
                         $days,
@@ -194,9 +195,6 @@ class ProviderPriceRefreshScheduler
                 $tracked++;
             }
 
-            // No registered provider map means there is nothing this service can
-            // refresh for the hotel. All-disabled/inactive maps also become terminal
-            // states above. In both cases the shared cycle must not remain due forever.
             if ($tracked === 0 || !$this->states->hasOpenState($cycleKey)) {
                 $this->coordinator->finalizeCycle(
                     (int) $schedule->id,
