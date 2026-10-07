@@ -51,9 +51,8 @@ class HotelProviderRefreshStateRepository
             ]
         );
 
-        // The shared schedule cannot open a new cycle until the previous cycle is
-        // terminal. Reuse the same hotel/provider row and reset only cycle-scoped
-        // execution fields, keeping last_success_at as useful provider history.
+        // A new shared due time opens a new cycle. Reuse the hotel/provider row and
+        // reset only cycle-scoped execution fields; keep last_success_at as history.
         if ((string) $state->cycle_key !== $cycleKey) {
             $state->forceFill([
                 'shared_schedule_id' => $scheduleId,
@@ -188,50 +187,63 @@ class HotelProviderRefreshStateRepository
             : null;
     }
 
-    public function markDone(int $stateId, string $outcome): ?HotelProviderRefreshState
+    public function markDone(int $stateId, string $cycleKey, string $outcome): ?HotelProviderRefreshState
     {
         $now = CarbonImmutable::now();
-        HotelProviderRefreshState::query()->whereKey($stateId)->update([
-            'status' => ProviderRefreshStateStatus::DONE,
-            'outcome' => $outcome,
-            'last_success_at' => $now,
-            'completed_at' => $now,
-            'next_attempt_at' => null,
-            'lease_expires_at' => null,
-            'updated_at' => $now,
-        ]);
+        $updated = HotelProviderRefreshState::query()
+            ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
+            ->update([
+                'status' => ProviderRefreshStateStatus::DONE,
+                'outcome' => $outcome,
+                'last_success_at' => $now,
+                'completed_at' => $now,
+                'next_attempt_at' => null,
+                'lease_expires_at' => null,
+                'updated_at' => $now,
+            ]);
 
-        return HotelProviderRefreshState::query()->find($stateId);
+        return $updated === 1 ? HotelProviderRefreshState::query()->find($stateId) : null;
     }
 
-    public function markAttempted(int $stateId, string $outcome): ?HotelProviderRefreshState
+    public function markAttempted(int $stateId, string $cycleKey, string $outcome): ?HotelProviderRefreshState
     {
         $now = CarbonImmutable::now();
-        HotelProviderRefreshState::query()->whereKey($stateId)->update([
-            'status' => ProviderRefreshStateStatus::ATTEMPTED,
-            'outcome' => $outcome,
-            'completed_at' => $now,
-            'next_attempt_at' => null,
-            'lease_expires_at' => null,
-            'updated_at' => $now,
-        ]);
+        $updated = HotelProviderRefreshState::query()
+            ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
+            ->update([
+                'status' => ProviderRefreshStateStatus::ATTEMPTED,
+                'outcome' => $outcome,
+                'completed_at' => $now,
+                'next_attempt_at' => null,
+                'lease_expires_at' => null,
+                'updated_at' => $now,
+            ]);
 
-        return HotelProviderRefreshState::query()->find($stateId);
+        return $updated === 1 ? HotelProviderRefreshState::query()->find($stateId) : null;
     }
 
-    public function markRetry(int $stateId, string $outcome, int $delaySeconds): ?HotelProviderRefreshState
-    {
+    public function markRetry(
+        int $stateId,
+        string $cycleKey,
+        string $outcome,
+        int $delaySeconds,
+    ): ?HotelProviderRefreshState {
         $now = CarbonImmutable::now();
-        HotelProviderRefreshState::query()->whereKey($stateId)->update([
-            'status' => ProviderRefreshStateStatus::RETRY,
-            'outcome' => $outcome,
-            'next_attempt_at' => $now->addSeconds(max(1, $delaySeconds)),
-            'completed_at' => null,
-            'lease_expires_at' => null,
-            'updated_at' => $now,
-        ]);
+        $updated = HotelProviderRefreshState::query()
+            ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
+            ->update([
+                'status' => ProviderRefreshStateStatus::RETRY,
+                'outcome' => $outcome,
+                'next_attempt_at' => $now->addSeconds(max(1, $delaySeconds)),
+                'completed_at' => null,
+                'lease_expires_at' => null,
+                'updated_at' => $now,
+            ]);
 
-        return HotelProviderRefreshState::query()->find($stateId);
+        return $updated === 1 ? HotelProviderRefreshState::query()->find($stateId) : null;
     }
 
     public function hasOpenState(string $cycleKey): bool
