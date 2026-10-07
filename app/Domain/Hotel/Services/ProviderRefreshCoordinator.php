@@ -27,32 +27,43 @@ class ProviderRefreshCoordinator
             (int) $state->accommodation_id,
             $this->sourceDueAt($state),
         )) {
-            $this->states->markAttempted($stateId, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
+            $this->states->markAttempted(
+                $stateId,
+                $cycleKey,
+                ProviderRefreshOutcome::CYCLE_SUPERSEDED,
+            );
             return null;
         }
 
         return $state;
     }
 
-    public function done(int $stateId, string $outcome = ProviderRefreshOutcome::SUCCESS): void
-    {
-        $state = $this->states->markDone($stateId, $outcome);
+    public function done(
+        int $stateId,
+        string $cycleKey,
+        string $outcome = ProviderRefreshOutcome::SUCCESS,
+    ): void {
+        $state = $this->states->markDone($stateId, $cycleKey, $outcome);
         if ($state !== null) {
             $this->finalize($state);
         }
     }
 
-    public function attempted(int $stateId, string $outcome): void
+    public function attempted(int $stateId, string $cycleKey, string $outcome): void
     {
-        $state = $this->states->markAttempted($stateId, $outcome);
+        $state = $this->states->markAttempted($stateId, $cycleKey, $outcome);
         if ($state !== null) {
             $this->finalize($state);
         }
     }
 
-    public function retry(int $stateId, string $outcome, int $delaySeconds): void
-    {
-        $this->states->markRetry($stateId, $outcome, $delaySeconds);
+    public function retry(
+        int $stateId,
+        string $cycleKey,
+        string $outcome,
+        int $delaySeconds,
+    ): void {
+        $this->states->markRetry($stateId, $cycleKey, $outcome, $delaySeconds);
     }
 
     public function finalize(HotelProviderRefreshState $state): bool
