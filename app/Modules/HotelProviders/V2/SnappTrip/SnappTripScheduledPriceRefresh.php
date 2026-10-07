@@ -30,8 +30,10 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
     public function dispatch(
         Provider $provider,
         AccommodationProviderMap $map,
+        int $refreshStateId,
         int $scheduleId,
         int $accommodationId,
+        ?int $days = null,
     ): bool {
         if (
             !$this->enabled($provider)
@@ -43,13 +45,14 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
             return false;
         }
 
-        $days = (int) data_get(SnappTripSettings::from($provider), 'price_refresh.default_days', 90);
+        $days ??= (int) data_get(SnappTripSettings::from($provider), 'price_refresh.default_days', 90);
 
         RefreshAvailabilityJob::dispatch(
             $scheduleId,
             $accommodationId,
             (int) $provider->id,
             $days,
+            $refreshStateId,
         )->onQueue('snapptrip-prices');
 
         return true;
