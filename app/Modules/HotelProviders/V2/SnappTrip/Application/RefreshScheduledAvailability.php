@@ -26,6 +26,8 @@ final class RefreshScheduledAvailability
             return 0;
         }
 
+        // The shared row remains authoritative for whether this hotel cycle still exists,
+        // but provider workers no longer advance next_gds_run_at themselves.
         $schedule = $this->schedules->active($scheduleId, $accommodationId);
         if ($schedule === null) {
             return 0;
@@ -46,18 +48,7 @@ final class RefreshScheduledAvailability
 
         $from = CarbonImmutable::now('Asia/Tehran')->toDateString();
         $to = CarbonImmutable::now('Asia/Tehran')->addDays($days)->toDateString();
-        $this->schedules->markRequestStarted($scheduleId, $accommodationId);
-
         $rows = $this->availability->execute($map, $from, $to);
-
-        $map->refresh();
-        if ($map->is_disabled) {
-            $this->schedules->markProviderAnomalyHandled($scheduleId, $accommodationId);
-            return 0;
-        }
-
-        $this->schedules->markHttp200($scheduleId, $accommodationId);
-        $this->schedules->markPersisted($scheduleId, $accommodationId);
 
         return $rows->count();
     }
