@@ -44,14 +44,16 @@ class ProviderPriceRefreshScheduler
             return 0;
         }
 
-        $this->syncDueHotels($entries);
+        $this->syncDueHotels($entries, $onlyProviderCode);
 
         $dispatched = 0;
         foreach ($entries as [$provider, $handler]) {
             if ($onlyProviderCode !== null && (string) $provider->code !== $onlyProviderCode) {
                 continue;
             }
-            if (!$handler->enabled($provider)) {
+
+            $manualTarget = $onlyProviderCode !== null && (string) $provider->code === $onlyProviderCode;
+            if (!$provider->is_active || (!$manualTarget && !$handler->enabled($provider))) {
                 continue;
             }
 
@@ -133,7 +135,7 @@ class ProviderPriceRefreshScheduler
     }
 
     /** @param array<int,array{0:Provider,1:PriceRefreshSchedulerHandler}> $entries */
-    private function syncDueHotels(array $entries): void
+    private function syncDueHotels(array $entries, ?string $manualProviderCode): void
     {
         $due = $this->schedules->due(self::SYNC_LIMIT);
         if ($due->isEmpty()) {
@@ -166,6 +168,8 @@ class ProviderPriceRefreshScheduler
                 }
 
                 [$provider, $handler] = $entry;
+                $manualTarget = $manualProviderCode !== null
+                    && (string) $provider->code === $manualProviderCode;
                 $outcome = null;
                 $dispatchable = true;
 
@@ -178,7 +182,7 @@ class ProviderPriceRefreshScheduler
                 } elseif (trim((string) $map->provider_property_id) === '') {
                     $dispatchable = false;
                     $outcome = ProviderRefreshOutcome::MAP_UNAVAILABLE;
-                } elseif (!$handler->enabled($provider)) {
+                } elseif (!$manualTarget && !$handler->enabled($provider)) {
                     $dispatchable = false;
                     $outcome = ProviderRefreshOutcome::SCHEDULER_DISABLED;
                 }
