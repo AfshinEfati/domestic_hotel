@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('hotel_provider_refresh_states', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('shared_schedule_id')->comment('Source hotel_price_refresh_schedules row ID from shared SSP.');
-            $table->foreignId('accommodation_id')->constrained('accommodations')->cascadeOnDelete()->comment('Canonical local accommodation ID.');
-            $table->foreignId('provider_id')->constrained('providers')->cascadeOnDelete()->comment('Provider whose refresh state is tracked.');
+            $table->foreignId('accommodation_id')->comment('Canonical local accommodation ID.')->constrained('accommodations')->cascadeOnDelete();
+            $table->foreignId('provider_id')->comment('Provider whose refresh state is tracked.')->constrained('providers')->cascadeOnDelete();
             $table->unsignedBigInteger('accommodation_provider_map_id')->nullable()->comment('Provider map used for this refresh cycle.');
             $table->string('cycle_key', 64)->comment('Stable key for one shared due cycle.');
             $table->timestamp('source_due_at')->nullable()->comment('Shared next_gds_run_at value that opened this cycle.');
