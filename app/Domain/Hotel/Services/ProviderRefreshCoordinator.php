@@ -15,9 +15,9 @@ class ProviderRefreshCoordinator
     ) {
     }
 
-    public function begin(int $stateId): ?HotelProviderRefreshState
+    public function begin(int $stateId, string $cycleKey): ?HotelProviderRefreshState
     {
-        $state = $this->states->start($stateId);
+        $state = $this->states->start($stateId, $cycleKey);
         if ($state === null) {
             return null;
         }
