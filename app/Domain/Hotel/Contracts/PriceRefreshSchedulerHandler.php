@@ -5,7 +5,7 @@ namespace App\Domain\Hotel\Contracts;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 
-/** Provider-specific rate refresh policy; the shared scheduler owns hotel selection. */
+/** Provider-specific rate refresh policy; shared coordination owns hotel selection. */
 interface PriceRefreshSchedulerHandler
 {
     public function enabled(Provider $provider): bool;
@@ -13,11 +13,13 @@ interface PriceRefreshSchedulerHandler
     /** Maximum number of hotels this provider can safely start per scheduler minute. */
     public function hotelCapacityPerMinute(Provider $provider): int;
 
-    /** Queue one provider refresh for one already-selected hotel schedule. */
+    /** Queue one provider refresh for one claimed local provider state. */
     public function dispatch(
         Provider $provider,
         AccommodationProviderMap $map,
+        int $refreshStateId,
         int $scheduleId,
         int $accommodationId,
+        ?int $days = null,
     ): bool;
 }
