@@ -78,7 +78,10 @@ class ProviderRefreshCoordinatorTest extends TestCase
         ]);
 
         $states = $this->createMock(HotelProviderRefreshStateRepository::class);
-        $states->expects($this->once())->method('start')->with(9)->willReturn($state);
+        $states->expects($this->once())
+            ->method('start')
+            ->with(9, 'old-cycle')
+            ->willReturn($state);
         $states->expects($this->once())
             ->method('markAttempted')
             ->with(9, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
@@ -92,6 +95,6 @@ class ProviderRefreshCoordinatorTest extends TestCase
 
         $coordinator = new ProviderRefreshCoordinator($states, $schedules);
 
-        $this->assertNull($coordinator->begin(9));
+        $this->assertNull($coordinator->begin(9, 'old-cycle'));
     }
 }
