@@ -5,6 +5,8 @@ namespace App\Jobs\Hotel\V2;
 use App\Domain\Hotel\Exceptions\InvalidProviderAvailabilityDataException;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\HotelSyncService;
+use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
+use App\Domain\Hotel\Support\ProviderRefreshOutcome;
 use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
 use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Services\Alerts\ProviderDiagnosticAlertService;
@@ -14,6 +16,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -25,9 +28,9 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 100; // Quota/rate-limit releases count as attempts; actionable HTTP failures are handled explicitly.
+    public int $tries = 100;
     public int $maxExceptions = 1;
-    public int $timeout = 55; // Below Horizon's 60s worker timeout and Redis retry_after=90.
+    public int $timeout = 55;
     public int $uniqueFor = 14400;
 
     public function __construct(
@@ -35,13 +38,14 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         public int $gdsId,
         public int $providerId,
         public int $days,
+        public ?int $refreshStateId = null,
     ) {
         $this->onQueue('grs-prices');
     }
 
     public function uniqueId(): string
     {
-        return 'grs-property-price:'.$this->gdsId;
+        return 'grs-property-price:'.($this->refreshStateId ?? $this->gdsId);
     }
 
     public function handle(
@@ -49,8 +53,17 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         GrsPriceRefreshScheduleService $schedules,
         ProviderDiagnosticAlertService $diagnostics,
         ?TelegramAlertService $alerts = null,
+        ?ProviderRefreshCoordinator $coordinator = null,
     ): void {
         $alerts ??= app(TelegramAlertService::class);
+        $coordinated = $this->refreshStateId !== null;
+        if ($coordinated) {
+            $coordinator ??= app(ProviderRefreshCoordinator::class);
+            if ($coordinator->begin((int) $this->refreshStateId) === null) {
+                return;
+            }
+        }
+
         $provider = null;
         $adapter = null;
         $grsId = '';
@@ -61,24 +74,29 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         try {
             $provider = $schedules->providerById($this->providerId);
             if ($provider === null || $provider->code !== 'grs' || !$provider->is_active) {
+                if ($coordinated) {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_DISABLED);
+                    return;
+                }
                 throw new RuntimeException('GRS provider inactive, missing, or mismatched.');
             }
 
-            // The shared schedule and this job carry our local accommodations.id.
             if ($schedules->active($this->scheduleId, $this->gdsId) === null) {
+                if ($coordinated) {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
+                }
                 return;
             }
 
             $map = $schedules->mapForAccommodation($this->gdsId, (int) $provider->id);
-
-            // A price/availability worker must never discover or repair a missing
-            // accommodation/provider mapping. If the map disappeared after dispatch,
-            // stop silently before constructing the adapter or making provider HTTP.
             if (
                 $map === null
                 || $map->is_disabled === true
                 || trim((string) $map->provider_property_id) === ''
             ) {
+                if ($coordinated) {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::MAP_UNAVAILABLE);
+                }
                 return;
             }
 
@@ -90,20 +108,14 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             $from = CarbonImmutable::today('Asia/Tehran');
             $to = $from->addDays($this->days);
-            $started = now()->subSeconds(2); // Account for second-granularity DB timestamps.
+            $started = now()->subSeconds(2);
             $adapter = new RateLimitedGrsAdapter($provider);
-            $adapter->withRequestLogContext(
-                null,
-                self::class,
-                'handle',
-            );
+            $adapter->withRequestLogContext(null, self::class, 'handle');
             $adapter->trackAvailability(
                 fn (): mixed => $schedules->requestStarted($this->scheduleId, $this->gdsId),
                 fn (): mixed => $schedules->http200($this->scheduleId, $this->gdsId)
             );
 
-            // Each actual HTTP call consumes the provider's existing quota.
-            // Persist provider-returned dates even when outside the requested window.
             $mappingsReady = $service->crawlAvailabilityForProperty(
                 $provider,
                 $adapter,
@@ -117,11 +129,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             }
 
             if (!$mappingsReady) {
-                $currentMap = $schedules->mapForAccommodation(
-                    $this->gdsId,
-                    (int) $provider->id
-                );
-
+                $currentMap = $schedules->mapForAccommodation($this->gdsId, (int) $provider->id);
                 if (
                     $currentMap !== null
                     && $currentMap->is_disabled !== true
@@ -133,14 +141,17 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     )->onQueue('grs-details');
                 }
 
-                // Room/rate-plan mapping repair belongs to the details flow. A missing
-                // accommodation/provider map is not repaired from price refresh.
+                if ($coordinated) {
+                    $coordinator->retry(
+                        (int) $this->refreshStateId,
+                        ProviderRefreshOutcome::MAPPING_NOT_READY,
+                        60,
+                    );
+                }
                 return;
             }
 
-            // Empty/partial provider data is a normal provider outcome. Persist whatever
-            // valid rows were returned and advance the normal schedule without logging.
-            $schedules->verifiedRowCount(
+            $verifiedRows = $schedules->verifiedRowCount(
                 (int) $provider->id,
                 (int) $map->id,
                 $this->gdsId,
@@ -148,10 +159,19 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 $adapter->lastAvailability,
                 $started
             );
+
+            if ($coordinated) {
+                if ($verifiedRows > 0) {
+                    $coordinator->done((int) $this->refreshStateId);
+                } else {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_EMPTY);
+                }
+                return;
+            }
+
+            // Compatibility path for pre-deployment jobs that were already queued.
             $schedules->persisted($this->scheduleId, $this->gdsId);
         } catch (InvalidProviderAvailabilityDataException $e) {
-            // Provider data corruption is not an internal application failure.
-            // The complete response was rejected before any calendar write.
             $diagnostics->invalidGrsAvailability(
                 $hotelName,
                 $this->gdsId,
@@ -162,21 +182,38 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     : null,
             );
 
-            $schedules->providerAnomalyHandled(
-                $this->scheduleId,
-                $this->gdsId
-            );
+            if ($coordinated) {
+                $coordinator->attempted(
+                    (int) $this->refreshStateId,
+                    ProviderRefreshOutcome::PROVIDER_INVALID_RESPONSE,
+                );
+                return;
+            }
 
-            return;
+            $schedules->providerAnomalyHandled($this->scheduleId, $this->gdsId);
         } catch (GrsApiQuotaExceeded $e) {
-            // Quota is already exhausted; do not advance the SSP due time.
+            if ($coordinated) {
+                $coordinator->retry(
+                    (int) $this->refreshStateId,
+                    ProviderRefreshOutcome::RATE_LIMITED,
+                    max(1, $e->retryAfterSeconds),
+                );
+                return;
+            }
+
             $this->release(max(1, $e->retryAfterSeconds));
+        } catch (ConnectionException $e) {
+            if ($coordinated) {
+                $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
+                return;
+            }
+
+            $this->fail($e);
         } catch (RequestException $e) {
             $status = $e->response?->status();
 
             if ($status === 429) {
                 $retryAfter = max(1, RateLimitedGrsAdapter::cooldownSeconds());
-
                 $alerts->providerRateLimited(
                     (string) ($provider?->code ?? 'grs'),
                     'بروزرسانی نرخ و ظرفیت GRS',
@@ -189,10 +226,16 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     ],
                 );
 
-                // Provider throttling is temporary. Keep the schedule due and retry
-                // this same job after the shared GRS cooldown instead of failing it.
-                $this->release(max(1, $retryAfter));
+                if ($coordinated) {
+                    $coordinator->retry(
+                        (int) $this->refreshStateId,
+                        ProviderRefreshOutcome::RATE_LIMITED,
+                        $retryAfter,
+                    );
+                    return;
+                }
 
+                $this->release($retryAfter);
                 return;
             }
 
@@ -204,9 +247,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 && $to instanceof CarbonImmutable
             ) {
                 $requestedDays = max(0, $from->diffInDays($to));
-                $missingDates = $this->summarizeDateRanges(
-                    $this->expectedDates($from, $to)
-                );
+                $missingDates = $this->summarizeDateRanges($this->expectedDates($from, $to));
 
                 $alerts->providerAvailabilityIssue(
                     (string) $provider->code,
@@ -223,22 +264,31 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     $this->providerReason($e),
                 );
 
-                $schedules->disableMapForAccommodation(
-                    $this->gdsId,
-                    (int) $provider->id
-                );
+                $schedules->disableMapForAccommodation($this->gdsId, (int) $provider->id);
 
-                $schedules->providerAnomalyHandled(
-                    $this->scheduleId,
-                    $this->gdsId
-                );
+                if ($coordinated) {
+                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_404);
+                    return;
+                }
 
+                $schedules->providerAnomalyHandled($this->scheduleId, $this->gdsId);
+                return;
+            }
+
+            if ($coordinated) {
+                $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_HTTP_ERROR);
                 return;
             }
 
             $this->fail($e);
         } catch (Throwable $e) {
             $alerts->internalFailure($e);
+
+            if ($coordinated) {
+                $coordinator->retry((int) $this->refreshStateId, ProviderRefreshOutcome::INTERNAL_ERROR, 60);
+                return;
+            }
+
             $this->fail($e);
         }
     }
@@ -247,7 +297,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
     private function expectedDates(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $dates = [];
-
         for ($day = $from->startOfDay(); $day->lt($to); $day = $day->addDay()) {
             $dates[] = $day->format('Y-m-d');
         }
@@ -269,7 +318,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
         foreach (array_slice($dates, 1) as $date) {
             $current = CarbonImmutable::parse($date);
-
             if ($previous->addDay()->isSameDay($current)) {
                 $previous = $current;
                 continue;
@@ -281,7 +329,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         }
 
         $ranges[] = $this->formatRange($start, $previous);
-
         $visible = array_slice($ranges, 0, 12);
         $remaining = count($ranges) - count($visible);
 
@@ -311,7 +358,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
         if (is_scalar($errorMessage) && trim((string) $errorMessage) !== '') {
             $detail = trim((string) $errorMessage);
-
             if (is_scalar($errorName) && trim((string) $errorName) !== '') {
                 return trim((string) $errorName) . ': ' . $detail;
             }
