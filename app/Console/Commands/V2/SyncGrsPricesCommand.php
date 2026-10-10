@@ -2,17 +2,17 @@
 
 namespace App\Console\Commands\V2;
 
-use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
 use Illuminate\Console\Command;
 
 class SyncGrsPricesCommand extends Command
 {
     protected $signature = 'grs:sync-prices {--days= : Override the provider-configured day range}';
 
-    protected $description = 'Manual GRS-only alias for the coordinated hotel provider refresh scheduler';
+    protected $description = 'Manual GRS-only alias for the coordinated hotel provider refresh flow';
 
-    public function handle(ProviderPriceRefreshScheduler $scheduler): int
+    public function handle(): int
     {
         $value = $this->option('days');
         if ($value !== null && $value !== '') {
@@ -32,12 +32,11 @@ class SyncGrsPricesCommand extends Command
         }
 
         $days = $value === null || $value === '' ? null : (int) $value;
-        $count = $scheduler->dispatch('grs', $days);
+        SyncGrsDuePricesJob::dispatch($days);
         $label = $days === null
             ? 'provider-configured (fallback '.GrsRefreshSettings::defaults()['default_days'].')'
             : (string) $days;
-
-        $this->info("Queued {$count} coordinated GRS hotel refresh job(s); days: {$label}.");
+        $this->info('GRS coordinated due price refresh queued; days: '.$label.'.');
         return self::SUCCESS;
     }
 }
