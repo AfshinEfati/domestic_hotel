@@ -7,6 +7,7 @@ use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\Repositories\HotelProviderRefreshStateRepository;
 use App\Domain\Hotel\Support\ProviderRefreshOutcome;
 use App\Models\AccommodationProviderMap;
+use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
@@ -60,68 +61,109 @@ class ProviderPriceRefreshScheduler
 
             $capacity = max(1, $handler->hotelCapacityPerMinute($provider));
             foreach ($this->states->claimForProvider((int) $provider->id, $capacity) as $state) {
-                $cycleKey = (string) $state->cycle_key;
-                $map = $state->accommodation_provider_map_id !== null
-                    ? $this->maps->find((int) $state->accommodation_provider_map_id)
-                    : null;
-
-                if (!$map instanceof AccommodationProviderMap
-                    || (int) $map->provider_id !== (int) $provider->id
-                    || (int) $map->accommodation_id !== (int) $state->accommodation_id
-                    || $map->is_disabled
-                    || trim((string) $map->provider_property_id) === '') {
-                    $this->coordinator->attempted(
-                        (int) $state->id,
-                        $cycleKey,
-                        ProviderRefreshOutcome::MAP_UNAVAILABLE,
-                    );
-                    continue;
-                }
-
-                if (!$this->schedules->isCurrentCycle(
-                    (int) $state->shared_schedule_id,
-                    (int) $state->accommodation_id,
-                    $state->source_due_at?->format('Y-m-d H:i:s'),
-                )) {
-                    $this->coordinator->attempted(
-                        (int) $state->id,
-                        $cycleKey,
-                        ProviderRefreshOutcome::CYCLE_SUPERSEDED,
-                    );
-                    continue;
-                }
-
-                try {
-                    $queued = $handler->dispatch(
-                        $provider,
-                        $map,
-                        (int) $state->id,
-                        $cycleKey,
-                        (int) $state->shared_schedule_id,
-                        (int) $state->accommodation_id,
-                        $days,
-                    );
-                } catch (Throwable $exception) {
-                    $this->coordinator->retry(
-                        (int) $state->id,
-                        $cycleKey,
-                        ProviderRefreshOutcome::INTERNAL_ERROR,
-                        60,
-                    );
-                    report($exception);
-                    continue;
-                }
-
-                if ($queued) {
+                if ($this->dispatchClaimedState($provider, $handler, $state, $days)) {
                     $dispatched++;
-                    continue;
                 }
+            }
+        }
 
-                $this->coordinator->attempted(
-                    (int) $state->id,
-                    $cycleKey,
-                    ProviderRefreshOutcome::SCHEDULER_DISABLED,
-                );
+        return $dispatched;
+    }
+
+    /**
+     * Queue refresh work for one due hotel only. All mapped provider states for the
+     * hotel's current cycle are materialized first, even when one provider is selected,
+     * so the coordinator still knows which other providers must finish before SSP moves.
+     */
+    public function dispatchAccommodation(
+        int $accommodationId,
+        ?string $onlyProviderCode = null,
+        ?int $days = null,
+    ): int {
+        $this->schedules->assertReady();
+        $entries = $this->providerEntries();
+        if ($entries === []) {
+            return 0;
+        }
+
+        $schedule = $this->schedules->dueForAccommodation($accommodationId);
+        if ($schedule === null) {
+            return 0;
+        }
+
+        $sourceDueAt = $schedule->next_gds_run_at?->format('Y-m-d H:i:s');
+        $cycleKey = $this->states->cycleKey((int) $schedule->id, $accommodationId, $sourceDueAt);
+        $mapGroups = $this->maps->forAccommodations([$accommodationId])->groupBy('provider_id');
+        $tracked = 0;
+        $targets = [];
+
+        foreach ($mapGroups as $providerMaps) {
+            $map = $this->preferredMap($providerMaps);
+            if (!$map instanceof AccommodationProviderMap) {
+                continue;
+            }
+
+            $entry = $entries[(int) $map->provider_id] ?? null;
+            if ($entry === null) {
+                continue;
+            }
+
+            [$provider, $handler] = $entry;
+            $outcome = null;
+            $dispatchable = true;
+
+            if (!$provider->is_active) {
+                $dispatchable = false;
+                $outcome = ProviderRefreshOutcome::PROVIDER_DISABLED;
+            } elseif ($map->is_disabled) {
+                $dispatchable = false;
+                $outcome = ProviderRefreshOutcome::MAP_DISABLED;
+            } elseif (trim((string) $map->provider_property_id) === '') {
+                $dispatchable = false;
+                $outcome = ProviderRefreshOutcome::MAP_UNAVAILABLE;
+            } elseif (!$handler->enabled($provider)) {
+                $dispatchable = false;
+                $outcome = ProviderRefreshOutcome::SCHEDULER_DISABLED;
+            }
+
+            $state = $this->states->ensure(
+                (int) $schedule->id,
+                $accommodationId,
+                $provider,
+                $map,
+                $sourceDueAt,
+                $dispatchable,
+                $outcome,
+            );
+            $tracked++;
+
+            if (
+                $dispatchable
+                && ($onlyProviderCode === null || (string) $provider->code === $onlyProviderCode)
+            ) {
+                $targets[] = [$provider, $handler, $state];
+            }
+        }
+
+        if ($tracked === 0 || !$this->states->hasOpenState($cycleKey)) {
+            $this->coordinator->finalizeCycle(
+                (int) $schedule->id,
+                $accommodationId,
+                $sourceDueAt,
+                $cycleKey,
+            );
+            return 0;
+        }
+
+        $dispatched = 0;
+        foreach ($targets as [$provider, $handler, $state]) {
+            $claimed = $this->states->claimSpecific((int) $state->id, (string) $state->cycle_key);
+            if ($claimed === null) {
+                continue;
+            }
+
+            if ($this->dispatchClaimedState($provider, $handler, $claimed, $days)) {
+                $dispatched++;
             }
         }
 
@@ -165,6 +207,77 @@ class ProviderPriceRefreshScheduler
         }
 
         return $entries;
+    }
+
+    private function dispatchClaimedState(
+        Provider $provider,
+        PriceRefreshSchedulerHandler $handler,
+        HotelProviderRefreshState $state,
+        ?int $days,
+    ): bool {
+        $cycleKey = (string) $state->cycle_key;
+        $map = $state->accommodation_provider_map_id !== null
+            ? $this->maps->find((int) $state->accommodation_provider_map_id)
+            : null;
+
+        if (!$map instanceof AccommodationProviderMap
+            || (int) $map->provider_id !== (int) $provider->id
+            || (int) $map->accommodation_id !== (int) $state->accommodation_id
+            || $map->is_disabled
+            || trim((string) $map->provider_property_id) === '') {
+            $this->coordinator->attempted(
+                (int) $state->id,
+                $cycleKey,
+                ProviderRefreshOutcome::MAP_UNAVAILABLE,
+            );
+            return false;
+        }
+
+        if (!$this->schedules->isCurrentCycle(
+            (int) $state->shared_schedule_id,
+            (int) $state->accommodation_id,
+            $state->source_due_at?->format('Y-m-d H:i:s'),
+        )) {
+            $this->coordinator->attempted(
+                (int) $state->id,
+                $cycleKey,
+                ProviderRefreshOutcome::CYCLE_SUPERSEDED,
+            );
+            return false;
+        }
+
+        try {
+            $queued = $handler->dispatch(
+                $provider,
+                $map,
+                (int) $state->id,
+                $cycleKey,
+                (int) $state->shared_schedule_id,
+                (int) $state->accommodation_id,
+                $days,
+            );
+        } catch (Throwable $exception) {
+            $this->coordinator->retry(
+                (int) $state->id,
+                $cycleKey,
+                ProviderRefreshOutcome::INTERNAL_ERROR,
+                60,
+            );
+            report($exception);
+            return false;
+        }
+
+        if ($queued) {
+            return true;
+        }
+
+        $this->coordinator->attempted(
+            (int) $state->id,
+            $cycleKey,
+            ProviderRefreshOutcome::SCHEDULER_DISABLED,
+        );
+
+        return false;
     }
 
     /**
