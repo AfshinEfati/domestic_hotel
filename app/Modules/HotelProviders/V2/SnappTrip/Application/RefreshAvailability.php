@@ -44,7 +44,10 @@ final class RefreshAvailability
             throw new InvalidArgumentException('SnappTrip availability end date must be after start date.');
         }
 
-        $gateway = $this->gateways->make($provider);
+        $gateway = $this->gateways->make($provider)->withProviderAlertContext(
+            (int) $map->accommodation_id,
+            (string) $map->provider_property_id,
+        );
 
         try {
             $domestic = $gateway->hotelCalendar((string) $map->provider_property_id, $start, $end, false);
