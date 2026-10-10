@@ -27,4 +27,15 @@ class SnappTripCalendarWindowsTest extends TestCase
         $this->assertSame(3, SnappTripCalendarWindows::chunkCountForDays(90));
         $this->assertSame(6, SnappTripCalendarWindows::requestCountForDays(90));
     }
+
+    public function test_hotel_specific_twenty_day_window_keeps_the_ninety_day_horizon(): void
+    {
+        $windows = SnappTripCalendarWindows::split('2026-10-10', '2027-01-08', 20);
+
+        $this->assertCount(5, $windows);
+        $this->assertSame(['from' => '2026-10-10', 'to' => '2026-10-30'], $windows[0]);
+        $this->assertSame(['from' => '2026-12-29', 'to' => '2027-01-08'], $windows[4]);
+        $this->assertSame(5, SnappTripCalendarWindows::chunkCountForDays(90, 20));
+        $this->assertSame(10, SnappTripCalendarWindows::requestCountForDays(90, 20));
+    }
 }
