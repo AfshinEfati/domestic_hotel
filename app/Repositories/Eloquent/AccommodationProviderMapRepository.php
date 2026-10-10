@@ -28,10 +28,19 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
 
     public function findForAccommodationAndProvider(int $accommodationId, int $providerId): ?AccommodationProviderMap
     {
-        return $this->model->newQuery()
+        $maps = $this->model->newQuery()
             ->where('accommodation_id', $accommodationId)
             ->where('provider_id', $providerId)
-            ->first();
+            ->orderBy('id')
+            ->get();
+
+        $usable = $maps->first(static fn (AccommodationProviderMap $map): bool =>
+            !$map->is_disabled && trim((string) $map->provider_property_id) !== ''
+        );
+
+        return $usable instanceof AccommodationProviderMap
+            ? $usable
+            : $maps->first();
     }
 
     /** @return Collection<int, AccommodationProviderMap> */
@@ -44,10 +53,12 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->whereNotNull('provider_property_id')
             ->whereHas('provider', fn ($query) => $query->where('is_active', true))
             ->orderBy('provider_id')
+            ->orderBy('id')
             ->get()
             ->filter(static fn (AccommodationProviderMap $map): bool =>
                 trim((string) $map->provider_property_id) !== ''
             )
+            ->unique('provider_id')
             ->values();
     }
 
@@ -71,6 +82,7 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
             ->whereIn('accommodation_id', $ids->all())
             ->orderBy('accommodation_id')
             ->orderBy('provider_id')
+            ->orderBy('id')
             ->get();
     }
 
@@ -84,10 +96,17 @@ class AccommodationProviderMapRepository extends BaseRepository implements Accom
 
     public function disableForAccommodationAndProvider(int $accommodationId, int $providerId): bool
     {
-        return $this->model->newQuery()
+        $query = $this->model->newQuery()
             ->where('accommodation_id', $accommodationId)
-            ->where('provider_id', $providerId)
-            ->update(['is_disabled' => true]) === 1;
+            ->where('provider_id', $providerId);
+
+        if (!(clone $query)->exists()) {
+            return false;
+        }
+
+        $query->update(['is_disabled' => true]);
+
+        return true;
     }
 
     public function store(array $data): AccommodationProviderMap
