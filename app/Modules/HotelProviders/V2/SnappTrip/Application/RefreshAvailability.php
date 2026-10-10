@@ -6,6 +6,7 @@ use App\Models\AccommodationProviderMap;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripAvailabilityRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use Carbon\CarbonImmutable;
@@ -49,39 +50,65 @@ final class RefreshAvailability
             (string) $map->provider_property_id,
         );
 
-        try {
-            $domestic = $gateway->hotelCalendar((string) $map->provider_property_id, $start, $end, false);
-            $foreign = $gateway->hotelCalendar((string) $map->provider_property_id, $start, $end, true);
-        } catch (RequestException $exception) {
-            if ($exception->response?->status() === 404) {
-                $this->maps->disableForAccommodationAndProvider((int) $map->accommodation_id, (int) $provider->id);
-                return collect();
+        $resultRows = collect();
+
+        foreach (SnappTripCalendarWindows::split($start, $end) as $window) {
+            try {
+                $domestic = $gateway->hotelCalendar(
+                    (string) $map->provider_property_id,
+                    $window['from'],
+                    $window['to'],
+                    false,
+                );
+                $foreign = $gateway->hotelCalendar(
+                    (string) $map->provider_property_id,
+                    $window['from'],
+                    $window['to'],
+                    true,
+                );
+            } catch (RequestException $exception) {
+                if ($exception->response?->status() === 404) {
+                    $this->maps->disableForAccommodationAndProvider(
+                        (int) $map->accommodation_id,
+                        (int) $provider->id,
+                    );
+                    return collect();
+                }
+                throw $exception;
             }
-            throw $exception;
+
+            if (!$persist) {
+                $resultRows->push([
+                    'from' => $window['from'],
+                    'to' => $window['to'],
+                    'foreigner' => false,
+                    'data' => $domestic,
+                ]);
+                $resultRows->push([
+                    'from' => $window['from'],
+                    'to' => $window['to'],
+                    'foreigner' => true,
+                    'data' => $foreign,
+                ]);
+                continue;
+            }
+
+            $resultRows = $resultRows->concat($this->availability->persist(
+                $provider,
+                $map,
+                $domestic['rows'] ?? [],
+                $domestic['packages'] ?? [],
+                false,
+            ));
+            $resultRows = $resultRows->concat($this->availability->persist(
+                $provider,
+                $map,
+                $foreign['rows'] ?? [],
+                $foreign['packages'] ?? [],
+                true,
+            ));
         }
 
-        if (!$persist) {
-            return collect([
-                ['foreigner' => false, 'data' => $domestic],
-                ['foreigner' => true, 'data' => $foreign],
-            ]);
-        }
-
-        $rows = $this->availability->persist(
-            $provider,
-            $map,
-            $domestic['rows'] ?? [],
-            $domestic['packages'] ?? [],
-            false,
-        );
-        $rows = $rows->concat($this->availability->persist(
-            $provider,
-            $map,
-            $foreign['rows'] ?? [],
-            $foreign['packages'] ?? [],
-            true,
-        ));
-
-        return $rows->values();
+        return $resultRows->values();
     }
 }
