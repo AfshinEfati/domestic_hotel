@@ -20,7 +20,7 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
         return $provider->code === 'grs' && $provider->is_active;
     }
 
-    public function hotelCapacityPerMinute(Provider $provider): int
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
     {
         $windowMinutes = max(1, GrsApiQuota::windowMinutes($provider));
 
