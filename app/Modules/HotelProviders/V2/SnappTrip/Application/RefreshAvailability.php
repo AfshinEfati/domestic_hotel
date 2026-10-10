@@ -6,6 +6,7 @@ use App\Models\AccommodationProviderMap;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripAvailabilityRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripCalendarWindowRepository;
+use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripRefreshHorizonRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarRangeLimit;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
@@ -23,6 +24,7 @@ final class RefreshAvailability
         private readonly SnappTripGatewayFactory $gateways,
         private readonly SnappTripAvailabilityRepository $availability,
         private readonly SnappTripCalendarWindowRepository $calendarWindows,
+        private readonly SnappTripRefreshHorizonRepository $refreshHorizons,
         private readonly AccommodationProviderMapRepositoryInterface $maps,
     ) {
     }
@@ -42,12 +44,23 @@ final class RefreshAvailability
             return collect();
         }
 
-        $start = CarbonImmutable::parse($from)->toDateString();
-        $end = CarbonImmutable::parse($to)->toDateString();
-        if ($start >= $end) {
+        $startDate = CarbonImmutable::parse($from)->startOfDay();
+        $requestedEndDate = CarbonImmutable::parse($to)->startOfDay();
+        if (!$startDate->lt($requestedEndDate)) {
             throw new InvalidArgumentException('SnappTrip availability end date must be after start date.');
         }
 
+        $endDate = $requestedEndDate;
+        $horizonOverride = $this->refreshHorizons->overrideDays($map);
+        if ($horizonOverride !== null) {
+            $configuredEnd = $startDate->addDays($horizonOverride);
+            if ($configuredEnd->lt($endDate)) {
+                $endDate = $configuredEnd;
+            }
+        }
+
+        $start = $startDate->toDateString();
+        $end = $endDate->toDateString();
         $gateway = $this->gateways->make($provider)->withProviderAlertContext(
             (int) $map->accommodation_id,
             (string) $map->provider_property_id,
@@ -83,22 +96,54 @@ final class RefreshAvailability
                 }
 
                 $reportedLimit = SnappTripCalendarRangeLimit::fromResponse($exception->response);
-                $currentWindowDays = CarbonImmutable::parse($window['from'])
-                    ->diffInDays(CarbonImmutable::parse($window['to']));
+                $windowFrom = CarbonImmutable::parse($window['from'])->startOfDay();
+                $windowTo = CarbonImmutable::parse($window['to'])->startOfDay();
+                $currentWindowDays = (int) $windowFrom->diffInDays($windowTo);
 
                 if ($reportedLimit !== null && $reportedLimit < $currentWindowDays) {
                     $windowDays = $persist
                         ? $this->calendarWindows->learn($map, $reportedLimit)
                         : min($windowDays, $reportedLimit, SnappTripCalendarWindows::MAX_DAYS);
 
-                    // Keep the overall requested horizon unchanged. Only re-split the
-                    // failed and remaining range using this hotel's learned window.
+                    // First treat a smaller reported limit as an endpoint window cap.
+                    // If the provider also has a forward-horizon cap, a later smaller
+                    // chunk will expose that separately and we learn it below.
                     $windows = SnappTripCalendarWindows::split(
                         $window['from'],
                         $end,
                         $windowDays,
                     );
                     continue;
+                }
+
+                if ($reportedLimit !== null) {
+                    $reportedEnd = $startDate->addDays($reportedLimit);
+
+                    if ($reportedEnd->lt($endDate) && $windowTo->gt($reportedEnd)) {
+                        $horizonDays = $persist
+                            ? $this->refreshHorizons->learn($map, $reportedLimit)
+                            : $reportedLimit;
+                        $learnedEnd = $startDate->addDays($horizonDays);
+
+                        if ($learnedEnd->lt($endDate)) {
+                            $endDate = $learnedEnd;
+                            $end = $endDate->toDateString();
+                        }
+
+                        if (!$windowFrom->lt($endDate)) {
+                            $windows = [];
+                            continue;
+                        }
+
+                        // Retry only the useful remainder of the failed window. The
+                        // already-persisted earlier windows are never requested again.
+                        $windows = SnappTripCalendarWindows::split(
+                            $window['from'],
+                            $end,
+                            $windowDays,
+                        );
+                        continue;
+                    }
                 }
 
                 throw $exception;
