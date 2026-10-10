@@ -146,6 +146,114 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $this->assertSame([[2, 12, 102, 'cycle', 77, 100]], $fast->dispatched);
     }
 
+    public function test_targeted_dispatch_materializes_all_provider_states_but_queues_only_selected_provider(): void
+    {
+        $slowProvider = (new Provider())->forceFill([
+            'id' => 1,
+            'code' => 'slow',
+            'is_active' => true,
+        ]);
+        $fastProvider = (new Provider())->forceFill([
+            'id' => 2,
+            'code' => 'fast',
+            'is_active' => true,
+        ]);
+        $providers = $this->createMock(ProviderRepositoryInterface::class);
+        $providers->method('getAll')->willReturn([$slowProvider, $fastProvider]);
+
+        $slowMap = (new AccommodationProviderMap())->forceFill([
+            'id' => 11,
+            'provider_id' => 1,
+            'accommodation_id' => 100,
+            'provider_property_id' => 'slow-100',
+            'is_disabled' => false,
+        ]);
+        $fastMap = (new AccommodationProviderMap())->forceFill([
+            'id' => 12,
+            'provider_id' => 2,
+            'accommodation_id' => 100,
+            'provider_property_id' => 'fast-100',
+            'is_disabled' => false,
+        ]);
+        $maps = $this->createMock(AccommodationProviderMapRepositoryInterface::class);
+        $maps->expects($this->once())
+            ->method('forAccommodations')
+            ->with([100])
+            ->willReturn(collect([$slowMap, $fastMap]));
+        $maps->method('find')->with(12)->willReturn($fastMap);
+
+        $schedule = (new HotelPriceRefreshSchedule())->forceFill([
+            'id' => 77,
+            'gds_id' => 100,
+            'next_gds_run_at' => null,
+        ]);
+        $schedules = $this->createMock(HotelPriceRefreshScheduleRepository::class);
+        $schedules->expects($this->once())->method('assertReady');
+        $schedules->expects($this->once())
+            ->method('dueForAccommodation')
+            ->with(100)
+            ->willReturn($schedule);
+        $schedules->expects($this->once())
+            ->method('isCurrentCycle')
+            ->with(77, 100, null)
+            ->willReturn(true);
+
+        $slowState = (new HotelProviderRefreshState())->forceFill([
+            'id' => 101,
+            'shared_schedule_id' => 77,
+            'accommodation_id' => 100,
+            'provider_id' => 1,
+            'accommodation_provider_map_id' => 11,
+            'cycle_key' => 'cycle',
+            'source_due_at' => null,
+        ]);
+        $fastState = (new HotelProviderRefreshState())->forceFill([
+            'id' => 102,
+            'shared_schedule_id' => 77,
+            'accommodation_id' => 100,
+            'provider_id' => 2,
+            'accommodation_provider_map_id' => 12,
+            'cycle_key' => 'cycle',
+            'source_due_at' => null,
+        ]);
+        $states = $this->createMock(HotelProviderRefreshStateRepository::class);
+        $states->method('cycleKey')->willReturn('cycle');
+        $states->expects($this->exactly(2))
+            ->method('ensure')
+            ->willReturnCallback(static fn (
+                int $scheduleId,
+                int $accommodationId,
+                Provider $provider,
+            ) => (int) $provider->id === 1 ? $slowState : $fastState);
+        $states->expects($this->once())->method('hasOpenState')->with('cycle')->willReturn(true);
+        $states->expects($this->once())
+            ->method('claimSpecific')
+            ->with(102, 'cycle')
+            ->willReturn($fastState);
+
+        $coordinator = $this->createMock(ProviderRefreshCoordinator::class);
+        $slow = new SlowTestPriceRefreshHandler();
+        $fast = new FastTestPriceRefreshHandler();
+        $this->app->instance(SlowTestPriceRefreshHandler::class, $slow);
+        $this->app->instance(FastTestPriceRefreshHandler::class, $fast);
+        $registry = new HotelProviderRegistry();
+        $registry->registerPriceRefreshHandler('slow', SlowTestPriceRefreshHandler::class);
+        $registry->registerPriceRefreshHandler('fast', FastTestPriceRefreshHandler::class);
+
+        $scheduler = new ProviderPriceRefreshScheduler(
+            $providers,
+            $maps,
+            $schedules,
+            $states,
+            $coordinator,
+            $registry,
+        );
+
+        $this->assertSame(1, $scheduler->dispatchAccommodation(100, 'fast', 40));
+        $this->assertSame([], $slow->dispatched);
+        $this->assertSame([[2, 12, 102, 'cycle', 77, 100]], $fast->dispatched);
+    }
+
     public function test_outbound_guard_uses_active_state_not_online_procurement_mode(): void
     {
         $provider = (new Provider())->forceFill([
