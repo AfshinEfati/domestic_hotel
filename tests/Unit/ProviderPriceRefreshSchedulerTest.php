@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\Repositories\HotelProviderRefreshStateRepository;
+use App\Domain\Hotel\Services\GrsScheduledPriceRefresh;
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
 use App\Models\AccommodationProviderMap;
@@ -13,6 +14,7 @@ use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\SnappTripScheduledPriceRefresh;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use Tests\TestCase;
@@ -153,6 +155,29 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
 
         $provider->is_active = false;
         $this->assertFalse($guard->allows($provider));
+    }
+
+    public function test_active_provider_participates_even_when_legacy_scheduler_flag_is_false(): void
+    {
+        $grs = (new Provider())->forceFill([
+            'code' => 'grs',
+            'is_active' => true,
+            'config' => ['price_refresh' => ['scheduler_enabled' => false]],
+        ]);
+        $snap = (new Provider())->forceFill([
+            'code' => 'snap',
+            'is_active' => true,
+            'config' => ['price_refresh' => ['scheduler_enabled' => false]],
+        ]);
+
+        $this->assertTrue((new GrsScheduledPriceRefresh())->enabled($grs));
+        $this->assertTrue((new SnappTripScheduledPriceRefresh())->enabled($snap));
+
+        $grs->is_active = false;
+        $snap->is_active = false;
+
+        $this->assertFalse((new GrsScheduledPriceRefresh())->enabled($grs));
+        $this->assertFalse((new SnappTripScheduledPriceRefresh())->enabled($snap));
     }
 }
 
