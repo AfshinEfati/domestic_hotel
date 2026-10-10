@@ -2,6 +2,7 @@
 
 namespace App\Domain\Hotel\Repositories;
 
+use App\Domain\Hotel\Support\ProviderRefreshOutcome;
 use App\Domain\Hotel\Support\ProviderRefreshStateStatus;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelProviderRefreshState;
@@ -76,6 +77,33 @@ class HotelProviderRefreshStateRepository
         }
 
         if (in_array((int) $state->status, ProviderRefreshStateStatus::terminal(), true)) {
+            // A safe sync may have observed a provider/map while it was disabled.
+            // If the same shared cycle is still open and that condition is repaired,
+            // reopen only configuration/mapping terminal states. Provider-side
+            // outcomes such as 404/empty/timeout remain terminal for this cycle.
+            if ($dispatchable && in_array((string) $state->outcome, [
+                ProviderRefreshOutcome::SCHEDULER_DISABLED,
+                ProviderRefreshOutcome::PROVIDER_DISABLED,
+                ProviderRefreshOutcome::MAP_DISABLED,
+                ProviderRefreshOutcome::MAP_UNAVAILABLE,
+            ], true)) {
+                $state->forceFill([
+                    'shared_schedule_id' => $scheduleId,
+                    'accommodation_provider_map_id' => (int) $map->id,
+                    'status' => ProviderRefreshStateStatus::PENDING,
+                    'outcome' => null,
+                    'attempts' => 0,
+                    'next_attempt_at' => null,
+                    'queued_at' => null,
+                    'started_at' => null,
+                    'last_attempt_at' => null,
+                    'completed_at' => null,
+                    'lease_expires_at' => null,
+                ])->save();
+
+                return $state->fresh();
+            }
+
             return $state;
         }
 
