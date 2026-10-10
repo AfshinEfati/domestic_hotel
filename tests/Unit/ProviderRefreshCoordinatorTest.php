@@ -31,11 +31,11 @@ class ProviderRefreshCoordinatorTest extends TestCase
         $states = $this->createMock(HotelProviderRefreshStateRepository::class);
         $states->expects($this->once())
             ->method('markDone')
-            ->with(1, ProviderRefreshOutcome::SUCCESS)
+            ->with(1, 'cycle-1', ProviderRefreshOutcome::SUCCESS)
             ->willReturn($first);
         $states->expects($this->once())
             ->method('markAttempted')
-            ->with(2, ProviderRefreshOutcome::PROVIDER_404)
+            ->with(2, 'cycle-1', ProviderRefreshOutcome::PROVIDER_404)
             ->willReturn($second);
         $states->expects($this->exactly(2))
             ->method('hasOpenState')
@@ -49,8 +49,8 @@ class ProviderRefreshCoordinatorTest extends TestCase
             ->willReturn(true);
 
         $coordinator = new ProviderRefreshCoordinator($states, $schedules);
-        $coordinator->done(1);
-        $coordinator->attempted(2, ProviderRefreshOutcome::PROVIDER_404);
+        $coordinator->done(1, 'cycle-1');
+        $coordinator->attempted(2, 'cycle-1', ProviderRefreshOutcome::PROVIDER_404);
     }
 
     public function test_retryable_failure_never_advances_shared_cycle(): void
@@ -58,13 +58,13 @@ class ProviderRefreshCoordinatorTest extends TestCase
         $states = $this->createMock(HotelProviderRefreshStateRepository::class);
         $states->expects($this->once())
             ->method('markRetry')
-            ->with(5, ProviderRefreshOutcome::RATE_LIMITED, 120);
+            ->with(5, 'cycle-5', ProviderRefreshOutcome::RATE_LIMITED, 120);
 
         $schedules = $this->createMock(HotelPriceRefreshScheduleRepository::class);
         $schedules->expects($this->never())->method('markCycleCompleted');
 
         $coordinator = new ProviderRefreshCoordinator($states, $schedules);
-        $coordinator->retry(5, ProviderRefreshOutcome::RATE_LIMITED, 120);
+        $coordinator->retry(5, 'cycle-5', ProviderRefreshOutcome::RATE_LIMITED, 120);
     }
 
     public function test_stale_worker_is_terminated_without_touching_new_shared_cycle(): void
@@ -84,7 +84,7 @@ class ProviderRefreshCoordinatorTest extends TestCase
             ->willReturn($state);
         $states->expects($this->once())
             ->method('markAttempted')
-            ->with(9, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
+            ->with(9, 'old-cycle', ProviderRefreshOutcome::CYCLE_SUPERSEDED);
 
         $schedules = $this->createMock(HotelPriceRefreshScheduleRepository::class);
         $schedules->expects($this->once())
