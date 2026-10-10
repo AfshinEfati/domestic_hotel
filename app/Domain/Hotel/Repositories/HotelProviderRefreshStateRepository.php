@@ -164,34 +164,61 @@ class HotelProviderRefreshStateRepository
                 break;
             }
 
-            $query = HotelProviderRefreshState::query()
-                ->whereKey($candidate->id)
-                ->where('cycle_key', (string) $candidate->cycle_key)
-                ->where('status', (int) $candidate->status);
-
-            if (in_array((int) $candidate->status, ProviderRefreshStateStatus::claimable(), true)) {
-                $query->where(function ($retryAt) use ($now): void {
-                    $retryAt->whereNull('next_attempt_at')
-                        ->orWhere('next_attempt_at', '<=', $now);
-                });
-            } else {
-                $query->whereNotNull('lease_expires_at')
-                    ->where('lease_expires_at', '<=', $now);
-            }
-
-            $updated = $query->update([
-                'status' => ProviderRefreshStateStatus::QUEUED,
-                'queued_at' => $now,
-                'lease_expires_at' => $now->addSeconds(self::LEASE_SECONDS),
-                'updated_at' => $now,
-            ]);
-
-            if ($updated === 1) {
-                $claimed->push(HotelProviderRefreshState::query()->findOrFail($candidate->id));
+            $state = $this->claimSpecific((int) $candidate->id, (string) $candidate->cycle_key, $now);
+            if ($state !== null) {
+                $claimed->push($state);
             }
         }
 
         return $claimed;
+    }
+
+    public function claimSpecific(
+        int $stateId,
+        string $cycleKey,
+        ?CarbonImmutable $now = null,
+    ): ?HotelProviderRefreshState {
+        $now ??= CarbonImmutable::now();
+        $candidate = HotelProviderRefreshState::query()
+            ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
+            ->first();
+
+        if ($candidate === null) {
+            return null;
+        }
+
+        $status = (int) $candidate->status;
+        $query = HotelProviderRefreshState::query()
+            ->whereKey($stateId)
+            ->where('cycle_key', $cycleKey)
+            ->where('status', $status);
+
+        if (in_array($status, ProviderRefreshStateStatus::claimable(), true)) {
+            $query->where(function ($retryAt) use ($now): void {
+                $retryAt->whereNull('next_attempt_at')
+                    ->orWhere('next_attempt_at', '<=', $now);
+            });
+        } elseif (in_array($status, [
+            ProviderRefreshStateStatus::QUEUED,
+            ProviderRefreshStateStatus::PROCESSING,
+        ], true)) {
+            $query->whereNotNull('lease_expires_at')
+                ->where('lease_expires_at', '<=', $now);
+        } else {
+            return null;
+        }
+
+        $updated = $query->update([
+            'status' => ProviderRefreshStateStatus::QUEUED,
+            'queued_at' => $now,
+            'lease_expires_at' => $now->addSeconds(self::LEASE_SECONDS),
+            'updated_at' => $now,
+        ]);
+
+        return $updated === 1
+            ? HotelProviderRefreshState::query()->find($stateId)
+            : null;
     }
 
     public function start(int $stateId, string $cycleKey): ?HotelProviderRefreshState
