@@ -38,6 +38,8 @@ final class ProviderHttpAlertListener
             return;
         }
 
+        $context = $this->alertContext($event->request);
+
         if ($status === 429) {
             // The scheduled GRS price worker handles its own 429 with hotel context,
             // shared cooldown and delayed retry. Avoid a duplicate generic alert.
@@ -52,6 +54,7 @@ final class ProviderHttpAlertListener
                 $this->operation($event->request),
                 is_numeric($retryAfter) ? max(1, (int) $retryAfter) : null,
                 $this->responseReason($event->response->body()),
+                $context,
             );
 
             return;
@@ -64,6 +67,7 @@ final class ProviderHttpAlertListener
             $status,
             null,
             $this->responseReason($event->response->body()),
+            $context,
         );
     }
 
@@ -77,7 +81,8 @@ final class ProviderHttpAlertListener
         $this->alerts->providerFailure(
             $provider,
             $this->operation($event->request),
-            'connection'
+            'connection',
+            context: $this->alertContext($event->request),
         );
     }
 
@@ -125,6 +130,49 @@ final class ProviderHttpAlertListener
         // Only allow an identifier, never URLs, headers, credentials or request bodies.
         $code = strtolower($tag['code']);
         return preg_match('/^[a-z0-9_-]{1,30}$/D', $code) ? $code : null;
+    }
+
+    /** @return array<string,string|int> */
+    private function alertContext(Request $request): array
+    {
+        $tag = $request->attributes()['domestic_provider'] ?? null;
+        if (!is_array($tag)) {
+            return [];
+        }
+
+        $fields = [];
+
+        if (isset($tag['id']) && is_numeric($tag['id']) && (int) $tag['id'] > 0) {
+            $fields['شناسه تأمین‌کننده'] = (int) $tag['id'];
+        }
+
+        $context = is_array($tag['context'] ?? null) ? $tag['context'] : [];
+        if (isset($context['accommodation_id']) && is_numeric($context['accommodation_id']) && (int) $context['accommodation_id'] > 0) {
+            $fields['شناسه هتل'] = (int) $context['accommodation_id'];
+        }
+
+        $providerPropertyId = trim((string) ($context['provider_property_id'] ?? ''));
+        if ($providerPropertyId !== '' && preg_match('/^[A-Za-z0-9_.:-]{1,64}$/D', $providerPropertyId)) {
+            $fields['شناسه هتل تأمین‌کننده'] = $providerPropertyId;
+        }
+
+        $query = parse_url($request->url(), PHP_URL_QUERY);
+        if (is_string($query) && $query !== '') {
+            parse_str($query, $params);
+            $from = isset($params['from']) && is_string($params['from']) ? trim($params['from']) : null;
+            $to = isset($params['to']) && is_string($params['to']) ? trim($params['to']) : null;
+
+            if (
+                $from !== null
+                && $to !== null
+                && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $from)
+                && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $to)
+            ) {
+                $fields['بازه درخواست'] = $from.' تا '.$to;
+            }
+        }
+
+        return $fields;
     }
 
     private function isScheduledAvailabilityOperation(Request $request): bool
