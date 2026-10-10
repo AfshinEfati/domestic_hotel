@@ -2,17 +2,17 @@
 
 namespace App\Console\Commands\V2;
 
+use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use App\Domain\Hotel\V2\GrsRefreshSettings;
-use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
 use Illuminate\Console\Command;
 
 class SyncGrsPricesCommand extends Command
 {
     protected $signature = 'grs:sync-prices {--days= : Override the provider-configured day range}';
 
-    protected $description = 'Dispatch due GRS-only prices and inventory using shared SSP schedules';
+    protected $description = 'Manual GRS-only alias for the coordinated hotel provider refresh scheduler';
 
-    public function handle(): int
+    public function handle(ProviderPriceRefreshScheduler $scheduler): int
     {
         $value = $this->option('days');
         if ($value !== null && $value !== '') {
@@ -32,11 +32,12 @@ class SyncGrsPricesCommand extends Command
         }
 
         $days = $value === null || $value === '' ? null : (int) $value;
-        SyncGrsDuePricesJob::dispatch($days);
+        $count = $scheduler->dispatch('grs', $days);
         $label = $days === null
             ? 'provider-configured (fallback '.GrsRefreshSettings::defaults()['default_days'].')'
             : (string) $days;
-        $this->info('GRS due price refresh queued; days: '.$label.'. Only shared SSP due hotels will be selected.');
+
+        $this->info("Queued {$count} coordinated GRS hotel refresh job(s); days: {$label}.");
         return self::SUCCESS;
     }
 }
