@@ -17,6 +17,9 @@ final class SnappTripClient
     /** @var array{reservation_id:?int,handler_class:?string,handler_method:?string,attempt:int,force:bool}|null */
     private ?array $requestLogContext = null;
 
+    /** @var array{accommodation_id:int,provider_property_id:string}|null */
+    private ?array $providerAlertContext = null;
+
     public function __construct(
         private readonly Provider $provider,
         private readonly ProviderOutboundGuard $outboundGuard,
@@ -42,6 +45,22 @@ final class SnappTripClient
             'handler_method' => $handlerMethod,
             'attempt' => max(1, $attempt),
             'force' => $force,
+        ];
+
+        return $clone;
+    }
+
+    public function withProviderAlertContext(int $accommodationId, string $providerPropertyId): self
+    {
+        $providerPropertyId = trim($providerPropertyId);
+        if ($accommodationId < 1 || $providerPropertyId === '') {
+            throw new InvalidArgumentException('SnappTrip provider alert context requires valid hotel identifiers.');
+        }
+
+        $clone = clone $this;
+        $clone->providerAlertContext = [
+            'accommodation_id' => $accommodationId,
+            'provider_property_id' => $providerPropertyId,
         ];
 
         return $clone;
@@ -267,6 +286,7 @@ final class SnappTripClient
             'domestic_provider' => [
                 'id' => (int) $this->provider->id,
                 'code' => (string) $this->provider->code,
+                'context' => $this->providerAlertContext,
                 'log' => $this->requestLogMetadata(),
             ],
         ])->baseUrl(rtrim($baseUrl, '/'))->timeout(30);
