@@ -5,7 +5,9 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Application;
 use App\Models\AccommodationProviderMap;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripAvailabilityRepository;
+use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripCalendarWindowRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarRangeLimit;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
@@ -20,6 +22,7 @@ final class RefreshAvailability
         private readonly ProviderOutboundGuard $outboundGuard,
         private readonly SnappTripGatewayFactory $gateways,
         private readonly SnappTripAvailabilityRepository $availability,
+        private readonly SnappTripCalendarWindowRepository $calendarWindows,
         private readonly AccommodationProviderMapRepositoryInterface $maps,
     ) {
     }
@@ -51,8 +54,12 @@ final class RefreshAvailability
         );
 
         $resultRows = collect();
+        $windowDays = $this->calendarWindows->windowDays($map);
+        $windows = SnappTripCalendarWindows::split($start, $end, $windowDays);
 
-        foreach (SnappTripCalendarWindows::split($start, $end) as $window) {
+        while ($windows !== []) {
+            $window = array_shift($windows);
+
             try {
                 $domestic = $gateway->hotelCalendar(
                     (string) $map->provider_property_id,
@@ -74,6 +81,26 @@ final class RefreshAvailability
                     );
                     return collect();
                 }
+
+                $reportedLimit = SnappTripCalendarRangeLimit::fromResponse($exception->response);
+                $currentWindowDays = CarbonImmutable::parse($window['from'])
+                    ->diffInDays(CarbonImmutable::parse($window['to']));
+
+                if ($reportedLimit !== null && $reportedLimit < $currentWindowDays) {
+                    $windowDays = $persist
+                        ? $this->calendarWindows->learn($map, $reportedLimit)
+                        : min($windowDays, $reportedLimit, SnappTripCalendarWindows::MAX_DAYS);
+
+                    // Keep the overall requested horizon unchanged. Only re-split the
+                    // failed and remaining range using this hotel's learned window.
+                    $windows = SnappTripCalendarWindows::split(
+                        $window['from'],
+                        $end,
+                        $windowDays,
+                    );
+                    continue;
+                }
+
                 throw $exception;
             }
 
