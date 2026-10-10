@@ -14,9 +14,10 @@ class GrsScheduledPriceRefresh implements PriceRefreshSchedulerHandler
 {
     public function enabled(Provider $provider): bool
     {
-        return $provider->code === 'grs'
-            && $provider->is_active
-            && GrsRefreshSettings::from($provider)['scheduler_enabled'];
+        // A due hotel must be refreshed against every active mapped provider.
+        // Per-provider scheduler flags must not silently exclude an active provider
+        // from the coordinated hotel cycle; is_active is the integration switch.
+        return $provider->code === 'grs' && $provider->is_active;
     }
 
     public function hotelCapacityPerMinute(Provider $provider): int
