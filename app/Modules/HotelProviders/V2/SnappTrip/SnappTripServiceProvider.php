@@ -5,6 +5,7 @@ namespace App\Modules\HotelProviders\V2\SnappTrip;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\HealthCommand;
+use App\Modules\HotelProviders\V2\SnappTrip\Console\ProbeCalendarCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncBalanceCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCancellationsCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCatalogCommand;
@@ -39,6 +40,7 @@ final class SnappTripServiceProvider extends ServiceProvider
 
         $this->commands([
             HealthCommand::class,
+            ProbeCalendarCommand::class,
             SyncCatalogCommand::class,
             SyncHotelDetailsCommand::class,
             SyncPricesCommand::class,
