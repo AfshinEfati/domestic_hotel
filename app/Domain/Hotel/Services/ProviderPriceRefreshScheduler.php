@@ -11,6 +11,7 @@ use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
+use Illuminate\Support\Collection;
 use RuntimeException;
 use Throwable;
 
@@ -200,7 +201,19 @@ class ProviderPriceRefreshScheduler
             $cycleKey = $this->states->cycleKey((int) $schedule->id, $accommodationId, $sourceDueAt);
             $tracked = 0;
 
-            foreach ($mapsByHotel->get($accommodationId, collect()) as $map) {
+            // Historical data can contain more than one provider map for the same
+            // hotel/provider pair. The refresh state is intentionally hotel×provider,
+            // so collapse those rows deterministically and never queue duplicate work.
+            $providerMapGroups = $mapsByHotel
+                ->get($accommodationId, collect())
+                ->groupBy('provider_id');
+
+            foreach ($providerMapGroups as $providerMaps) {
+                $map = $this->preferredMap($providerMaps);
+                if (!$map instanceof AccommodationProviderMap) {
+                    continue;
+                }
+
                 $entry = $entries[(int) $map->provider_id] ?? null;
                 if ($entry === null) {
                     continue;
@@ -253,5 +266,25 @@ class ProviderPriceRefreshScheduler
         }
 
         return $synchronized;
+    }
+
+    /**
+     * Prefer an enabled, non-blank mapping. If historical duplicates are all
+     * unusable, keep the lowest ID so state creation remains deterministic.
+     * The old room/rate map backfill used the same lowest-ID convention.
+     *
+     * @param Collection<int, AccommodationProviderMap> $maps
+     */
+    private function preferredMap(Collection $maps): ?AccommodationProviderMap
+    {
+        $ordered = $maps->sortBy(fn (AccommodationProviderMap $map): int => (int) $map->id)->values();
+
+        $usable = $ordered->first(static fn (AccommodationProviderMap $map): bool =>
+            !$map->is_disabled && trim((string) $map->provider_property_id) !== ''
+        );
+
+        return $usable instanceof AccommodationProviderMap
+            ? $usable
+            : $ordered->first();
     }
 }
