@@ -88,6 +88,51 @@ class HotelProviderRefreshStatusCommand extends Command
             $providerSummary,
         );
 
+        $duplicateQuery = AccommodationProviderMap::query()
+            ->select('provider_id', 'accommodation_id')
+            ->selectRaw('COUNT(*) AS aggregate')
+            ->groupBy('provider_id', 'accommodation_id')
+            ->havingRaw('COUNT(*) > 1')
+            ->orderBy('provider_id')
+            ->orderBy('accommodation_id');
+
+        if ($provider !== null) {
+            $duplicateQuery->where('provider_id', (int) $provider->id);
+        }
+
+        $duplicateGroups = $duplicateQuery->limit(50)->get();
+        if ($duplicateGroups->isNotEmpty()) {
+            $providerCodes = Provider::query()
+                ->whereIn('id', $duplicateGroups->pluck('provider_id')->unique()->all())
+                ->pluck('code', 'id');
+
+            $this->warn('Duplicate accommodation/provider map groups detected:');
+            $this->table(
+                ['provider', 'hotel', 'map ids', 'provider property ids', 'disabled'],
+                $duplicateGroups->map(function ($group) use ($providerCodes): array {
+                    $maps = AccommodationProviderMap::query()
+                        ->where('provider_id', (int) $group->provider_id)
+                        ->where('accommodation_id', (int) $group->accommodation_id)
+                        ->orderBy('id')
+                        ->get(['id', 'provider_property_id', 'is_disabled']);
+
+                    return [
+                        (string) ($providerCodes[(int) $group->provider_id] ?? $group->provider_id),
+                        (int) $group->accommodation_id,
+                        $maps->pluck('id')->implode(','),
+                        $maps->map(fn (AccommodationProviderMap $map): string =>
+                            trim((string) $map->provider_property_id) !== ''
+                                ? (string) $map->provider_property_id
+                                : '-'
+                        )->implode(','),
+                        $maps->map(fn (AccommodationProviderMap $map): string =>
+                            $map->is_disabled ? 'yes' : 'no'
+                        )->implode(','),
+                    ];
+                })->all(),
+            );
+        }
+
         $base = HotelProviderRefreshState::query();
         if ($provider !== null) {
             $base->where('provider_id', (int) $provider->id);
