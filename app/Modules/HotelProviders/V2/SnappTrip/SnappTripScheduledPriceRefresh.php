@@ -6,6 +6,7 @@ use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\SnappTrip\Jobs\RefreshAvailabilityJob;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 
 final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandler
@@ -19,14 +20,17 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
             && $provider->is_active;
     }
 
-    public function hotelCapacityPerMinute(Provider $provider): int
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
     {
         $settings = SnappTripSettings::from($provider);
         $maxRequests = (int) data_get($settings, 'rate_limit.max_requests', 120);
         $windowMinutes = max(1, (int) data_get($settings, 'rate_limit.window_minutes', 1));
+        $requestedDays = $days ?? (int) data_get($settings, 'price_refresh.default_days', 90);
+        $requestsPerHotel = SnappTripCalendarWindows::requestCountForDays(max(1, $requestedDays));
 
-        // Each hotel refresh requests both domestic and foreign calendars.
-        return max(1, intdiv($maxRequests, $windowMinutes * 2));
+        // SnappTrip accepts at most 40 calendar days per call. Every chunk is fetched
+        // for both domestic and foreign guests, so a 90-day refresh costs six calls.
+        return max(1, intdiv($maxRequests, $windowMinutes * $requestsPerHotel));
     }
 
     public function dispatch(
