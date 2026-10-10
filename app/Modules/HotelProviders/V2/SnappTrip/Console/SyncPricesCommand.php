@@ -2,18 +2,20 @@
 
 namespace App\Modules\HotelProviders\V2\SnappTrip\Console;
 
+use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
-use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncDuePricesJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Illuminate\Console\Command;
 
 final class SyncPricesCommand extends Command
 {
     protected $signature = 'snapptrip:sync-prices {--days= : Calendar horizon in days}';
-    protected $description = 'Queue due SnappTrip rate and inventory refresh work.';
+    protected $description = 'Manual SnappTrip-only alias for the coordinated hotel provider refresh scheduler.';
 
-    public function handle(ProviderOutboundGuard $guard): int
-    {
+    public function handle(
+        ProviderOutboundGuard $guard,
+        ProviderPriceRefreshScheduler $scheduler,
+    ): int {
         if (!$guard->allows(SnappTripSettings::PROVIDER_CODE)) {
             $this->warn('SnappTrip provider outbound operations are disabled.');
             return self::FAILURE;
@@ -26,8 +28,13 @@ final class SyncPricesCommand extends Command
             return self::INVALID;
         }
 
-        SyncDuePricesJob::dispatch($days)->onQueue('snapptrip-prices');
-        $this->info('SnappTrip due price synchronization was queued.');
+        if (config('queue.default') === 'sync') {
+            $this->error('SnappTrip prices require an asynchronous queue; QUEUE_CONNECTION=sync is unsafe.');
+            return self::FAILURE;
+        }
+
+        $count = $scheduler->dispatch(SnappTripSettings::PROVIDER_CODE, $days);
+        $this->info("Queued {$count} coordinated SnappTrip hotel refresh job(s).");
 
         return self::SUCCESS;
     }
