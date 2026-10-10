@@ -7,6 +7,7 @@ use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\CalendarWindowCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\HealthCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\ProbeCalendarCommand;
+use App\Modules\HotelProviders\V2\SnappTrip\Console\RefreshHorizonCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncBalanceCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCancellationsCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCatalogCommand;
@@ -41,6 +42,7 @@ final class SnappTripServiceProvider extends ServiceProvider
 
         $this->commands([
             CalendarWindowCommand::class,
+            RefreshHorizonCommand::class,
             HealthCommand::class,
             ProbeCalendarCommand::class,
             SyncCatalogCommand::class,
