@@ -34,7 +34,7 @@ final class GrsApiQuota
         $requestTimesTtl = max(120, $windowSeconds * 2);
 
         try {
-            Cache::store('redis')->lock(self::LOCK, 10)->block(
+            Cache::lock(self::LOCK, 10)->block(
                 5,
                 function () use ($maxRequests, $windowSeconds, $requestTimesTtl): void {
                     $cooldown = self::cooldownSeconds();
@@ -45,7 +45,7 @@ final class GrsApiQuota
                     $now = microtime(true);
                     $windowStart = $now - $windowSeconds;
                     $requestTimes = array_values(array_filter(
-                        (array) Cache::store('redis')->get(self::REQUEST_TIMES, []),
+                        (array) Cache::get(self::REQUEST_TIMES, []),
                         static fn ($timestamp): bool =>
                             is_numeric($timestamp) && (float) $timestamp > $windowStart
                     ));
@@ -59,7 +59,7 @@ final class GrsApiQuota
                             (int) ceil(($oldest + $windowSeconds) - $now)
                         );
 
-                        Cache::store('redis')->put(
+                        Cache::put(
                             self::REQUEST_TIMES,
                             $requestTimes,
                             $requestTimesTtl
@@ -70,7 +70,7 @@ final class GrsApiQuota
 
                     $requestTimes[] = $now;
 
-                    Cache::store('redis')->put(
+                    Cache::put(
                         self::REQUEST_TIMES,
                         $requestTimes,
                         $requestTimesTtl
@@ -115,7 +115,7 @@ final class GrsApiQuota
     {
         $seconds = self::PROVIDER_429_COOLDOWN_SECONDS;
 
-        Cache::store('redis')->put(
+        Cache::put(
             self::COOLDOWN,
             time() + $seconds,
             $seconds
@@ -126,7 +126,7 @@ final class GrsApiQuota
     {
         return max(
             0,
-            (int) Cache::store('redis')->get(self::COOLDOWN, 0) - time()
+            (int) Cache::get(self::COOLDOWN, 0) - time()
         );
     }
 
