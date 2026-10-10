@@ -9,6 +9,7 @@ use Throwable;
 
 final class TelegramAlertService
 {
+    /** @param array<string,string|int> $context */
     public function providerFailure(
         string $provider,
         string $operation,
@@ -16,6 +17,7 @@ final class TelegramAlertService
         ?int $httpStatus = null,
         ?string $errorCode = null,
         ?string $reason = null,
+        array $context = [],
     ): void {
         $description = match ($kind) {
             'connection' => 'ارتباط شبکه‌ای با تأمین‌کننده برقرار نشد یا درخواست Timeout شد.',
@@ -36,6 +38,12 @@ final class TelegramAlertService
             'تأمین‌کننده' => $provider,
             'عملیات' => $operation,
         ];
+
+        foreach ($context as $key => $value) {
+            if (is_string($key) && (is_string($value) || is_int($value))) {
+                $fields[$key] = $value;
+            }
+        }
 
         if ($httpStatus !== null) {
             $fields['HTTP'] = $httpStatus;
@@ -60,7 +68,15 @@ final class TelegramAlertService
             fields: $fields,
             details: $technical,
             tags: ['DomesticHotel', 'ProviderError', strtoupper($provider)],
-            fingerprint: implode('|', [$provider, $operation, $kind, $httpStatus, $errorCode, $reason]),
+            fingerprint: implode('|', [
+                $provider,
+                $operation,
+                $kind,
+                $httpStatus,
+                $errorCode,
+                $reason,
+                json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]),
         );
     }
 
