@@ -59,6 +59,7 @@ class ProviderPriceRefreshScheduler
 
             $capacity = max(1, $handler->hotelCapacityPerMinute($provider));
             foreach ($this->states->claimForProvider((int) $provider->id, $capacity) as $state) {
+                $cycleKey = (string) $state->cycle_key;
                 $map = $state->accommodation_provider_map_id !== null
                     ? $this->maps->find((int) $state->accommodation_provider_map_id)
                     : null;
@@ -68,7 +69,11 @@ class ProviderPriceRefreshScheduler
                     || (int) $map->accommodation_id !== (int) $state->accommodation_id
                     || $map->is_disabled
                     || trim((string) $map->provider_property_id) === '') {
-                    $this->coordinator->attempted((int) $state->id, ProviderRefreshOutcome::MAP_UNAVAILABLE);
+                    $this->coordinator->attempted(
+                        (int) $state->id,
+                        $cycleKey,
+                        ProviderRefreshOutcome::MAP_UNAVAILABLE,
+                    );
                     continue;
                 }
 
@@ -77,7 +82,11 @@ class ProviderPriceRefreshScheduler
                     (int) $state->accommodation_id,
                     $state->source_due_at?->format('Y-m-d H:i:s'),
                 )) {
-                    $this->coordinator->attempted((int) $state->id, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
+                    $this->coordinator->attempted(
+                        (int) $state->id,
+                        $cycleKey,
+                        ProviderRefreshOutcome::CYCLE_SUPERSEDED,
+                    );
                     continue;
                 }
 
@@ -86,7 +95,7 @@ class ProviderPriceRefreshScheduler
                         $provider,
                         $map,
                         (int) $state->id,
-                        (string) $state->cycle_key,
+                        $cycleKey,
                         (int) $state->shared_schedule_id,
                         (int) $state->accommodation_id,
                         $days,
@@ -94,6 +103,7 @@ class ProviderPriceRefreshScheduler
                 } catch (Throwable $exception) {
                     $this->coordinator->retry(
                         (int) $state->id,
+                        $cycleKey,
                         ProviderRefreshOutcome::INTERNAL_ERROR,
                         60,
                     );
@@ -106,7 +116,11 @@ class ProviderPriceRefreshScheduler
                     continue;
                 }
 
-                $this->coordinator->attempted((int) $state->id, ProviderRefreshOutcome::SCHEDULER_DISABLED);
+                $this->coordinator->attempted(
+                    (int) $state->id,
+                    $cycleKey,
+                    ProviderRefreshOutcome::SCHEDULER_DISABLED,
+                );
             }
         }
 
