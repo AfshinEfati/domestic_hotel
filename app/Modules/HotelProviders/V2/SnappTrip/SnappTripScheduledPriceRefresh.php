@@ -12,9 +12,11 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
 {
     public function enabled(Provider $provider): bool
     {
+        // Coordinated hotel refresh includes every active mapped provider.
+        // is_active is the operational switch; a secondary scheduler flag must
+        // not cause SnappTrip to be skipped while the provider remains active.
         return $provider->code === SnappTripSettings::PROVIDER_CODE
-            && $provider->is_active
-            && data_get(SnappTripSettings::from($provider), 'price_refresh.scheduler_enabled') === true;
+            && $provider->is_active;
     }
 
     public function hotelCapacityPerMinute(Provider $provider): int
