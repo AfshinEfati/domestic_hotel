@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Hotel\Support\ProviderRefreshStateStatus;
+use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
@@ -26,14 +27,66 @@ class HotelProviderRefreshStatusCommand extends Command
             }
         }
 
-        $sharedDue = HotelPriceRefreshSchedule::query()
+        $dueRows = HotelPriceRefreshSchedule::query()
             ->where('is_active', true)
             ->whereNotNull('gds_id')
             ->where(function ($query): void {
                 $query->whereNull('next_gds_run_at')
                     ->orWhereRaw('next_gds_run_at <= CURRENT_TIMESTAMP');
             })
-            ->count();
+            ->get(['gds_id']);
+
+        $dueIds = $dueRows
+            ->pluck('gds_id')
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        $this->info('Shared due rows: '.$dueRows->count());
+        $this->info('Shared due unique hotels: '.$dueIds->count());
+        $this->info('Shared duplicate due rows: '.max(0, $dueRows->count() - $dueIds->count()));
+
+        $providers = $provider !== null
+            ? collect([$provider])
+            : Provider::query()->orderBy('id')->get();
+
+        $providerSummary = $providers->map(function (Provider $item) use ($dueIds): array {
+            $maps = AccommodationProviderMap::query()->where('provider_id', (int) $item->id);
+            $totalMaps = (clone $maps)->count();
+            $uniqueMappedHotels = (clone $maps)->distinct()->count('accommodation_id');
+            $usableMaps = (clone $maps)
+                ->where('is_disabled', false)
+                ->whereNotNull('provider_property_id')
+                ->where('provider_property_id', '<>', '')
+                ->count();
+            $dueUsableHotels = $dueIds->isEmpty()
+                ? 0
+                : (clone $maps)
+                    ->where('is_disabled', false)
+                    ->whereNotNull('provider_property_id')
+                    ->where('provider_property_id', '<>', '')
+                    ->whereIn('accommodation_id', $dueIds->all())
+                    ->distinct()
+                    ->count('accommodation_id');
+
+            return [
+                (int) $item->id,
+                (string) $item->code,
+                $item->is_active ? 'yes' : 'no',
+                $totalMaps,
+                $uniqueMappedHotels,
+                max(0, $totalMaps - $uniqueMappedHotels),
+                $usableMaps,
+                $dueUsableHotels,
+                HotelProviderRefreshState::query()->where('provider_id', (int) $item->id)->count(),
+            ];
+        })->all();
+
+        $this->table(
+            ['provider id', 'code', 'active', 'maps', 'mapped hotels', 'duplicate maps', 'usable maps', 'due usable hotels', 'local states'],
+            $providerSummary,
+        );
 
         $base = HotelProviderRefreshState::query();
         if ($provider !== null) {
@@ -50,7 +103,6 @@ class HotelProviderRefreshStatusCommand extends Command
             ])
             ->all();
 
-        $this->info('Shared due hotels: '.$sharedDue);
         $this->table(
             ['state', 'count'],
             collect($counts)->map(fn (int $count, string $state): array => [$state, $count])->values()->all(),
