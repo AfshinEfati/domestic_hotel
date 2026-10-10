@@ -51,8 +51,8 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
     ): void {
         $provider = $repository->grsProvider();
         if ($provider === null || (int) $provider->id !== $this->providerId
-            || !$provider->is_active || !$provider->is_online) {
-            throw new RuntimeException('GRS details provider is missing, inactive, offline or changed.');
+            || !$provider->is_active) {
+            throw new RuntimeException('GRS details provider is missing, inactive or changed.');
         }
 
         $map = $repository->mappedHotel($this->providerId, $this->mapId);
