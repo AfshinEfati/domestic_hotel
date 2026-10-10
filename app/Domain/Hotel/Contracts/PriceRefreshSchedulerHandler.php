@@ -11,7 +11,7 @@ interface PriceRefreshSchedulerHandler
     public function enabled(Provider $provider): bool;
 
     /** Maximum number of hotels this provider can safely start per scheduler minute. */
-    public function hotelCapacityPerMinute(Provider $provider): int;
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int;
 
     /** Queue one provider refresh for one claimed local provider state. */
     public function dispatch(
