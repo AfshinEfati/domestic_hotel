@@ -9,7 +9,8 @@ class HotelProviderRefreshDispatchCommand extends Command
 {
     protected $signature = 'hotel:provider-refresh-dispatch
         {--provider= : Optional provider code; omit to dispatch every registered provider}
-        {--days= : Optional availability horizon override for manual runs}';
+        {--days= : Optional availability horizon override for manual runs}
+        {--sync-only : Synchronize local provider states only; do not queue jobs or advance shared schedules}';
 
     protected $description = 'Synchronize due hotel/provider states and queue refreshes using provider-specific quotas.';
 
@@ -23,6 +24,12 @@ class HotelProviderRefreshDispatchCommand extends Command
         if ($days !== null && ($days < 1 || $days > 3650)) {
             $this->error('The --days value must be between 1 and 3650.');
             return self::INVALID;
+        }
+
+        if ((bool) $this->option('sync-only')) {
+            $count = $scheduler->synchronize($provider);
+            $this->info("Synchronized {$count} local hotel/provider state(s). No provider jobs were queued and shared schedules were not advanced.");
+            return self::SUCCESS;
         }
 
         $count = $scheduler->dispatch($provider, $days);
