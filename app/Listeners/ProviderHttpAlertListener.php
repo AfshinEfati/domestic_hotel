@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarRangeLimit;
 use App\Services\Alerts\TelegramAlertService;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\ResponseReceived;
@@ -25,6 +26,15 @@ final class ProviderHttpAlertListener
 
         $status = $event->response->status();
         if ($status < 400) {
+            return;
+        }
+
+        if (
+            $provider === 'snap'
+            && SnappTripCalendarRangeLimit::fromResponse($event->response) !== null
+        ) {
+            // The SnappTrip refresh flow learns this per-hotel window and retries the
+            // same horizon with smaller chunks. It is an expected self-healing signal.
             return;
         }
 
