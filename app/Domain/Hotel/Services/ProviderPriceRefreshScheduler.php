@@ -44,7 +44,7 @@ class ProviderPriceRefreshScheduler
             return 0;
         }
 
-        $this->syncDueHotels($entries, $onlyProviderCode);
+        $this->syncDueHotels($entries, $onlyProviderCode, true);
 
         $dispatched = 0;
         foreach ($entries as [$provider, $handler]) {
@@ -127,6 +127,24 @@ class ProviderPriceRefreshScheduler
         return $dispatched;
     }
 
+    /**
+     * Synchronize local hotel/provider states from shared due schedules without
+     * queueing provider jobs and without advancing the shared schedule.
+     *
+     * This is intentionally safe for integration verification against a copied
+     * production shared schedule table.
+     */
+    public function synchronize(?string $manualProviderCode = null): int
+    {
+        $this->schedules->assertReady();
+        $entries = $this->providerEntries();
+        if ($entries === []) {
+            return 0;
+        }
+
+        return $this->syncDueHotels($entries, $manualProviderCode, false);
+    }
+
     /** @return array<int,array{0:Provider,1:PriceRefreshSchedulerHandler}> */
     private function providerEntries(): array
     {
@@ -148,12 +166,17 @@ class ProviderPriceRefreshScheduler
         return $entries;
     }
 
-    /** @param array<int,array{0:Provider,1:PriceRefreshSchedulerHandler}> $entries */
-    private function syncDueHotels(array $entries, ?string $manualProviderCode): void
-    {
+    /**
+     * @param array<int,array{0:Provider,1:PriceRefreshSchedulerHandler}> $entries
+     */
+    private function syncDueHotels(
+        array $entries,
+        ?string $manualProviderCode,
+        bool $finalizeCompletedCycles,
+    ): int {
         $due = $this->schedules->due(self::SYNC_LIMIT);
         if ($due->isEmpty()) {
-            return;
+            return 0;
         }
 
         $mapsByHotel = $this->maps->forAccommodations(
@@ -164,6 +187,8 @@ class ProviderPriceRefreshScheduler
                 ->values()
                 ->all()
         )->groupBy('accommodation_id');
+
+        $synchronized = 0;
 
         foreach ($due as $schedule) {
             $accommodationId = (int) $schedule->gds_id;
@@ -211,9 +236,13 @@ class ProviderPriceRefreshScheduler
                     $outcome,
                 );
                 $tracked++;
+                $synchronized++;
             }
 
-            if ($tracked === 0 || !$this->states->hasOpenState($cycleKey)) {
+            if (
+                $finalizeCompletedCycles
+                && ($tracked === 0 || !$this->states->hasOpenState($cycleKey))
+            ) {
                 $this->coordinator->finalizeCycle(
                     (int) $schedule->id,
                     $accommodationId,
@@ -222,5 +251,7 @@ class ProviderPriceRefreshScheduler
                 );
             }
         }
+
+        return $synchronized;
     }
 }
