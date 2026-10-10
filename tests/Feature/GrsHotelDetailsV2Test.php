@@ -11,9 +11,11 @@ use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
 use App\Services\HotelChildPolicyTextParser;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use RuntimeException;
 use Tests\TestCase;
@@ -22,12 +24,12 @@ class GrsHotelDetailsV2Test extends TestCase
 {
     public function test_command_queues_only_details_jobs_six_seconds_apart(): void
     {
-        config(['queue.default' => 'redis', 'cache.default' => 'array']);
-        Cache::clear();
+        config(['queue.default' => 'redis', 'cache.default' => 'database']);
+        $this->createDatabaseCacheFixture();
         Bus::fake();
         Http::fake();
 
-        $provider = new Provider(['id' => 9, 'code' => 'grs', 'is_active' => true, 'is_online' => true]);
+        $provider = new Provider(['id' => 9, 'code' => 'grs', 'is_active' => true, 'is_online' => false]);
         $maps = collect([
             new AccommodationProviderMap(['id' => 11, 'provider_id' => 9, 'accommodation_id' => 101, 'provider_property_id' => '2065']),
             new AccommodationProviderMap(['id' => 12, 'provider_id' => 9, 'accommodation_id' => 102, 'provider_property_id' => '2066']),
@@ -128,5 +130,23 @@ class GrsHotelDetailsV2Test extends TestCase
 
         $this->expectException(RuntimeException::class);
         app(GrsHotelDetailsClient::class)->fetch($provider, '2065');
+    }
+
+    private function createDatabaseCacheFixture(): void
+    {
+        Schema::dropIfExists('cache_locks');
+        Schema::dropIfExists('cache');
+
+        Schema::create('cache', function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->text('value');
+            $table->integer('expiration');
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration');
+        });
     }
 }
