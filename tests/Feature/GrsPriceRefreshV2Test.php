@@ -50,6 +50,8 @@ class GrsPriceRefreshV2Test extends TestCase
         Bus::fake();
         Http::fake();
         config(['queue.default' => 'database', 'cache.default' => 'database']);
+        $this->createDatabaseCacheFixture();
+
         $this->artisan('grs:sync-prices')->assertExitCode(0);
         Bus::assertDispatched(SyncGrsDuePricesJob::class, fn ($job) =>
             $job->days === null && $job->queue === 'grs-prices');
@@ -63,6 +65,8 @@ class GrsPriceRefreshV2Test extends TestCase
     {
         Bus::fake();
         config(['queue.default' => 'database', 'cache.default' => 'database']);
+        $this->createDatabaseCacheFixture();
+
         $this->artisan('grs:sync-prices --days=30')->assertExitCode(0);
         Bus::assertDispatched(SyncGrsDuePricesJob::class, fn ($job) => $job->days === 30);
         $this->artisan('grs:sync-prices --days=0')->assertExitCode(1);
@@ -117,7 +121,10 @@ class GrsPriceRefreshV2Test extends TestCase
             ->whereBetween('accommodation_id', [10001, 10010])
             ->orderBy('accommodation_id')
             ->get()
-            ->each(fn (HotelProviderRefreshState $state) => $coordinator->done((int) $state->id));
+            ->each(fn (HotelProviderRefreshState $state) => $coordinator->done(
+                (int) $state->id,
+                (string) $state->cycle_key,
+            ));
 
         Bus::fake();
         (new SyncGrsDuePricesJob())->handle($service);
@@ -156,7 +163,8 @@ class GrsPriceRefreshV2Test extends TestCase
         $before = DB::connection('shared_ssp')->table('hotel_price_refresh_schedules')
             ->where('id', 1)->value('next_gds_run_at');
         (new RefreshGrsPropertyPricesJob(1, 10001, 1, 30))->handle(
-            app(HotelSyncService::class), app(GrsPriceRefreshScheduleService::class)
+            app(HotelSyncService::class),
+            app(GrsPriceRefreshScheduleService::class),
         );
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/available-rooms') &&
@@ -214,6 +222,24 @@ class GrsPriceRefreshV2Test extends TestCase
         }
         Http::assertSentCount(1);
         $this->assertInstanceOf(GrsApiQuotaExceeded::class, $adapter->supplementalError);
+    }
+
+    private function createDatabaseCacheFixture(): void
+    {
+        Schema::dropIfExists('cache_locks');
+        Schema::dropIfExists('cache');
+
+        Schema::create('cache', function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->text('value');
+            $table->integer('expiration');
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration');
+        });
     }
 
     private function createScheduleFixture(): void
