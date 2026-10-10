@@ -22,7 +22,8 @@ class GrsHotelDetailsV2Test extends TestCase
 {
     public function test_command_queues_only_details_jobs_six_seconds_apart(): void
     {
-        config(['queue.default' => 'redis', 'cache.default' => 'database']);
+        config(['queue.default' => 'redis', 'cache.default' => 'array']);
+        Cache::clear();
         Bus::fake();
         Http::fake();
 
