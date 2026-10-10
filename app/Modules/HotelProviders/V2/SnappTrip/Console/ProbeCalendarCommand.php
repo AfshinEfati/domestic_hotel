@@ -4,6 +4,7 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Console;
 
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripCalendarWindowRepository;
+use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripRefreshHorizonRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
@@ -18,7 +19,7 @@ final class ProbeCalendarCommand extends Command
     protected $signature = 'snapptrip:probe-calendar
         {hotel : Local accommodation ID}
         {--days=90 : Calendar horizon in days}
-        {--raw : Send the whole range in one provider request per guest scope instead of production chunking}';
+        {--raw : Send the whole requested range in one provider request per guest scope, ignoring learned limits}';
 
     protected $description = 'Probe SnappTrip hotel calendar without persistence or shared schedule changes.';
 
@@ -27,6 +28,7 @@ final class ProbeCalendarCommand extends Command
         AccommodationProviderMapRepositoryInterface $maps,
         SnappTripGatewayFactory $gateways,
         SnappTripCalendarWindowRepository $calendarWindows,
+        SnappTripRefreshHorizonRepository $refreshHorizons,
     ): int {
         $accommodationId = (int) $this->argument('hotel');
         $days = (int) $this->option('days');
@@ -48,11 +50,16 @@ final class ProbeCalendarCommand extends Command
                 return self::FAILURE;
             }
 
-            $from = CarbonImmutable::now('Asia/Tehran')->toDateString();
-            $to = CarbonImmutable::now('Asia/Tehran')->addDays($days)->toDateString();
+            $fromDate = CarbonImmutable::now('Asia/Tehran')->startOfDay();
+            $requestedToDate = $fromDate->addDays($days);
             $raw = (bool) $this->option('raw');
             $windowDays = $calendarWindows->windowDays($map);
-            $override = $calendarWindows->overrideDays($map);
+            $windowOverride = $calendarWindows->overrideDays($map);
+            $horizonOverride = $refreshHorizons->overrideDays($map);
+            $effectiveDays = $raw || $horizonOverride === null ? $days : min($days, $horizonOverride);
+            $effectiveToDate = $fromDate->addDays($effectiveDays);
+            $from = $fromDate->toDateString();
+            $to = ($raw ? $requestedToDate : $effectiveToDate)->toDateString();
             $windows = $raw
                 ? [['from' => $from, 'to' => $to]]
                 : SnappTripCalendarWindows::split($from, $to, $windowDays);
@@ -63,15 +70,18 @@ final class ProbeCalendarCommand extends Command
 
             $this->info('Local hotel: '.$accommodationId);
             $this->info('SnappTrip hotel: '.(string) $map->provider_property_id);
-            $this->info("Range: {$from} -> {$to} ({$days} days)");
+            $this->info("Requested horizon: {$days} days");
             if (!$raw) {
-                $source = $override === null ? 'default' : 'hotel override';
-                $this->info("Calendar request window: {$windowDays} days ({$source})");
+                $horizonSource = $horizonOverride === null ? 'provider default/requested' : 'hotel override';
+                $windowSource = $windowOverride === null ? 'default' : 'hotel override';
+                $this->info("Effective horizon: {$effectiveDays} days ({$horizonSource})");
+                $this->info("Calendar request window: {$windowDays} days ({$windowSource})");
             }
+            $this->info("Range: {$from} -> {$to}");
             $this->info('Calendar windows: '.count($windows));
             $this->warn($raw
-                ? 'RAW probe: the provider may reject large date ranges. No data is persisted.'
-                : "Production-style probe: ranges use this hotel's {$windowDays}-day request window. No data is persisted.");
+                ? 'RAW probe: learned hotel limits are ignored and no data is persisted.'
+                : "Production-style probe: {$effectiveDays}-day horizon using {$windowDays}-day request windows. No data is persisted.");
 
             $rows = [];
             $failed = false;
