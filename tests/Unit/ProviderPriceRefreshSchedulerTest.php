@@ -46,6 +46,13 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
             'provider_property_id' => 'slow-100',
             'is_disabled' => false,
         ]);
+        $slowDuplicateMap = (new AccommodationProviderMap())->forceFill([
+            'id' => 13,
+            'provider_id' => 1,
+            'accommodation_id' => 100,
+            'provider_property_id' => 'slow-100-duplicate',
+            'is_disabled' => false,
+        ]);
         $fastMap = (new AccommodationProviderMap())->forceFill([
             'id' => 12,
             'provider_id' => 2,
@@ -58,7 +65,7 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $maps->expects($this->once())
             ->method('forAccommodations')
             ->with([100])
-            ->willReturn(collect([$slowMap, $fastMap]));
+            ->willReturn(collect([$slowDuplicateMap, $fastMap, $slowMap]));
         $maps->method('find')->willReturnMap([
             [11, $slowMap],
             [12, $fastMap],
