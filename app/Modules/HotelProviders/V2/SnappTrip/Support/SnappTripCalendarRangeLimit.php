@@ -25,6 +25,7 @@ final class SnappTripCalendarRangeLimit
 
         $patterns = [
             '/date\s+range.*?(?:cannot|can\s+not|must\s+not|should\s+not).*?(?:more\s+than|over)\s+(\d+)\s+days?/i',
+            '/date\s+range.*?(?:cannot|can\s+not|must\s+not|should\s+not)?\s*exceed\s+(\d+)\s+days?/i',
             '/date\s+range.*?(?:maximum|max(?:imum)?\s+of)\s+(\d+)\s+days?/i',
             '/date\s+range.*?(?:at\s+most|up\s+to)\s+(\d+)\s+days?/i',
         ];
