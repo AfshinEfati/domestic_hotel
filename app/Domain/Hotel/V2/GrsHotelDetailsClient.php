@@ -12,8 +12,8 @@ class GrsHotelDetailsClient
 {
     public function fetch(Provider $provider, string $propertyId): array
     {
-        if ($provider->code !== 'grs' || !$provider->is_active || !$provider->is_online) {
-            throw new RuntimeException('GRS provider is missing, inactive or offline.');
+        if ($provider->code !== 'grs' || !$provider->is_active) {
+            throw new RuntimeException('GRS provider is missing or inactive.');
         }
 
         $baseUrl = rtrim((string) data_get($provider->config, 'base_url', ''), '/');
