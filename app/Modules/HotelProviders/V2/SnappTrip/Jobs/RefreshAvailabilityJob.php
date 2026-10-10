@@ -70,13 +70,18 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $state = $coordinator->begin($this->refreshStateId, $this->refreshCycleKey);
+        $cycleKey = $this->refreshCycleKey;
+        $state = $coordinator->begin($this->refreshStateId, $cycleKey);
         if ($state === null) {
             return;
         }
 
         if (!$guard->allows(SnappTripSettings::PROVIDER_CODE)) {
-            $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_DISABLED);
+            $coordinator->attempted(
+                $this->refreshStateId,
+                $cycleKey,
+                ProviderRefreshOutcome::PROVIDER_DISABLED,
+            );
             return;
         }
 
@@ -90,41 +95,73 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
 
             $map = $maps->findForAccommodationAndProvider($this->accommodationId, $this->providerId);
             if ($map === null || $map->is_disabled) {
-                $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_404);
+                $coordinator->attempted(
+                    $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::PROVIDER_404,
+                );
                 return;
             }
 
             if ($rowCount < 1) {
-                $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_EMPTY);
+                $coordinator->attempted(
+                    $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::PROVIDER_EMPTY,
+                );
                 return;
             }
 
-            $coordinator->done($this->refreshStateId);
+            $coordinator->done($this->refreshStateId, $cycleKey);
         } catch (SnappTripRateLimitExceeded $exception) {
             $coordinator->retry(
                 $this->refreshStateId,
+                $cycleKey,
                 ProviderRefreshOutcome::RATE_LIMITED,
                 max(1, $exception->retryAfterSeconds),
             );
         } catch (ConnectionException) {
-            $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
+            $coordinator->attempted(
+                $this->refreshStateId,
+                $cycleKey,
+                ProviderRefreshOutcome::PROVIDER_TIMEOUT,
+            );
         } catch (RequestException $exception) {
             $status = $exception->response?->status();
             if ($status === 429) {
-                $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::RATE_LIMITED, 60);
+                $coordinator->retry(
+                    $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::RATE_LIMITED,
+                    60,
+                );
                 return;
             }
 
             if ($status !== null && $status >= 400 && $status < 500 && !in_array($status, [404, 408], true)) {
                 $alerts->internalFailure($exception);
-                $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::REQUEST_ERROR, 300);
+                $coordinator->retry(
+                    $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::REQUEST_ERROR,
+                    300,
+                );
                 return;
             }
 
-            $coordinator->attempted($this->refreshStateId, ProviderRefreshOutcome::PROVIDER_HTTP_ERROR);
+            $coordinator->attempted(
+                $this->refreshStateId,
+                $cycleKey,
+                ProviderRefreshOutcome::PROVIDER_HTTP_ERROR,
+            );
         } catch (Throwable $exception) {
             $alerts->internalFailure($exception);
-            $coordinator->retry($this->refreshStateId, ProviderRefreshOutcome::INTERNAL_ERROR, 60);
+            $coordinator->retry(
+                $this->refreshStateId,
+                $cycleKey,
+                ProviderRefreshOutcome::INTERNAL_ERROR,
+                60,
+            );
         }
     }
 }
