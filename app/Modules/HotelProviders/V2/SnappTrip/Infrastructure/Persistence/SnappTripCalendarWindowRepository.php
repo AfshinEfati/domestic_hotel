@@ -9,17 +9,22 @@ use InvalidArgumentException;
 
 final class SnappTripCalendarWindowRepository
 {
-    public function windowDays(AccommodationProviderMap $map): int
+    public function overrideDays(AccommodationProviderMap $map): ?int
     {
         $value = AccommodationProviderDetail::query()
             ->where('accommodation_provider_map_id', $map->id)
             ->value('calendar_window_days');
 
         if (!is_numeric($value) || (int) $value < 1) {
-            return SnappTripCalendarWindows::MAX_DAYS;
+            return null;
         }
 
         return min(SnappTripCalendarWindows::MAX_DAYS, (int) $value);
+    }
+
+    public function windowDays(AccommodationProviderMap $map): int
+    {
+        return $this->overrideDays($map) ?? SnappTripCalendarWindows::MAX_DAYS;
     }
 
     public function learn(AccommodationProviderMap $map, int $days): int
