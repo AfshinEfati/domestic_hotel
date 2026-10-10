@@ -4,6 +4,7 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Console;
 
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
+use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use Carbon\CarbonImmutable;
@@ -15,9 +16,10 @@ final class ProbeCalendarCommand extends Command
 {
     protected $signature = 'snapptrip:probe-calendar
         {hotel : Local accommodation ID}
-        {--days=90 : Calendar horizon in days}';
+        {--days=90 : Calendar horizon in days}
+        {--raw : Send the whole range in one provider request per guest scope instead of production chunking}';
 
-    protected $description = 'Probe SnappTrip hotel calendar for one mapped hotel without persistence or shared schedule changes.';
+    protected $description = 'Probe SnappTrip hotel calendar without persistence or shared schedule changes.';
 
     public function handle(
         ProviderOutboundGuard $guard,
@@ -46,6 +48,10 @@ final class ProbeCalendarCommand extends Command
 
             $from = CarbonImmutable::now('Asia/Tehran')->toDateString();
             $to = CarbonImmutable::now('Asia/Tehran')->addDays($days)->toDateString();
+            $raw = (bool) $this->option('raw');
+            $windows = $raw
+                ? [['from' => $from, 'to' => $to]]
+                : SnappTripCalendarWindows::split($from, $to);
             $gateway = $gateways->make($provider)->withProviderAlertContext(
                 $accommodationId,
                 (string) $map->provider_property_id,
@@ -54,52 +60,63 @@ final class ProbeCalendarCommand extends Command
             $this->info('Local hotel: '.$accommodationId);
             $this->info('SnappTrip hotel: '.(string) $map->provider_property_id);
             $this->info("Range: {$from} -> {$to} ({$days} days)");
-            $this->warn('Probe only: no calendar rows are persisted and shared schedule state is not changed.');
+            $this->info('Calendar windows: '.count($windows));
+            $this->warn($raw
+                ? 'RAW probe: the provider may reject ranges above 40 days. No data is persisted.'
+                : 'Production-style probe: ranges are split to at most 40 days. No data is persisted.');
 
             $rows = [];
             $failed = false;
-            foreach ([false, true] as $foreigner) {
-                $scope = $foreigner ? 'foreign' : 'domestic';
+            foreach ($windows as $index => $window) {
+                foreach ([false, true] as $foreigner) {
+                    $scope = $foreigner ? 'foreign' : 'domestic';
 
-                try {
-                    $result = $gateway->hotelCalendar(
-                        (string) $map->provider_property_id,
-                        $from,
-                        $to,
-                        $foreigner,
-                    );
+                    try {
+                        $result = $gateway->hotelCalendar(
+                            (string) $map->provider_property_id,
+                            $window['from'],
+                            $window['to'],
+                            $foreigner,
+                        );
 
-                    $rows[] = [
-                        $scope,
-                        '200',
-                        count(is_array($result['rows'] ?? null) ? $result['rows'] : []),
-                        count(is_array($result['packages'] ?? null) ? $result['packages'] : []),
-                        '-',
-                    ];
-                } catch (RequestException $exception) {
-                    $failed = true;
-                    $status = $exception->response?->status();
-                    $body = trim((string) $exception->response?->body());
-                    $rows[] = [
-                        $scope,
-                        $status === null ? '-' : (string) $status,
-                        '-',
-                        '-',
-                        $this->compact($body !== '' ? $body : $exception->getMessage()),
-                    ];
-                } catch (Throwable $exception) {
-                    $failed = true;
-                    $rows[] = [
-                        $scope,
-                        '-',
-                        '-',
-                        '-',
-                        $this->compact(get_class($exception).': '.$exception->getMessage()),
-                    ];
+                        $rows[] = [
+                            $index + 1,
+                            $window['from'].' -> '.$window['to'],
+                            $scope,
+                            '200',
+                            count(is_array($result['rows'] ?? null) ? $result['rows'] : []),
+                            count(is_array($result['packages'] ?? null) ? $result['packages'] : []),
+                            '-',
+                        ];
+                    } catch (RequestException $exception) {
+                        $failed = true;
+                        $status = $exception->response?->status();
+                        $body = trim((string) $exception->response?->body());
+                        $rows[] = [
+                            $index + 1,
+                            $window['from'].' -> '.$window['to'],
+                            $scope,
+                            $status === null ? '-' : (string) $status,
+                            '-',
+                            '-',
+                            $this->compact($body !== '' ? $body : $exception->getMessage()),
+                        ];
+                    } catch (Throwable $exception) {
+                        $failed = true;
+                        $rows[] = [
+                            $index + 1,
+                            $window['from'].' -> '.$window['to'],
+                            $scope,
+                            '-',
+                            '-',
+                            '-',
+                            $this->compact(get_class($exception).': '.$exception->getMessage()),
+                        ];
+                    }
                 }
             }
 
-            $this->table(['scope', 'HTTP', 'rows', 'packages', 'error/response'], $rows);
+            $this->table(['window', 'range', 'scope', 'HTTP', 'rows', 'packages', 'error/response'], $rows);
 
             return $failed ? self::FAILURE : self::SUCCESS;
         } catch (Throwable $exception) {
