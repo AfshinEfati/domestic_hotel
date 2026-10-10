@@ -31,6 +31,7 @@ final class ProviderHttpAlertListener
 
         if (
             $provider === 'snap'
+            && $this->isSnappTripCalendarOperation($event->request)
             && SnappTripCalendarRangeLimit::fromResponse($event->response) !== null
         ) {
             // The SnappTrip refresh flow learns this per-hotel window and retries the
@@ -183,6 +184,14 @@ final class ProviderHttpAlertListener
         }
 
         return $fields;
+    }
+
+    private function isSnappTripCalendarOperation(Request $request): bool
+    {
+        $path = (string) (parse_url($request->url(), PHP_URL_PATH) ?: '');
+
+        return str_ends_with($path, '/calendar')
+            && str_contains($path, '/availability/hotels/');
     }
 
     private function isScheduledAvailabilityOperation(Request $request): bool
