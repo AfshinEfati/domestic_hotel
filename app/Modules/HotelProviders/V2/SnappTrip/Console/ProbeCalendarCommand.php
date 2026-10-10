@@ -3,6 +3,7 @@
 namespace App\Modules\HotelProviders\V2\SnappTrip\Console;
 
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripCalendarWindowRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripCalendarWindows;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
@@ -25,6 +26,7 @@ final class ProbeCalendarCommand extends Command
         ProviderOutboundGuard $guard,
         AccommodationProviderMapRepositoryInterface $maps,
         SnappTripGatewayFactory $gateways,
+        SnappTripCalendarWindowRepository $calendarWindows,
     ): int {
         $accommodationId = (int) $this->argument('hotel');
         $days = (int) $this->option('days');
@@ -49,9 +51,11 @@ final class ProbeCalendarCommand extends Command
             $from = CarbonImmutable::now('Asia/Tehran')->toDateString();
             $to = CarbonImmutable::now('Asia/Tehran')->addDays($days)->toDateString();
             $raw = (bool) $this->option('raw');
+            $windowDays = $calendarWindows->windowDays($map);
+            $override = $calendarWindows->overrideDays($map);
             $windows = $raw
                 ? [['from' => $from, 'to' => $to]]
-                : SnappTripCalendarWindows::split($from, $to);
+                : SnappTripCalendarWindows::split($from, $to, $windowDays);
             $gateway = $gateways->make($provider)->withProviderAlertContext(
                 $accommodationId,
                 (string) $map->provider_property_id,
@@ -60,10 +64,14 @@ final class ProbeCalendarCommand extends Command
             $this->info('Local hotel: '.$accommodationId);
             $this->info('SnappTrip hotel: '.(string) $map->provider_property_id);
             $this->info("Range: {$from} -> {$to} ({$days} days)");
+            if (!$raw) {
+                $source = $override === null ? 'default' : 'hotel override';
+                $this->info("Calendar request window: {$windowDays} days ({$source})");
+            }
             $this->info('Calendar windows: '.count($windows));
             $this->warn($raw
-                ? 'RAW probe: the provider may reject ranges above 40 days. No data is persisted.'
-                : 'Production-style probe: ranges are split to at most 40 days. No data is persisted.');
+                ? 'RAW probe: the provider may reject large date ranges. No data is persisted.'
+                : "Production-style probe: ranges use this hotel's {$windowDays}-day request window. No data is persisted.");
 
             $rows = [];
             $failed = false;
