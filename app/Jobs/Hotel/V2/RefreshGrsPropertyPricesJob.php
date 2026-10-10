@@ -121,11 +121,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             }
 
             $grsId = trim((string) $map->provider_property_id);
-            $accommodation = $schedules->accommodationById($this->gdsId);
-            $hotelName = trim((string) ($accommodation?->fa_name ?? ''))
-                ?: trim((string) ($accommodation?->en_name ?? ''))
-                ?: $hotelName;
-
             $from = CarbonImmutable::today('Asia/Tehran');
             $to = $from->addDays($this->days);
             $started = now()->subSeconds(2);
@@ -197,6 +192,8 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             // Compatibility path for jobs that were queued before coordinated provider state existed.
             $schedules->persisted($this->scheduleId, $this->gdsId);
         } catch (InvalidProviderAvailabilityDataException $e) {
+            $hotelName = $this->resolveHotelName($schedules, $hotelName);
+
             $diagnostics->invalidGrsAvailability(
                 $hotelName,
                 $this->gdsId,
@@ -241,6 +238,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             $this->fail($e);
         } catch (RequestException $e) {
+            $hotelName = $this->resolveHotelName($schedules, $hotelName);
             $status = $e->response?->status();
 
             if ($status === 429) {
@@ -357,6 +355,23 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             }
 
             $this->fail($e);
+        }
+    }
+
+    private function resolveHotelName(
+        GrsPriceRefreshScheduleService $schedules,
+        string $fallback,
+    ): string {
+        try {
+            $accommodation = $schedules->accommodationById($this->gdsId);
+            $name = trim((string) ($accommodation?->fa_name ?? ''))
+                ?: trim((string) ($accommodation?->en_name ?? ''));
+
+            return $name !== '' ? $name : $fallback;
+        } catch (Throwable) {
+            // Hotel name is optional diagnostic context and must never change the
+            // provider refresh result or hide the original provider exception.
+            return $fallback;
         }
     }
 
