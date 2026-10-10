@@ -40,6 +40,14 @@ final class SnappTripGateway
         );
     }
 
+    public function withProviderAlertContext(int $accommodationId, string $providerPropertyId): self
+    {
+        return new self(
+            $this->client->withProviderAlertContext($accommodationId, $providerPropertyId),
+            $this->mapper,
+        );
+    }
+
     public function cities(): Collection
     {
         return collect($this->client->cities())
