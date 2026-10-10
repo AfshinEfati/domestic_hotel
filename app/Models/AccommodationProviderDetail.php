@@ -20,6 +20,7 @@ class AccommodationProviderDetail extends Model
         'free_transfer_policy',
         'free_transfers',
         'calendar_window_days',
+        'refresh_horizon_days',
     ];
 
     protected $casts = [
@@ -28,6 +29,7 @@ class AccommodationProviderDetail extends Model
         'foreigners_fee' => 'boolean',
         'free_transfers' => 'array',
         'calendar_window_days' => 'integer',
+        'refresh_horizon_days' => 'integer',
     ];
 
     public function accommodationProviderMap(): BelongsTo
