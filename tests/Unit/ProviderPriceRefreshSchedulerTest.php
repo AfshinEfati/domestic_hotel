@@ -272,6 +272,31 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $this->assertFalse($guard->allows($provider));
     }
 
+    public function test_snapptrip_capacity_accounts_for_calendar_chunk_request_cost(): void
+    {
+        $snap = (new Provider())->forceFill([
+            'id' => 4,
+            'code' => 'snap',
+            'is_active' => true,
+            'config' => [
+                'rate_limit' => [
+                    'max_requests' => 120,
+                    'window_minutes' => 1,
+                ],
+                'price_refresh' => [
+                    'default_days' => 90,
+                ],
+            ],
+        ]);
+
+        $handler = new SnappTripScheduledPriceRefresh();
+
+        $this->assertSame(60, $handler->hotelCapacityPerMinute($snap, 40));
+        $this->assertSame(30, $handler->hotelCapacityPerMinute($snap, 80));
+        $this->assertSame(20, $handler->hotelCapacityPerMinute($snap, 90));
+        $this->assertSame(20, $handler->hotelCapacityPerMinute($snap));
+    }
+
     public function test_active_provider_participates_even_when_legacy_scheduler_flag_is_false(): void
     {
         $grs = (new Provider())->forceFill([
@@ -306,7 +331,7 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
         return $provider->is_active === true;
     }
 
-    public function hotelCapacityPerMinute(Provider $provider): int
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
     {
         return 10;
     }
@@ -343,7 +368,7 @@ final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
         return $provider->is_active === true;
     }
 
-    public function hotelCapacityPerMinute(Provider $provider): int
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
     {
         return 60;
     }
