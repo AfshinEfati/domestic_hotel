@@ -59,7 +59,7 @@ class ProviderPriceRefreshScheduler
                 continue;
             }
 
-            $capacity = max(1, $handler->hotelCapacityPerMinute($provider));
+            $capacity = max(1, $handler->hotelCapacityPerMinute($provider, $days));
             foreach ($this->states->claimForProvider((int) $provider->id, $capacity) as $state) {
                 if ($this->dispatchClaimedState($provider, $handler, $state, $days)) {
                     $dispatched++;
