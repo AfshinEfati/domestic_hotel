@@ -11,7 +11,10 @@ use Illuminate\Console\Command;
 
 class HotelProviderRefreshStatusCommand extends Command
 {
-    protected $signature = 'hotel:provider-refresh-status {--provider= : Optional provider code} {--limit=20 : Recent local states to show}';
+    protected $signature = 'hotel:provider-refresh-status
+        {--provider= : Optional provider code}
+        {--hotel= : Optional accommodation id}
+        {--limit=20 : Recent local states to show}';
 
     protected $description = 'Show shared due hotels and local per-provider refresh state without using Tinker.';
 
@@ -25,6 +28,13 @@ class HotelProviderRefreshStatusCommand extends Command
                 $this->error("Provider [{$providerCode}] was not found.");
                 return self::FAILURE;
             }
+        }
+
+        $hotelOption = $this->option('hotel');
+        $hotel = $hotelOption === null || $hotelOption === '' ? null : (int) $hotelOption;
+        if ($hotel !== null && $hotel < 1) {
+            $this->error('The --hotel value must be a positive accommodation id.');
+            return self::INVALID;
         }
 
         $dueRows = HotelPriceRefreshSchedule::query()
@@ -46,6 +56,24 @@ class HotelProviderRefreshStatusCommand extends Command
         $this->info('Shared due rows: '.$dueRows->count());
         $this->info('Shared due unique hotels: '.$dueIds->count());
         $this->info('Shared duplicate due rows: '.max(0, $dueRows->count() - $dueIds->count()));
+
+        if ($hotel !== null) {
+            $shared = HotelPriceRefreshSchedule::query()
+                ->where('gds_id', $hotel)
+                ->orderBy('id')
+                ->first();
+            if ($shared === null) {
+                $this->warn("Hotel [{$hotel}] has no shared refresh schedule.");
+            } else {
+                $this->info(sprintf(
+                    'Hotel %d shared schedule: id=%d, active=%s, next_due=%s',
+                    $hotel,
+                    (int) $shared->id,
+                    $shared->is_active ? 'yes' : 'no',
+                    $shared->next_gds_run_at?->format('Y-m-d H:i:s') ?? 'null',
+                ));
+            }
+        }
 
         $providers = $provider !== null
             ? collect([$provider])
@@ -99,6 +127,9 @@ class HotelProviderRefreshStatusCommand extends Command
         if ($provider !== null) {
             $duplicateQuery->where('provider_id', (int) $provider->id);
         }
+        if ($hotel !== null) {
+            $duplicateQuery->where('accommodation_id', $hotel);
+        }
 
         $duplicateGroups = $duplicateQuery->limit(50)->get();
         if ($duplicateGroups->isNotEmpty()) {
@@ -136,6 +167,9 @@ class HotelProviderRefreshStatusCommand extends Command
         $base = HotelProviderRefreshState::query();
         if ($provider !== null) {
             $base->where('provider_id', (int) $provider->id);
+        }
+        if ($hotel !== null) {
+            $base->where('accommodation_id', $hotel);
         }
 
         $counts = (clone $base)
