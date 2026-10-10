@@ -46,6 +46,20 @@ class HotelPriceRefreshScheduleRepository
             ->get();
     }
 
+    public function dueForAccommodation(int $gdsId): ?HotelPriceRefreshSchedule
+    {
+        return HotelPriceRefreshSchedule::query()
+            ->where('is_active', true)
+            ->where('gds_id', $gdsId)
+            ->where(function ($query): void {
+                $query->whereNull('next_gds_run_at')
+                    ->orWhereRaw('next_gds_run_at <= CURRENT_TIMESTAMP');
+            })
+            ->orderBy('next_gds_run_at')
+            ->orderBy('id')
+            ->first();
+    }
+
     /** @return Collection<int, HotelPriceRefreshSchedule> */
     public function activeForMappingRepair(): Collection
     {
