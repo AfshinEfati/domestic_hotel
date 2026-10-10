@@ -13,7 +13,7 @@ class HotelProviderRefreshDispatchCommand extends Command
         {--days= : Optional availability horizon override for manual runs}
         {--sync-only : Synchronize local provider states only; do not queue jobs or advance shared schedules}';
 
-    protected $description = 'Synchronize due hotel/provider states and queue refreshes using provider-specific quotas.';
+    protected $description = 'Canonical automatic dispatcher for all due hotel provider rate/inventory refreshes.';
 
     public function handle(ProviderPriceRefreshScheduler $scheduler): int
     {
@@ -43,6 +43,15 @@ class HotelProviderRefreshDispatchCommand extends Command
             $count = $scheduler->synchronize($provider);
             $this->info("Synchronized {$count} local hotel/provider state(s). No provider jobs were queued and shared schedules were not advanced.");
             return self::SUCCESS;
+        }
+
+        // The scheduled dispatcher must never execute provider HTTP work inline.
+        // Redis/Horizon and database workers are both valid async deployments; only
+        // Laravel's sync driver is unsafe because one scheduler tick could block on
+        // thousands of provider requests.
+        if (config('queue.default') === 'sync') {
+            $this->error('Hotel provider refresh requires an asynchronous queue; QUEUE_CONNECTION=sync is unsafe.');
+            return self::FAILURE;
         }
 
         if ($hotel !== null) {
