@@ -189,8 +189,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            // Compatibility path for jobs that were queued before coordinated provider state existed.
-            $schedules->persisted($this->scheduleId, $this->gdsId);
+            // A legacy job may still be present in the queue during deployment.
+            // It is allowed to refresh/persist provider data, but it must never
+            // advance next_gds_run_at on its own. The coordinated scheduler will
+            // create provider states and close the shared hotel cycle safely.
+            return;
         } catch (InvalidProviderAvailabilityDataException $e) {
             $hotelName = $this->resolveHotelName($schedules, $hotelName);
 
@@ -213,7 +216,8 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            $schedules->providerAnomalyHandled($this->scheduleId, $this->gdsId);
+            // Legacy workers never close the shared cycle directly.
+            return;
         } catch (GrsApiQuotaExceeded $e) {
             if ($coordinated) {
                 $coordinator->retry(
@@ -305,7 +309,8 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     return;
                 }
 
-                $schedules->providerAnomalyHandled($this->scheduleId, $this->gdsId);
+                // Legacy workers may disable a stale provider map, but the shared
+                // due time remains owned exclusively by ProviderRefreshCoordinator.
                 return;
             }
 
@@ -415,7 +420,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
         $remaining = count($ranges) - count($visible);
 
         return implode('، ', $visible)
-            . ($remaining > 0 ? "، ... (+{$remaining} بازه)" : '');
+            . ($remaining > 0 ? ", ... (+{$remaining} بازه)" : '');
     }
 
     private function formatRange(CarbonImmutable $start, CarbonImmutable $end): string
