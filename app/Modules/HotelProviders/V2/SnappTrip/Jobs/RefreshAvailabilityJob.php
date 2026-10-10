@@ -28,20 +28,30 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
     public int $timeout = 90;
     public int $uniqueFor = 21600;
 
+    // These properties were added after the first SnappTrip jobs had already been
+    // queued. Keep real property defaults (instead of constructor-promotion defaults)
+    // so an older serialized payload cannot leave them as uninitialized typed props.
+    public ?int $refreshStateId = null;
+    public ?string $refreshCycleKey = null;
+
     public function __construct(
         public int $scheduleId,
         public int $accommodationId,
         public int $providerId,
         public int $days,
-        public ?int $refreshStateId = null,
-        public ?string $refreshCycleKey = null,
+        ?int $refreshStateId = null,
+        ?string $refreshCycleKey = null,
     ) {
+        $this->refreshStateId = $refreshStateId;
+        $this->refreshCycleKey = $refreshCycleKey;
         $this->onQueue('snapptrip-prices');
     }
 
     public function uniqueId(): string
     {
-        if ($this->refreshStateId !== null && $this->refreshCycleKey !== null) {
+        // isset() is intentionally used here: it is safe even for a legacy payload
+        // deserialized from before these typed properties existed.
+        if (isset($this->refreshStateId, $this->refreshCycleKey)) {
             return 'snapptrip-v2-refresh:'.$this->refreshStateId.':'.$this->refreshCycleKey;
         }
 
@@ -58,7 +68,7 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
         // Backward-compatible direct invocation is kept only for jobs already present
         // in a queue during deployment. New scheduler jobs always carry both state ID
         // and cycle key so an old job can never mutate a newer hotel/provider cycle.
-        if ($this->refreshStateId === null || $this->refreshCycleKey === null) {
+        if (!isset($this->refreshStateId, $this->refreshCycleKey)) {
             if (!$guard->allows(SnappTripSettings::PROVIDER_CODE)) {
                 return;
             }
@@ -70,15 +80,16 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
+        $refreshStateId = $this->refreshStateId;
         $cycleKey = $this->refreshCycleKey;
-        $state = $coordinator->begin($this->refreshStateId, $cycleKey);
+        $state = $coordinator->begin($refreshStateId, $cycleKey);
         if ($state === null) {
             return;
         }
 
         if (!$guard->allows(SnappTripSettings::PROVIDER_CODE)) {
             $coordinator->attempted(
-                $this->refreshStateId,
+                $refreshStateId,
                 $cycleKey,
                 ProviderRefreshOutcome::PROVIDER_DISABLED,
             );
@@ -96,7 +107,7 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             $map = $maps->findForAccommodationAndProvider($this->accommodationId, $this->providerId);
             if ($map === null || $map->is_disabled) {
                 $coordinator->attempted(
-                    $this->refreshStateId,
+                    $refreshStateId,
                     $cycleKey,
                     ProviderRefreshOutcome::PROVIDER_404,
                 );
@@ -105,24 +116,24 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
 
             if ($rowCount < 1) {
                 $coordinator->attempted(
-                    $this->refreshStateId,
+                    $refreshStateId,
                     $cycleKey,
                     ProviderRefreshOutcome::PROVIDER_EMPTY,
                 );
                 return;
             }
 
-            $coordinator->done($this->refreshStateId, $cycleKey);
+            $coordinator->done($refreshStateId, $cycleKey);
         } catch (SnappTripRateLimitExceeded $exception) {
             $coordinator->retry(
-                $this->refreshStateId,
+                $refreshStateId,
                 $cycleKey,
                 ProviderRefreshOutcome::RATE_LIMITED,
                 max(1, $exception->retryAfterSeconds),
             );
         } catch (ConnectionException) {
             $coordinator->attempted(
-                $this->refreshStateId,
+                $refreshStateId,
                 $cycleKey,
                 ProviderRefreshOutcome::PROVIDER_TIMEOUT,
             );
@@ -130,7 +141,7 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             $status = $exception->response?->status();
             if ($status === 429) {
                 $coordinator->retry(
-                    $this->refreshStateId,
+                    $refreshStateId,
                     $cycleKey,
                     ProviderRefreshOutcome::RATE_LIMITED,
                     60,
@@ -141,7 +152,7 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             if ($status !== null && $status >= 400 && $status < 500 && !in_array($status, [404, 408], true)) {
                 $alerts->internalFailure($exception);
                 $coordinator->retry(
-                    $this->refreshStateId,
+                    $refreshStateId,
                     $cycleKey,
                     ProviderRefreshOutcome::REQUEST_ERROR,
                     300,
@@ -150,14 +161,14 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             }
 
             $coordinator->attempted(
-                $this->refreshStateId,
+                $refreshStateId,
                 $cycleKey,
                 ProviderRefreshOutcome::PROVIDER_HTTP_ERROR,
             );
         } catch (Throwable $exception) {
             $alerts->internalFailure($exception);
             $coordinator->retry(
-                $this->refreshStateId,
+                $refreshStateId,
                 $cycleKey,
                 ProviderRefreshOutcome::INTERNAL_ERROR,
                 60,
