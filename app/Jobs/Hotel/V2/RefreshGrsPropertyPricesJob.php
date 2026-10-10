@@ -56,15 +56,18 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
     public function handle(
         HotelSyncService $service,
         GrsPriceRefreshScheduleService $schedules,
-        ProviderDiagnosticAlertService $diagnostics,
+        ?ProviderDiagnosticAlertService $diagnostics = null,
         ?TelegramAlertService $alerts = null,
         ?ProviderRefreshCoordinator $coordinator = null,
     ): void {
+        $diagnostics ??= app(ProviderDiagnosticAlertService::class);
         $alerts ??= app(TelegramAlertService::class);
         $coordinated = $this->refreshStateId !== null && $this->refreshCycleKey !== null;
+        $cycleKey = (string) ($this->refreshCycleKey ?? '');
+
         if ($coordinated) {
             $coordinator ??= app(ProviderRefreshCoordinator::class);
-            if ($coordinator->begin((int) $this->refreshStateId, (string) $this->refreshCycleKey) === null) {
+            if ($coordinator->begin((int) $this->refreshStateId, $cycleKey) === null) {
                 return;
             }
         }
@@ -80,7 +83,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $provider = $schedules->providerById($this->providerId);
             if ($provider === null || $provider->code !== 'grs' || !$provider->is_active) {
                 if ($coordinated) {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_DISABLED);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::PROVIDER_DISABLED,
+                    );
                     return;
                 }
                 throw new RuntimeException('GRS provider inactive, missing, or mismatched.');
@@ -88,7 +95,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             if ($schedules->active($this->scheduleId, $this->gdsId) === null) {
                 if ($coordinated) {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::CYCLE_SUPERSEDED);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::CYCLE_SUPERSEDED,
+                    );
                 }
                 return;
             }
@@ -100,7 +111,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 || trim((string) $map->provider_property_id) === ''
             ) {
                 if ($coordinated) {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::MAP_UNAVAILABLE);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::MAP_UNAVAILABLE,
+                    );
                 }
                 return;
             }
@@ -149,6 +164,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 if ($coordinated) {
                     $coordinator->retry(
                         (int) $this->refreshStateId,
+                        $cycleKey,
                         ProviderRefreshOutcome::MAPPING_NOT_READY,
                         60,
                     );
@@ -167,9 +183,13 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             if ($coordinated) {
                 if ($verifiedRows > 0) {
-                    $coordinator->done((int) $this->refreshStateId);
+                    $coordinator->done((int) $this->refreshStateId, $cycleKey);
                 } else {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_EMPTY);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::PROVIDER_EMPTY,
+                    );
                 }
                 return;
             }
@@ -190,6 +210,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             if ($coordinated) {
                 $coordinator->attempted(
                     (int) $this->refreshStateId,
+                    $cycleKey,
                     ProviderRefreshOutcome::PROVIDER_INVALID_RESPONSE,
                 );
                 return;
@@ -200,6 +221,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             if ($coordinated) {
                 $coordinator->retry(
                     (int) $this->refreshStateId,
+                    $cycleKey,
                     ProviderRefreshOutcome::RATE_LIMITED,
                     max(1, $e->retryAfterSeconds),
                 );
@@ -209,7 +231,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $this->release(max(1, $e->retryAfterSeconds));
         } catch (ConnectionException $e) {
             if ($coordinated) {
-                $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
+                $coordinator->attempted(
+                    (int) $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::PROVIDER_TIMEOUT,
+                );
                 return;
             }
 
@@ -234,6 +260,7 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 if ($coordinated) {
                     $coordinator->retry(
                         (int) $this->refreshStateId,
+                        $cycleKey,
                         ProviderRefreshOutcome::RATE_LIMITED,
                         $retryAfter,
                     );
@@ -272,7 +299,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 $schedules->disableMapForAccommodation($this->gdsId, (int) $provider->id);
 
                 if ($coordinated) {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_404);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::PROVIDER_404,
+                    );
                     return;
                 }
 
@@ -282,7 +313,11 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             if ($coordinated) {
                 if ($status === 408) {
-                    $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_TIMEOUT);
+                    $coordinator->attempted(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::PROVIDER_TIMEOUT,
+                    );
                     return;
                 }
 
@@ -290,11 +325,20 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 // our request/configuration needs correction, so keep this cycle open.
                 if ($status !== null && $status >= 400 && $status < 500) {
                     $alerts->internalFailure($e);
-                    $coordinator->retry((int) $this->refreshStateId, ProviderRefreshOutcome::REQUEST_ERROR, 300);
+                    $coordinator->retry(
+                        (int) $this->refreshStateId,
+                        $cycleKey,
+                        ProviderRefreshOutcome::REQUEST_ERROR,
+                        300,
+                    );
                     return;
                 }
 
-                $coordinator->attempted((int) $this->refreshStateId, ProviderRefreshOutcome::PROVIDER_HTTP_ERROR);
+                $coordinator->attempted(
+                    (int) $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::PROVIDER_HTTP_ERROR,
+                );
                 return;
             }
 
@@ -303,7 +347,12 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
             $alerts->internalFailure($e);
 
             if ($coordinated) {
-                $coordinator->retry((int) $this->refreshStateId, ProviderRefreshOutcome::INTERNAL_ERROR, 60);
+                $coordinator->retry(
+                    (int) $this->refreshStateId,
+                    $cycleKey,
+                    ProviderRefreshOutcome::INTERNAL_ERROR,
+                    60,
+                );
                 return;
             }
 
