@@ -20,8 +20,8 @@ class SyncGrsHotelDetailsCommand extends Command
         }
 
         $provider = $repository->grsProvider();
-        if ($provider === null || !$provider->is_active || !$provider->is_online) {
-            $this->error('GRS provider is missing, inactive or offline.');
+        if ($provider === null || !$provider->is_active) {
+            $this->error('GRS provider is missing or inactive.');
             return self::FAILURE;
         }
 
