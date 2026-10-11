@@ -17,6 +17,7 @@ use App\Models\RatePlanProviderMap;
 use App\Models\RoomType;
 use App\Models\RoomTypeName;
 use App\Models\RoomTypeProviderMap;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -163,18 +164,7 @@ final class SnappTripCatalogRepository
 
         $accommodation = $this->findUnambiguousAccommodation((int) $cityId, $hotel);
         if ($accommodation === null) {
-            $accommodation = Accommodation::query()->create([
-                'city_id' => (int) $cityId,
-                'fa_name' => $faName,
-                'en_name' => $hotel['en_name'] ?? null,
-                'accommodation_type_id' => $this->types->resolveId($hotel['accommodation_type'] ?? null),
-                'star' => is_numeric($hotel['star'] ?? null) ? (int) $hotel['star'] : null,
-                'grade' => null,
-                'address' => $hotel['address'] ?? null,
-                'lat' => $this->coordinate($hotel['lat'] ?? null, -90, 90),
-                'lng' => $this->coordinate($hotel['lng'] ?? null, -180, 180),
-                'is_active' => true,
-            ]);
+            $accommodation = $this->createAccommodationSafely((int) $cityId, $faName, $hotel);
         }
 
         if (AccommodationProviderMap::query()
@@ -185,18 +175,27 @@ final class SnappTripCatalogRepository
             throw new RuntimeException('Accommodation already maps to another SnappTrip hotel; manual review required.');
         }
 
-        return AccommodationProviderMap::query()->create([
-            'accommodation_id' => $accommodation->id,
-            'provider_id' => $provider->id,
-            'provider_property_id' => $providerPropertyId,
-            'is_disabled' => ($hotel['enabled'] ?? true) !== true,
-            'fa_name' => $faName,
-            'en_name' => $hotel['en_name'] ?? null,
-        ]);
+        return $this->createProviderMapSafely($provider, $accommodation, $providerPropertyId, $faName, $hotel);
     }
 
     private function findUnambiguousAccommodation(int $cityId, array $hotel): ?Accommodation
     {
+        $faName = trim((string) ($hotel['fa_name'] ?? ''));
+
+        // Use the database collation first. The unique key on (city_id, fa_name)
+        // uses the database collation, which can consider Unicode digit/letter
+        // variants equal even when PHP string comparison does not.
+        if ($faName !== '') {
+            $databaseMatch = Accommodation::query()
+                ->where('city_id', $cityId)
+                ->where('fa_name', $faName)
+                ->first();
+
+            if ($databaseMatch !== null) {
+                return $databaseMatch;
+            }
+        }
+
         $candidates = Accommodation::query()->where('city_id', $cityId)->get();
         $faKey = $this->normalize($hotel['fa_name'] ?? null, true);
         $matches = $candidates->filter(fn (Accommodation $item): bool => $this->normalize($item->fa_name, true) === $faKey);
@@ -244,6 +243,82 @@ final class SnappTripCatalogRepository
         }
 
         return $matches->first();
+    }
+
+    /** @param array<string,mixed> $hotel */
+    private function createAccommodationSafely(int $cityId, string $faName, array $hotel): Accommodation
+    {
+        $attributes = [
+            'city_id' => $cityId,
+            'fa_name' => $faName,
+            'en_name' => $hotel['en_name'] ?? null,
+            'accommodation_type_id' => $this->types->resolveId($hotel['accommodation_type'] ?? null),
+            'star' => is_numeric($hotel['star'] ?? null) ? (int) $hotel['star'] : null,
+            'grade' => null,
+            'address' => $hotel['address'] ?? null,
+            'lat' => $this->coordinate($hotel['lat'] ?? null, -90, 90),
+            'lng' => $this->coordinate($hotel['lng'] ?? null, -180, 180),
+            'is_active' => true,
+        ];
+
+        try {
+            return Accommodation::query()->create($attributes);
+        } catch (UniqueConstraintViolationException $exception) {
+            // Another worker may have created the same hotel after our initial
+            // lookup, or MySQL may consider a Unicode-equivalent name identical.
+            // A locking read is a current read under InnoDB and can see that row
+            // even when this transaction previously established a snapshot.
+            $existing = Accommodation::query()
+                ->where('city_id', $cityId)
+                ->where('fa_name', $faName)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            throw $exception;
+        }
+    }
+
+    /** @param array<string,mixed> $hotel */
+    private function createProviderMapSafely(
+        Provider $provider,
+        Accommodation $accommodation,
+        string $providerPropertyId,
+        string $faName,
+        array $hotel,
+    ): AccommodationProviderMap {
+        try {
+            return AccommodationProviderMap::query()->create([
+                'accommodation_id' => $accommodation->id,
+                'provider_id' => $provider->id,
+                'provider_property_id' => $providerPropertyId,
+                'is_disabled' => ($hotel['enabled'] ?? true) !== true,
+                'fa_name' => $faName,
+                'en_name' => $hotel['en_name'] ?? null,
+            ]);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = AccommodationProviderMap::query()
+                ->where('provider_id', $provider->id)
+                ->where('provider_property_id', $providerPropertyId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            if ((int) $existing->accommodation_id !== (int) $accommodation->id) {
+                throw new RuntimeException(
+                    'Concurrent SnappTrip mapping resolved the provider hotel to another accommodation.',
+                    previous: $exception,
+                );
+            }
+
+            return $existing;
+        }
     }
 
     private function persistProviderDetails(AccommodationProviderMap $map, array $hotel, ?string $providerUrl): void
@@ -482,6 +557,12 @@ final class SnappTripCatalogRepository
     {
         $value = mb_strtolower($this->nullableString($value) ?? '', 'UTF-8');
         $value = str_replace(['ي', 'ى', 'ك', 'ۀ', 'ة', '‌', 'ـ'], ['ی', 'ی', 'ک', 'ه', 'ه', ' ', ''], $value);
+        $value = strtr($value, [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
         $value = preg_replace('/[\x{064B}-\x{065F}\x{0670}]/u', '', $value) ?? $value;
         $value = trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value) ?? $value);
         if ($stripHotelPrefix) {
