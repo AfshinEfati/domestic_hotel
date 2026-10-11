@@ -18,6 +18,7 @@ final class SyncHotelDetailsJob implements ShouldQueue, ShouldBeUnique
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 30;
+    public int $maxExceptions = 3;
     public int $timeout = 90;
     public int $uniqueFor = 1800;
 
