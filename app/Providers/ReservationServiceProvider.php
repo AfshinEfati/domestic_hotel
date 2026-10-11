@@ -27,12 +27,14 @@ use App\Repositories\Eloquent\ReservationRepository;
 use App\Repositories\Eloquent\ReservationRoomNightRepository;
 use App\Repositories\Eloquent\ReservationRoomRepository;
 use App\Services\Contracts\ManualReservationPurchaseServiceInterface;
+use App\Services\Contracts\OnlineReservationPurchaseRecoveryServiceInterface;
 use App\Services\Contracts\PurchaseManualRuleServiceInterface;
 use App\Services\Contracts\PurchaseResolverInterface;
 use App\Services\Contracts\ReservationPurchaseRequestServiceInterface;
 use App\Services\Contracts\ReservationReferenceGeneratorInterface;
 use App\Services\Contracts\ReservationServiceInterface;
 use App\Services\ManualReservationPurchaseService;
+use App\Services\OnlineReservationPurchaseRecoveryService;
 use App\Services\PurchaseManualRuleService;
 use App\Services\PurchaseResolver;
 use App\Services\ReservationPurchaseRequestService;
@@ -62,5 +64,9 @@ class ReservationServiceProvider extends ServiceProvider
         $this->app->bind(PurchaseResolverInterface::class, PurchaseResolver::class);
         $this->app->bind(ReservationPurchaseRequestServiceInterface::class, ReservationPurchaseRequestService::class);
         $this->app->bind(ManualReservationPurchaseServiceInterface::class, ManualReservationPurchaseService::class);
+        $this->app->bind(
+            OnlineReservationPurchaseRecoveryServiceInterface::class,
+            OnlineReservationPurchaseRecoveryService::class,
+        );
     }
 }

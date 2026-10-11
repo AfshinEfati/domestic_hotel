@@ -4,6 +4,7 @@ namespace App\Modules\HotelProviders\V2\SnappTrip\Application;
 
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGateway;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use RuntimeException;
@@ -16,23 +17,27 @@ final class SnappTripBookingService
     ) {
     }
 
-    public function create(array $payload): array
+    public function create(array $payload, ?int $reservationId = null, int $attempt = 1): array
     {
-        $provider = $this->providerForOnlinePurchase();
-
-        return $this->gateways->make($provider)->createBooking($payload);
+        return $this->gatewayForOnlinePurchase($reservationId, __FUNCTION__, $attempt)
+            ->createBooking($payload);
     }
 
-    public function lock(string $reservationCode): void
-    {
-        $provider = $this->providerForOnlinePurchase();
-        $this->gateways->make($provider)->lockBooking($reservationCode);
+    public function lock(
+        string $reservationCode,
+        ?int $reservationId = null,
+        int $attempt = 1,
+    ): void {
+        $this->gatewayForOnlinePurchase($reservationId, __FUNCTION__, $attempt)
+            ->lockBooking($reservationCode);
     }
 
-    public function confirm(string $reservationCode): array
-    {
-        $provider = $this->providerForOnlinePurchase();
-        $gateway = $this->gateways->make($provider);
+    public function confirm(
+        string $reservationCode,
+        ?int $reservationId = null,
+        int $attempt = 1,
+    ): array {
+        $gateway = $this->gatewayForOnlinePurchase($reservationId, __FUNCTION__, $attempt);
         $gateway->confirmBooking($reservationCode);
 
         // SnappTrip requires checking booking state after confirm. The GET result,
@@ -40,11 +45,42 @@ final class SnappTripBookingService
         return $gateway->booking($reservationCode);
     }
 
-    public function status(string $reservationCode): array
-    {
+    public function status(
+        string $reservationCode,
+        ?int $reservationId = null,
+        int $attempt = 1,
+    ): array {
         $provider = $this->outboundGuard->assertAllowed(SnappTripSettings::PROVIDER_CODE);
 
-        return $this->gateways->make($provider)->booking($reservationCode);
+        return $this->gateway($provider, $reservationId, __FUNCTION__, $attempt)
+            ->booking($reservationCode);
+    }
+
+    private function gatewayForOnlinePurchase(
+        ?int $reservationId,
+        string $method,
+        int $attempt,
+    ): SnappTripGateway {
+        $provider = $this->providerForOnlinePurchase();
+
+        return $this->gateway($provider, $reservationId, $method, $attempt);
+    }
+
+    private function gateway(
+        Provider $provider,
+        ?int $reservationId,
+        string $method,
+        int $attempt,
+    ): SnappTripGateway {
+        return $this->gateways
+            ->make($provider)
+            ->withRequestLogContext(
+                $reservationId,
+                self::class,
+                $method,
+                max(1, $attempt),
+                true,
+            );
     }
 
     private function providerForOnlinePurchase(): Provider

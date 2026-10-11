@@ -5,6 +5,7 @@ namespace App\Modules\HotelProviders\V2\Shared;
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Shared\Contracts\OnlinePurchaseHandler;
 use Closure;
 use Illuminate\Contracts\Container\Container;
 use RuntimeException;
@@ -17,6 +18,9 @@ final class HotelProviderRegistry
     /** @var array<string, class-string<PriceRefreshSchedulerHandler>> */
     private array $priceRefreshHandlers = [];
 
+    /** @var array<string, class-string<OnlinePurchaseHandler>> */
+    private array $onlinePurchaseHandlers = [];
+
     public function registerAdapter(string $providerCode, Closure $factory): void
     {
         $this->adapterFactories[$providerCode] = $factory;
@@ -26,6 +30,12 @@ final class HotelProviderRegistry
     public function registerPriceRefreshHandler(string $providerCode, string $handlerClass): void
     {
         $this->priceRefreshHandlers[$providerCode] = $handlerClass;
+    }
+
+    /** @param class-string<OnlinePurchaseHandler> $handlerClass */
+    public function registerOnlinePurchaseHandler(string $providerCode, string $handlerClass): void
+    {
+        $this->onlinePurchaseHandlers[$providerCode] = $handlerClass;
     }
 
     public function resolveAdapter(Provider $provider, Container $container): ProviderAdapterInterface
@@ -49,5 +59,22 @@ final class HotelProviderRegistry
     public function priceRefreshHandler(string $providerCode): ?string
     {
         return $this->priceRefreshHandlers[$providerCode] ?? null;
+    }
+
+    public function resolveOnlinePurchaseHandler(
+        Provider $provider,
+        Container $container,
+    ): ?OnlinePurchaseHandler {
+        $handlerClass = $this->onlinePurchaseHandlers[(string) $provider->code] ?? null;
+        if ($handlerClass === null) {
+            return null;
+        }
+
+        $handler = $container->make($handlerClass);
+        if (!$handler instanceof OnlinePurchaseHandler) {
+            throw new RuntimeException("Invalid online purchase handler registered for {$provider->code}.");
+        }
+
+        return $handler;
     }
 }

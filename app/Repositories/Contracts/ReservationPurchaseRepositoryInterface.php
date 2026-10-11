@@ -11,6 +11,11 @@ interface ReservationPurchaseRepositoryInterface extends BaseRepositoryInterface
 
     public function findForReservation(int $reservationId, int $purchaseId): ?ReservationPurchase;
 
+    public function findForOnlineExecution(
+        int $purchaseId,
+        bool $lockForUpdate = false,
+    ): ?ReservationPurchase;
+
     public function findByHotelAndProvider(int $reservationHotelId, int $providerId): ?ReservationPurchase;
 
     /** @return Collection<int, ReservationPurchase> */

@@ -32,6 +32,27 @@ class ReservationPurchaseRepository extends BaseRepository implements Reservatio
             ->first();
     }
 
+    public function findForOnlineExecution(
+        int $purchaseId,
+        bool $lockForUpdate = false,
+    ): ?ReservationPurchase {
+        $query = $this->model
+            ->newQuery()
+            ->with([
+                'provider',
+                'reservationHotel.reservation',
+                'segments.reservationRoom.roomType',
+                'segments.reservationRoom.guests.country',
+            ])
+            ->whereKey($purchaseId);
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
     public function findByHotelAndProvider(int $reservationHotelId, int $providerId): ?ReservationPurchase
     {
         return $this->model->newQuery()

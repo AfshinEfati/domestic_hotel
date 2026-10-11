@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Admin\CountryController;
 use App\Http\Controllers\Api\V1\Admin\FacilityController;
 use App\Http\Controllers\Api\V1\Admin\FacilityGroupController;
 use App\Http\Controllers\Api\V1\Admin\ManualReservationPurchaseController;
+use App\Http\Controllers\Api\V1\Admin\OnlineReservationPurchaseController;
 use App\Http\Controllers\Api\V1\Admin\ProviderCityMapController;
 use App\Http\Controllers\Api\V1\Admin\ProviderController;
 use App\Http\Controllers\Api\V1\Admin\ProviderPricingRuleController;
@@ -44,6 +45,14 @@ Route::group(['prefix' => 'v1'], function () {
         Route::put('reservations/{reservation_id}/guest-assignments', [ManualReservationPurchaseController::class, 'assignGuests']);
         Route::patch('reservations/{reservation_id}/purchases/{reservation_purchase}', [ManualReservationPurchaseController::class, 'updatePurchase']);
         Route::post('reservations/{reservation_id}/purchases/{reservation_purchase}/payments', [ManualReservationPurchaseController::class, 'storePayment']);
+        Route::post(
+            'reservations/{reservation_id}/purchases/{reservation_purchase}/online/retry',
+            [OnlineReservationPurchaseController::class, 'retry']
+        );
+        Route::post(
+            'reservations/{reservation_id}/purchases/{reservation_purchase}/online/to-manual',
+            [OnlineReservationPurchaseController::class, 'convertToManual']
+        );
         Route::post('reservations/{reservation_id}/confirm', [ManualReservationPurchaseController::class, 'confirm']);
         Route::post('reservations/{reservation_id}/reject', [ManualReservationPurchaseController::class, 'reject']);
         Route::apiResource('system-settings', SystemSettingController::class);

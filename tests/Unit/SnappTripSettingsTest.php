@@ -18,5 +18,8 @@ class SnappTripSettingsTest extends TestCase
         $this->assertTrue(data_get($settings, 'static_sync.scheduler_enabled'));
         $this->assertTrue(data_get($settings, 'price_refresh.scheduler_enabled'));
         $this->assertFalse(data_get($settings, 'purchase.online_enabled'));
+        $this->assertFalse(data_get($settings, 'purchase.lock_enabled'));
+        $this->assertSame(15, data_get($settings, 'purchase.status_poll_seconds'));
+        $this->assertSame(20, data_get($settings, 'purchase.status_poll_attempts'));
     }
 }

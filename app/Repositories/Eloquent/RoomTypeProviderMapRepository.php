@@ -40,6 +40,16 @@ class RoomTypeProviderMapRepository extends BaseRepository implements RoomTypePr
             ->keyBy('provider_room_type_id');
     }
 
+    public function findForRoomTypeAndAccommodationMap(
+        int $roomTypeId,
+        int $accommodationProviderMapId,
+    ): ?RoomTypeProviderMap {
+        return $this->model->newQuery()
+            ->where('room_type_id', $roomTypeId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
+            ->first();
+    }
+
     public function store(array $data): RoomTypeProviderMap
     {
         /** @var RoomTypeProviderMap */

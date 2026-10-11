@@ -28,6 +28,11 @@ final class SnappTripSettings
             ],
             'purchase' => [
                 'online_enabled' => false,
+                // Lock is contractual/optional in SnappTrip. Confirm can be called
+                // directly and will lock automatically when the contract has no lock permission.
+                'lock_enabled' => false,
+                'status_poll_seconds' => 15,
+                'status_poll_attempts' => 20,
             ],
         ];
     }
@@ -84,6 +89,22 @@ final class SnappTripSettings
                 'online_enabled' => self::boolValue(
                     data_get($merged, 'purchase.online_enabled'),
                     false,
+                ),
+                'lock_enabled' => self::boolValue(
+                    data_get($merged, 'purchase.lock_enabled'),
+                    false,
+                ),
+                'status_poll_seconds' => self::boundedInt(
+                    data_get($merged, 'purchase.status_poll_seconds'),
+                    15,
+                    5,
+                    300,
+                ),
+                'status_poll_attempts' => self::boundedInt(
+                    data_get($merged, 'purchase.status_poll_attempts'),
+                    20,
+                    1,
+                    100,
                 ),
             ],
         ];
