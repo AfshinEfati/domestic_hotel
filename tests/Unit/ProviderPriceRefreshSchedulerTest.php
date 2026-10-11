@@ -272,7 +272,7 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $this->assertFalse($guard->allows($provider));
     }
 
-    public function test_snapptrip_capacity_accounts_for_calendar_chunk_request_cost(): void
+    public function test_snapptrip_capacity_accounts_for_initial_calendar_request_cost(): void
     {
         $snap = (new Provider())->forceFill([
             'id' => 4,
@@ -292,9 +292,10 @@ class ProviderPriceRefreshSchedulerTest extends TestCase
         $handler = new SnappTripScheduledPriceRefresh();
 
         $this->assertSame(60, $handler->hotelCapacityPerMinute($snap, 40));
-        $this->assertSame(30, $handler->hotelCapacityPerMinute($snap, 80));
-        $this->assertSame(20, $handler->hotelCapacityPerMinute($snap, 90));
-        $this->assertSame(20, $handler->hotelCapacityPerMinute($snap));
+        $this->assertSame(60, $handler->hotelCapacityPerMinute($snap, 80));
+        $this->assertSame(60, $handler->hotelCapacityPerMinute($snap, 90));
+        $this->assertSame(60, $handler->hotelCapacityPerMinute($snap));
+        $this->assertSame(30, $handler->hotelCapacityPerMinute($snap, 180));
     }
 
     public function test_active_provider_participates_even_when_legacy_scheduler_flag_is_false(): void
