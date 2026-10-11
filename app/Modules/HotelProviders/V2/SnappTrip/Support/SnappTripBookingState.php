@@ -41,6 +41,12 @@ final class SnappTripBookingState
     public static function isPending(?string $state): bool
     {
         return in_array($state, [
+            // A mandatory status GET immediately after confirm can still be briefly
+            // behind the confirm request. Treat these as pollable after confirm; the
+            // handler's needsConfirm branch still confirms them before this check when
+            // it is looking at a pre-confirm status response.
+            self::DRAFT,
+            self::PAYMENT_ON,
             self::AVAILABILITY_CHECKING,
             self::AVAILABILITY_PENDING,
             self::AVAILABILITY_CONFIRMED,
