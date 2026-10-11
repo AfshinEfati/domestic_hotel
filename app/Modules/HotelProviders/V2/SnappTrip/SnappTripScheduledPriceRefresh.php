@@ -28,8 +28,9 @@ final class SnappTripScheduledPriceRefresh implements PriceRefreshSchedulerHandl
         $requestedDays = $days ?? (int) data_get($settings, 'price_refresh.default_days', 90);
         $requestsPerHotel = SnappTripCalendarWindows::requestCountForDays(max(1, $requestedDays));
 
-        // SnappTrip accepts at most 40 calendar days per call. Every chunk is fetched
-        // for both domestic and foreign guests, so a 90-day refresh costs six calls.
+        // New hotels start with the default 90-day calendar request window.
+        // If SnappTrip reports a smaller limit, that limit is learned per hotel
+        // and enforced by the refresh flow on subsequent runs.
         return max(1, intdiv($maxRequests, $windowMinutes * $requestsPerHotel));
     }
 

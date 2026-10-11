@@ -19,12 +19,12 @@ final class SnappTripCalendarWindowRepository
             return null;
         }
 
-        return min(SnappTripCalendarWindows::MAX_DAYS, (int) $value);
+        return min(SnappTripCalendarWindows::DEFAULT_DAYS, (int) $value);
     }
 
     public function windowDays(AccommodationProviderMap $map): int
     {
-        return $this->overrideDays($map) ?? SnappTripCalendarWindows::MAX_DAYS;
+        return $this->overrideDays($map) ?? SnappTripCalendarWindows::DEFAULT_DAYS;
     }
 
     public function learn(AccommodationProviderMap $map, int $days): int
@@ -64,9 +64,9 @@ final class SnappTripCalendarWindowRepository
 
     private function normalize(int $days): int
     {
-        if ($days < 1 || $days > SnappTripCalendarWindows::MAX_DAYS) {
+        if ($days < 1 || $days > SnappTripCalendarWindows::DEFAULT_DAYS) {
             throw new InvalidArgumentException(
-                'SnappTrip calendar window days must be between 1 and '.SnappTripCalendarWindows::MAX_DAYS.'.'
+                'SnappTrip calendar window days must be between 1 and '.SnappTripCalendarWindows::DEFAULT_DAYS.'.'
             );
         }
 

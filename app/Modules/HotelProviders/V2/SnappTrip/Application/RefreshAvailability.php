@@ -103,11 +103,11 @@ final class RefreshAvailability
                 if ($reportedLimit !== null && $reportedLimit < $currentWindowDays) {
                     $windowDays = $persist
                         ? $this->calendarWindows->learn($map, $reportedLimit)
-                        : min($windowDays, $reportedLimit, SnappTripCalendarWindows::MAX_DAYS);
+                        : min($windowDays, $reportedLimit, SnappTripCalendarWindows::DEFAULT_DAYS);
 
-                    // First treat a smaller reported limit as an endpoint window cap.
-                    // If the provider also has a forward-horizon cap, a later smaller
-                    // chunk will expose that separately and we learn it below.
+                    // A smaller provider-reported limit becomes a hotel-specific
+                    // request window. The failed range is retried in smaller chunks
+                    // and future refreshes for this hotel start with that learned size.
                     $windows = SnappTripCalendarWindows::split(
                         $window['from'],
                         $end,

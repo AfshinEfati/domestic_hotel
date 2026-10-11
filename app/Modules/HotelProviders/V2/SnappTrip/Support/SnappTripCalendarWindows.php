@@ -7,8 +7,8 @@ use InvalidArgumentException;
 
 final class SnappTripCalendarWindows
 {
-    /** SnappTrip's global calendar endpoint cap. Individual hotels may require less. */
-    public const MAX_DAYS = 40;
+    /** Default production calendar request window. Per-hotel learned overrides may reduce it. */
+    public const DEFAULT_DAYS = 90;
 
     /**
      * @return array<int,array{from:string,to:string}>
@@ -22,7 +22,7 @@ final class SnappTripCalendarWindows
             throw new InvalidArgumentException('SnappTrip calendar end date must be after start date.');
         }
 
-        $windowDays = self::normalizeWindowDays($maxDays ?? self::MAX_DAYS);
+        $windowDays = self::normalizeWindowDays($maxDays ?? self::DEFAULT_DAYS);
         $windows = [];
         $cursor = $start;
 
@@ -49,7 +49,7 @@ final class SnappTripCalendarWindows
             throw new InvalidArgumentException('SnappTrip calendar days must be positive.');
         }
 
-        $windowDays = self::normalizeWindowDays($maxDays ?? self::MAX_DAYS);
+        $windowDays = self::normalizeWindowDays($maxDays ?? self::DEFAULT_DAYS);
 
         return intdiv($days + $windowDays - 1, $windowDays);
     }
@@ -62,9 +62,9 @@ final class SnappTripCalendarWindows
 
     private static function normalizeWindowDays(int $days): int
     {
-        if ($days < 1 || $days > self::MAX_DAYS) {
+        if ($days < 1 || $days > self::DEFAULT_DAYS) {
             throw new InvalidArgumentException(
-                'SnappTrip calendar window days must be between 1 and '.self::MAX_DAYS.'.'
+                'SnappTrip calendar window days must be between 1 and '.self::DEFAULT_DAYS.'.'
             );
         }
 

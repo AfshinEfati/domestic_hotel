@@ -61,7 +61,7 @@ final class CalendarWindowCommand extends Command
                     (int) $row->calendar_window_days,
                 ])->all(),
             );
-            $this->info('Overrides: '.$rows->count().'. Default request window: '.SnappTripCalendarWindows::MAX_DAYS.' days.');
+            $this->info('Overrides: '.$rows->count().'. Default request window: '.SnappTripCalendarWindows::DEFAULT_DAYS.' days.');
 
             return self::SUCCESS;
         }
@@ -87,7 +87,7 @@ final class CalendarWindowCommand extends Command
             $windows->clear($map);
             $this->info(
                 "Cleared SnappTrip calendar window override for hotel [{$hotel}]. "
-                .'Effective window: '.SnappTripCalendarWindows::MAX_DAYS.' days.'
+                .'Effective window: '.SnappTripCalendarWindows::DEFAULT_DAYS.' days.'
             );
             return self::SUCCESS;
         }
@@ -99,8 +99,8 @@ final class CalendarWindowCommand extends Command
             }
 
             $days = (int) $daysOption;
-            if ($days < 1 || $days > SnappTripCalendarWindows::MAX_DAYS) {
-                $this->error('--days must be between 1 and '.SnappTripCalendarWindows::MAX_DAYS.'.');
+            if ($days < 1 || $days > SnappTripCalendarWindows::DEFAULT_DAYS) {
+                $this->error('--days must be between 1 and '.SnappTripCalendarWindows::DEFAULT_DAYS.'.');
                 return self::INVALID;
             }
 
