@@ -203,7 +203,11 @@ final class TelegramAlertService
     public function internalFailure(Throwable $exception): void
     {
         $class = $exception::class;
-        $location = basename($exception->getFile()).':'.$exception->getLine();
+        $location = $this->applicationLocation($exception);
+        $rawMessage = trim($exception->getMessage());
+        if ($rawMessage === '') {
+            $rawMessage = '(empty exception message)';
+        }
 
         $category = $exception instanceof QueryException
             ? 'Database'
@@ -211,28 +215,45 @@ final class TelegramAlertService
                 ? 'Application code'
                 : 'Application runtime');
 
-        $message = $exception instanceof QueryException
-            ? 'Database query failed; SQL and bindings are intentionally hidden from Telegram.'
-            : $exception->getMessage();
+        $message = $this->limit($rawMessage, 1800);
+        $details = "Exception: {$class}\n"
+            ."Category: {$category}\n"
+            ."Message: ".$this->limit($rawMessage, 7000)."\n"
+            ."Location: {$location}";
+
+        if ($exception->getCode() !== 0) {
+            $details .= "\nCode: ".$exception->getCode();
+        }
+
+        $previous = $exception->getPrevious();
+        if ($previous !== null && trim($previous->getMessage()) !== '' && trim($previous->getMessage()) !== $rawMessage) {
+            $details .= "\nPrevious: ".$previous::class;
+            $details .= "\nPrevious message: ".$this->limit(trim($previous->getMessage()), 3000);
+        }
+
+        $trace = $this->applicationTrace($exception, 8);
+        if ($trace !== '') {
+            $details .= "\n\nApplication trace:\n{$trace}";
+        }
 
         $this->enqueue(
             level: 'error',
             title: 'خطای داخلی سرویس',
-            description: 'یک خطای واقعی در اجرای Domestic Hotel رخ داده است.',
+            description: 'در اجرای Domestic Hotel خطا رخ داده است.',
             fields: [
                 'دسته' => $category,
                 'نوع خطا' => $class,
                 'علت' => $message,
                 'محل' => $location,
             ],
-            details: "Exception: {$class}\nMessage: {$message}\nLocation: {$location}",
+            details: $details,
             tags: ['DomesticHotel', 'InternalError'],
-            fingerprint: "internal|{$class}|{$location}|".$message,
+            fingerprint: 'internal|'.$class.'|'.$location.'|'.sha1($rawMessage),
         );
     }
 
     /**
-     * Explicit extension point for sanitized application alerts.
+     * Explicit extension point for application alerts.
      *
      * @param array<string, string|int> $fields
      */
@@ -253,6 +274,95 @@ final class TelegramAlertService
             tags: $tags,
             fingerprint: 'custom|'.sha1($title.'|'.$description.'|'.json_encode($fields)),
         );
+    }
+
+    private function applicationLocation(Throwable $exception): string
+    {
+        foreach ($exception->getTrace() as $frame) {
+            $file = $frame['file'] ?? null;
+            $line = $frame['line'] ?? null;
+
+            if (!is_string($file) || !is_int($line)) {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', $file);
+            if (str_contains($normalized, '/vendor/')) {
+                continue;
+            }
+
+            return $this->relativeLocation($file, $line);
+        }
+
+        return $this->relativeLocation($exception->getFile(), $exception->getLine());
+    }
+
+    private function applicationTrace(Throwable $exception, int $limit): string
+    {
+        $lines = [];
+
+        foreach ($exception->getTrace() as $frame) {
+            $file = $frame['file'] ?? null;
+            $line = $frame['line'] ?? null;
+
+            if (!is_string($file) || !is_int($line)) {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', $file);
+            if (str_contains($normalized, '/vendor/')) {
+                continue;
+            }
+
+            $call = '';
+            if (isset($frame['class']) && is_string($frame['class'])) {
+                $call .= $frame['class'];
+            }
+            if (isset($frame['type']) && is_string($frame['type'])) {
+                $call .= $frame['type'];
+            }
+            if (isset($frame['function']) && is_string($frame['function'])) {
+                $call .= $frame['function'];
+            }
+
+            $location = $this->relativeLocation($file, $line);
+            $lines[] = $call === '' ? $location : $location.' '.$call;
+
+            if (count($lines) >= $limit) {
+                break;
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function relativeLocation(string $file, int $line): string
+    {
+        $normalized = str_replace('\\', '/', $file);
+        $base = str_replace('\\', '/', rtrim(base_path(), '/\\')).'/';
+
+        if (str_starts_with($normalized, $base)) {
+            $normalized = substr($normalized, strlen($base));
+        }
+
+        return $normalized.':'.$line;
+    }
+
+    private function limit(string $value, int $max): string
+    {
+        if ($max < 1) {
+            return '';
+        }
+
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            return mb_strlen($value, 'UTF-8') <= $max
+                ? $value
+                : mb_substr($value, 0, $max, 'UTF-8').'...';
+        }
+
+        return strlen($value) <= $max
+            ? $value
+            : substr($value, 0, $max).'...';
     }
 
     /**
