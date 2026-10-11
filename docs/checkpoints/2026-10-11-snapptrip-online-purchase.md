@@ -53,6 +53,8 @@ If a booking is already confirmed and the final provider price is greater than t
 - terminal failure: `failed`, `payment_failed`, `expired`, `availability_failed`, `availability_rejected`, `overbook`
 - unknown states move to `under_review` instead of being guessed
 
+The mandatory GET immediately after confirm can temporarily still return `draft` or `payment_on`. After a confirm has already been submitted, those states are treated as transient and polled instead of causing an immediate manual fallback.
+
 `issue_failed (7)` is not used for automatic provider failure; that status remains the explicit panel rejection state.
 
 ## Recovery actions
@@ -65,6 +67,8 @@ Admin endpoints:
 Retry resumes an existing non-terminal booking code when possible. Terminal failures and price-increase retries clear provider booking fields and start a new provider booking.
 
 Convert-to-manual changes only the selected purchase to offline/manual and creates the existing `reservation_manual_purchases` row. It does not require the operator to re-create the reservation.
+
+Mixed online/manual reservations are protected: the manual workflow no longer rewrites sibling online purchases to offline/under-review, online purchases cannot be edited or paid through manual purchase endpoints until explicitly converted, and already-issued online purchases remain immutable while the converted purchase is completed manually.
 
 ## Provider capability boundary
 
