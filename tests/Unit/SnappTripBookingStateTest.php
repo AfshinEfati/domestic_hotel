@@ -13,7 +13,13 @@ class SnappTripBookingStateTest extends TestCase
         $this->assertTrue(SnappTripBookingState::needsConfirm('draft'));
         $this->assertTrue(SnappTripBookingState::needsConfirm('payment_on'));
 
-        foreach (['availability_checking', 'availability_pending', 'availability_confirmed'] as $state) {
+        foreach ([
+            'draft',
+            'payment_on',
+            'availability_checking',
+            'availability_pending',
+            'availability_confirmed',
+        ] as $state) {
             $this->assertTrue(SnappTripBookingState::isPending($state));
         }
 
