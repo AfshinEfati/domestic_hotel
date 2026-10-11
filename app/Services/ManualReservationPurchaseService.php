@@ -62,6 +62,10 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
 
+            if (isset($payload['hotel']) || !empty($payload['rooms'])) {
+                $this->assertStructureCanChange($reservation);
+            }
+
             $accCode = $this->requiredAccCode($payload);
 
             if (isset($payload['hotel']) && is_array($payload['hotel'])) {
@@ -121,6 +125,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         return DB::transaction(function () use ($reservationId, $payload): Reservation {
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
+            $this->assertStructureCanChange($reservation);
 
             $accCode = $this->requiredAccCode($payload);
             $this->applyHotel($reservation, $payload);
@@ -135,6 +140,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         return DB::transaction(function () use ($reservationId, $reservationHotelId, $accCode): Reservation {
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
+            $this->assertStructureCanChange($reservation);
 
             $hotel = $this->hotels->findForReservation($reservationId, $reservationHotelId);
             if ($hotel === null) {
@@ -153,6 +159,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         return DB::transaction(function () use ($reservationId, $payload): Reservation {
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
+            $this->assertStructureCanChange($reservation);
 
             $accCode = $this->requiredAccCode($payload);
             $this->applyRoom($reservation, $payload);
@@ -167,6 +174,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         return DB::transaction(function () use ($reservationId, $reservationRoomId, $accCode): Reservation {
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
+            $this->assertStructureCanChange($reservation);
 
             $room = $this->findRoomForReservation($reservation, $reservationRoomId);
             $this->selectRoomModel($reservation, $room);
@@ -181,6 +189,7 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         return DB::transaction(function () use ($reservationId, $payload): Reservation {
             $reservation = $this->lock($reservationId);
             $this->assertEditable($reservation);
+            $this->assertStructureCanChange($reservation);
 
             $accCode = $this->requiredAccCode($payload);
             $assignments = $payload['rooms'] ?? [];
@@ -298,6 +307,12 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
                     ->all();
 
                 if ($segmentRoomIds !== $finalRoomIds) {
+                    if ((int) $singlePurchase->purchase_mode === PurchaseMethod::ONLINE) {
+                        throw new InvalidArgumentException(
+                            'Issued or pending online purchase segments cannot be rebuilt from the manual workflow.'
+                        );
+                    }
+
                     $this->rebuildSegments(
                         $reservation,
                         $singlePurchase,
@@ -312,6 +327,21 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             foreach ($currentPurchases as $purchase) {
                 $purchase = $this->purchases->findForReservation($reservationId, (int) $purchase->id)
                     ?? throw new InvalidArgumentException('Reservation purchase was not found.');
+
+                if ((int) $purchase->purchase_mode === PurchaseMethod::ONLINE) {
+                    if (!in_array((int) $purchase->status, [
+                        ReservationStatus::ISSUE_SUCCESS,
+                        ReservationStatus::PAYMENT_REQUIRED,
+                    ], true)) {
+                        throw new InvalidArgumentException(
+                            "Online purchase {$purchase->id} must be retried or converted to manual before manual confirmation."
+                        );
+                    }
+
+                    // Already-issued online purchases are immutable audit records. The
+                    // manual flow only completes purchases explicitly converted offline.
+                    continue;
+                }
 
                 if ($purchase->purchase_amount === null || (int) $purchase->purchase_amount <= 0) {
                     throw new InvalidArgumentException(
@@ -348,8 +378,28 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
                 $this->manualPurchases->updateForPurchase((int) $purchase->id, $manualData);
             }
 
+            $fresh = $this->reload($reservationId);
+            $statuses = $this->reservationPurchases($fresh)
+                ->pluck('status')
+                ->map(fn ($status) => (int) $status);
+
+            if ($statuses->isEmpty() || !$statuses->every(
+                fn (int $status): bool => in_array($status, [
+                    ReservationStatus::ISSUE_SUCCESS,
+                    ReservationStatus::PAYMENT_REQUIRED,
+                ], true)
+            )) {
+                throw new InvalidArgumentException(
+                    'Every purchase must be issued before the reservation can be confirmed.'
+                );
+            }
+
+            $reservationStatus = $statuses->contains(ReservationStatus::PAYMENT_REQUIRED)
+                ? ReservationStatus::PAYMENT_REQUIRED
+                : ReservationStatus::ISSUE_SUCCESS;
+
             $this->reservations->update($reservationId, [
-                'status' => ReservationStatus::ISSUE_SUCCESS,
+                'status' => $reservationStatus,
             ]);
 
             return $this->reload($reservationId);
@@ -363,6 +413,13 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             $accCode = $this->requiredAccCode($payload);
 
             foreach ($this->reservationPurchases($reservation) as $purchase) {
+                // Do not rewrite a provider-issued online purchase into a panel/manual
+                // rejection. Preserve its provider audit record even when the overall
+                // reservation can no longer be fulfilled.
+                if ((int) $purchase->purchase_mode === PurchaseMethod::ONLINE) {
+                    continue;
+                }
+
                 $this->purchases->update($purchase->id, [
                     'status' => ReservationStatus::ISSUE_FAILED,
                 ]);
@@ -534,6 +591,12 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
             throw new InvalidArgumentException('Reservation purchase was not found.');
         }
 
+        if ((int) $purchase->purchase_mode === PurchaseMethod::ONLINE) {
+            throw new InvalidArgumentException(
+                'Online purchase must be converted to manual before it can be edited in the manual workflow.'
+            );
+        }
+
         $finalHotel = $this->requiredFinalHotel($reservation);
         $updates = [
             'reservation_hotel_id' => $finalHotel->id,
@@ -607,6 +670,12 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         $purchase = $this->purchases->findForReservation((int) $reservation->id, $purchaseId);
         if ($purchase === null) {
             throw new InvalidArgumentException('Reservation purchase was not found.');
+        }
+
+        if ((int) $purchase->purchase_mode === PurchaseMethod::ONLINE) {
+            throw new InvalidArgumentException(
+                'Payments for an online purchase cannot be recorded through the manual workflow.'
+            );
         }
 
         $source = (int) ($payload['source'] ?? 0);
@@ -794,14 +863,35 @@ final readonly class ManualReservationPurchaseService implements ManualReservati
         ]);
 
         foreach ($this->reservationPurchases($reservation) as $purchase) {
+            if ((int) $purchase->purchase_mode !== PurchaseMethod::OFFLINE) {
+                continue;
+            }
+
             $this->purchases->update($purchase->id, [
                 'status' => ReservationStatus::UNDER_REVIEW,
-                'purchase_mode' => PurchaseMethod::OFFLINE,
             ]);
 
             $this->manualPurchases->updateForPurchase((int) $purchase->id, [
                 'acc_code' => $accCode,
             ]);
+        }
+    }
+
+    private function assertStructureCanChange(Reservation $reservation): void
+    {
+        $hasIssuedOnlinePurchase = $this->reservationPurchases($reservation)
+            ->contains(fn (ReservationPurchase $purchase): bool =>
+                (int) $purchase->purchase_mode === PurchaseMethod::ONLINE
+                && in_array((int) $purchase->status, [
+                    ReservationStatus::ISSUE_SUCCESS,
+                    ReservationStatus::PAYMENT_REQUIRED,
+                ], true)
+            );
+
+        if ($hasIssuedOnlinePurchase) {
+            throw new InvalidArgumentException(
+                'Hotel, room and guest structure cannot change after an online provider purchase has been issued.'
+            );
         }
     }
 
