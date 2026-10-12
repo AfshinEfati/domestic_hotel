@@ -14,6 +14,7 @@ use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCancellationsCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncCatalogCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncHotelDetailsCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\SyncPricesCommand;
+use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncBalanceJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncCatalogJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncPendingCancellationsJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
@@ -71,6 +72,17 @@ final class SnappTripServiceProvider extends ServiceProvider
         })
             ->name('snapptrip-v2-static-catalog')
             ->dailyAt('03:30')
+            ->timezone('Asia/Tehran')
+            ->withoutOverlapping();
+
+        Schedule::call(function (): void {
+            $guard = app(ProviderOutboundGuard::class);
+            if ($guard->allows(SnappTripSettings::PROVIDER_CODE)) {
+                SyncBalanceJob::dispatch()->onQueue('snapptrip-operations');
+            }
+        })
+            ->name('snapptrip-v2-balance')
+            ->twiceDaily(0, 12)
             ->timezone('Asia/Tehran')
             ->withoutOverlapping();
 
