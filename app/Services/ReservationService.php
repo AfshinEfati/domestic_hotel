@@ -22,6 +22,7 @@ use App\Support\Reservation\ReservationHotelType;
 use App\Support\Reservation\ReservationRoomType;
 use App\Support\Reservation\ReservationStatus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -53,6 +54,11 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         // It runs before the first INSERT, while provider validation remains a separate
         // post-create operational check for the agents' purchase workflow.
         $data = $this->createValidator->validateGuestSelection($data);
+
+        // A reservation is a single-provider purchase unit. Availability has already
+        // selected the cheapest provider capable of satisfying the whole request, so a
+        // mixed-provider payload is stale/invalid and must never be persisted as final.
+        $this->assertSingleProviderSelection($data);
 
         $originalTotal = (int) $data['expected_total_price'];
         $accommodationId = (int) $data['hotel']['accommodation_id'];
@@ -190,6 +196,53 @@ class ReservationService extends BaseService implements ReservationServiceInterf
         return $this->reservationRepository->findByReservationNumber((string) $reservation->id)
             ?? $this->reservationRepository->find($reservation->id)
             ?? $reservation;
+    }
+
+    private function assertSingleProviderSelection(array $data): void
+    {
+        $selectedProviderId = null;
+
+        foreach ($data['hotel']['rooms'] as $index => $roomData) {
+            $calendarEntry = collect($roomData['calendar'] ?? [])
+                ->firstWhere('date', $data['check_in']);
+
+            if ($calendarEntry === null) {
+                throw ValidationException::withMessages([
+                    "hotel.rooms.$index.calendar" => [
+                        'Selected room does not contain a calendar entry for check-in date.',
+                    ],
+                ]);
+            }
+
+            $calendar = $this->calendarService->show((int) $calendarEntry['calendar_id']);
+            if ($calendar === null || $calendar->provider_id === null) {
+                throw ValidationException::withMessages([
+                    "hotel.rooms.$index.calendar" => [
+                        'Selected room does not have a valid provider.',
+                    ],
+                ]);
+            }
+
+            $providerId = (int) $calendar->provider_id;
+            if ($selectedProviderId === null) {
+                $selectedProviderId = $providerId;
+                continue;
+            }
+
+            if ($selectedProviderId !== $providerId) {
+                throw ValidationException::withMessages([
+                    'hotel.rooms' => [
+                        'All selected rooms in one reservation must belong to the same provider.',
+                    ],
+                ]);
+            }
+        }
+
+        if ($selectedProviderId === null) {
+            throw ValidationException::withMessages([
+                'hotel.rooms' => ['Reservation must contain at least one room with a valid provider.'],
+            ]);
+        }
     }
 
     public function store(mixed $payload): Reservation
