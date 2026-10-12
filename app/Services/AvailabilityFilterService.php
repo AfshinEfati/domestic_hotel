@@ -217,83 +217,134 @@ class AvailabilityFilterService
         }
         unset($request);
 
-        usort(
-            $requests,
-            static fn (array $a, array $b): int =>
-                (count($a['options']) <=> count($b['options'])) ?: ($a['index'] <=> $b['index'])
-        );
-
-        $minimumRemaining = array_fill(0, count($requests) + 1, 0);
-        for ($i = count($requests) - 1; $i >= 0; $i--) {
-            $minimumRemaining[$i] = $minimumRemaining[$i + 1]
-                + $requests[$i]['options'][0]['price']['total_price'];
+        $providerIds = [];
+        foreach ($requests as $request) {
+            foreach ($request['options'] as $option) {
+                $providerIds[(int) $option['provider_id']] = true;
+            }
         }
+        $providerIds = array_keys($providerIds);
+        sort($providerIds, SORT_NUMERIC);
 
         $bestCost = PHP_INT_MAX;
+        $bestProviderId = null;
         $bestSelection = [];
-        $search = function (
-            int $depth,
-            int $cost,
-            array $used,
-            array $limits,
-            array $selection
-        ) use (
-            &$search,
-            &$bestCost,
-            &$bestSelection,
-            $requests,
-            $dates,
-            $minimumRemaining
-        ): void {
-            if ($depth === count($requests)) {
-                if ($cost < $bestCost) {
-                    $bestCost = $cost;
-                    $bestSelection = $selection;
+
+        foreach ($providerIds as $providerId) {
+            $providerRequests = [];
+            $providerCanFulfillRequest = true;
+
+            foreach ($requests as $request) {
+                $providerOptions = array_values(array_filter(
+                    $request['options'],
+                    static fn (array $option): bool => (int) $option['provider_id'] === (int) $providerId
+                ));
+
+                if ($providerOptions === []) {
+                    $providerCanFulfillRequest = false;
+                    break;
                 }
-                return;
-            }
-            if ($cost + $minimumRemaining[$depth] >= $bestCost) {
-                return;
+
+                $providerRequest = $request;
+                $providerRequest['options'] = $providerOptions;
+                $providerRequests[] = $providerRequest;
             }
 
-            $request = $requests[$depth];
-            foreach ($request['options'] as $option) {
-                $roomId = (int) $option['room']->id;
-                $inventoryPoolKey = $option['provider_id'] . ':' . $roomId;
-                $newUsed = ($used[$inventoryPoolKey] ?? 0) + 1;
-                $newLimits = $limits;
-                $valid = true;
+            if (!$providerCanFulfillRequest) {
+                continue;
+            }
 
-                foreach ($dates as $day) {
-                    $limit = min(
-                        $limits[$inventoryPoolKey][$day] ?? PHP_INT_MAX,
-                        $option['inventory_by_day'][$day]
-                    );
-                    if ($newUsed > $limit) {
-                        $valid = false;
-                        break;
+            usort(
+                $providerRequests,
+                static fn (array $a, array $b): int =>
+                    (count($a['options']) <=> count($b['options'])) ?: ($a['index'] <=> $b['index'])
+            );
+
+            $minimumRemaining = array_fill(0, count($providerRequests) + 1, 0);
+            for ($i = count($providerRequests) - 1; $i >= 0; $i--) {
+                $minimumRemaining[$i] = $minimumRemaining[$i + 1]
+                    + $providerRequests[$i]['options'][0]['price']['total_price'];
+            }
+
+            $providerBestCost = PHP_INT_MAX;
+            $providerBestSelection = [];
+            $search = function (
+                int $depth,
+                int $cost,
+                array $used,
+                array $limits,
+                array $selection
+            ) use (
+                &$search,
+                &$providerBestCost,
+                &$providerBestSelection,
+                $providerRequests,
+                $dates,
+                $minimumRemaining
+            ): void {
+                if ($depth === count($providerRequests)) {
+                    if ($cost < $providerBestCost) {
+                        $providerBestCost = $cost;
+                        $providerBestSelection = $selection;
                     }
-                    $newLimits[$inventoryPoolKey][$day] = $limit;
+                    return;
                 }
-                if (!$valid) {
-                    continue;
+                if ($cost + $minimumRemaining[$depth] >= $providerBestCost) {
+                    return;
                 }
 
-                $newUsedByPool = $used;
-                $newUsedByPool[$inventoryPoolKey] = $newUsed;
-                $newSelection = $selection;
-                $newSelection[$request['index']] = $option;
-                $search(
-                    $depth + 1,
-                    $cost + $option['price']['total_price'],
-                    $newUsedByPool,
-                    $newLimits,
-                    $newSelection
-                );
+                $request = $providerRequests[$depth];
+                foreach ($request['options'] as $option) {
+                    $roomId = (int) $option['room']->id;
+                    $inventoryPoolKey = $option['provider_id'] . ':' . $roomId;
+                    $newUsed = ($used[$inventoryPoolKey] ?? 0) + 1;
+                    $newLimits = $limits;
+                    $valid = true;
+
+                    foreach ($dates as $day) {
+                        $limit = min(
+                            $limits[$inventoryPoolKey][$day] ?? PHP_INT_MAX,
+                            $option['inventory_by_day'][$day]
+                        );
+                        if ($newUsed > $limit) {
+                            $valid = false;
+                            break;
+                        }
+                        $newLimits[$inventoryPoolKey][$day] = $limit;
+                    }
+                    if (!$valid) {
+                        continue;
+                    }
+
+                    $newUsedByPool = $used;
+                    $newUsedByPool[$inventoryPoolKey] = $newUsed;
+                    $newSelection = $selection;
+                    $newSelection[$request['index']] = $option;
+                    $search(
+                        $depth + 1,
+                        $cost + $option['price']['total_price'],
+                        $newUsedByPool,
+                        $newLimits,
+                        $newSelection
+                    );
+                }
+            };
+
+            $search(0, 0, [], [], []);
+            if (count($providerBestSelection) !== count($requestedRooms)) {
+                continue;
             }
-        };
 
-        $search(0, 0, [], [], []);
+            if (
+                $providerBestCost < $bestCost
+                || ($providerBestCost === $bestCost && ($bestProviderId === null || $providerId < $bestProviderId))
+            ) {
+                $bestCost = $providerBestCost;
+                $bestProviderId = $providerId;
+                $bestSelection = $providerBestSelection;
+            }
+        }
+
         if (count($bestSelection) !== count($requestedRooms)) {
             return collect();
         }
