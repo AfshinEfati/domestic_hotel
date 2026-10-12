@@ -8,6 +8,7 @@ use App\Models\ReservationRoom;
 use App\Modules\HotelProviders\V2\Shared\Contracts\OnlinePurchaseHandler;
 use App\Modules\HotelProviders\V2\Shared\OnlinePurchaseExecutionResult;
 use App\Modules\HotelProviders\V2\SnappTrip\Exceptions\SnappTripRateLimitExceeded;
+use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncBalanceJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripBookingState;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
@@ -292,6 +293,7 @@ final readonly class SnappTripOnlinePurchaseHandler implements OnlinePurchaseHan
         ]);
 
         $this->reconcileReservation($reservationId);
+        SyncBalanceJob::dispatch()->onQueue('snapptrip-operations');
 
         return OnlinePurchaseExecutionResult::done();
     }
