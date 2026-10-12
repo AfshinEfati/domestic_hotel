@@ -16,8 +16,8 @@ use App\Services\Contracts\RoomCalendarServiceInterface;
 use App\Services\ReservationCreateValidator;
 use App\Services\ReservationService;
 use Illuminate\Validation\ValidationException;
-use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use Tests\TestCase;
 
 class ReservationSingleProviderSelectionTest extends TestCase
 {
@@ -31,8 +31,9 @@ class ReservationSingleProviderSelectionTest extends TestCase
                 [202, $this->calendar(202, 7)],
             ]);
 
-        $method = new ReflectionMethod($this->service($calendars), 'assertSingleProviderSelection');
-        $method->invoke($this->service($calendars), $this->payload(101, 202));
+        $service = $this->service($calendars);
+        $method = new ReflectionMethod($service, 'assertSingleProviderSelection');
+        $method->invoke($service, $this->payload(101, 202));
 
         $this->addToAssertionCount(1);
     }
