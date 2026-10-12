@@ -3,12 +3,13 @@
 namespace App\Modules\HotelProviders\V2\SnappTrip\Application;
 
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\Application\Contracts\BalanceSynchronizer;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripOperationsRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripGatewayFactory;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use RuntimeException;
 
-final class SyncBalance
+final class SyncBalance implements BalanceSynchronizer
 {
     public function __construct(
         private readonly ProviderOutboundGuard $outboundGuard,
