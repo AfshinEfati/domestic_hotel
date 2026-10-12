@@ -19,6 +19,43 @@ final class SnappTripAvailabilityRepository
     }
 
     /**
+     * @param array<int,string|int> $providerRoomIds
+     * @return string[]
+     */
+    public function missingRoomMappings(
+        Provider $provider,
+        AccommodationProviderMap $map,
+        array $providerRoomIds,
+    ): array {
+        if ((int) $map->provider_id !== (int) $provider->id) {
+            throw new RuntimeException('SnappTrip availability map belongs to another provider.');
+        }
+
+        $roomIds = collect($providerRoomIds)
+            ->map(static fn ($roomId): string => trim((string) $roomId))
+            ->filter(static fn (string $roomId): bool => $roomId !== '')
+            ->unique()
+            ->values();
+
+        if ($roomIds->isEmpty()) {
+            return [];
+        }
+
+        $mapped = RoomTypeProviderMap::query()
+            ->where('provider_id', $provider->id)
+            ->where('accommodation_provider_map_id', $map->id)
+            ->whereIn('provider_room_type_id', $roomIds->all())
+            ->pluck('provider_room_type_id')
+            ->map(static fn ($roomId): string => (string) $roomId)
+            ->flip();
+
+        return $roomIds
+            ->reject(static fn (string $roomId): bool => $mapped->has($roomId))
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param array<int,array<string,mixed>> $rows
      * @param array<int,array<string,mixed>> $packages
      * @return Collection<int,array<string,mixed>> persisted normalized rows for live validation

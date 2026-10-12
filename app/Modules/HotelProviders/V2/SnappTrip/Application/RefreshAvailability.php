@@ -3,7 +3,9 @@
 namespace App\Modules\HotelProviders\V2\SnappTrip\Application;
 
 use App\Models\AccommodationProviderMap;
+use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\Exceptions\SnappTripMappingNotReady;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripAvailabilityRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripCalendarWindowRepository;
 use App\Modules\HotelProviders\V2\SnappTrip\Infrastructure\Persistence\SnappTripRefreshHorizonRepository;
@@ -26,6 +28,7 @@ final class RefreshAvailability
         private readonly SnappTripCalendarWindowRepository $calendarWindows,
         private readonly SnappTripRefreshHorizonRepository $refreshHorizons,
         private readonly AccommodationProviderMapRepositoryInterface $maps,
+        private readonly SyncHotelDetails $hotelDetails,
     ) {
     }
 
@@ -165,6 +168,11 @@ final class RefreshAvailability
                 continue;
             }
 
+            // A provider calendar can expose a room before our periodic static sync
+            // has seen it. Repair that local static-data gap once for this hotel, then
+            // persist the already-fetched calendar payload without requesting it again.
+            $this->recoverMissingRoomMappings($provider, $map, $domestic, $foreign);
+
             $resultRows = $resultRows->concat($this->availability->persist(
                 $provider,
                 $map,
@@ -182,5 +190,63 @@ final class RefreshAvailability
         }
 
         return $resultRows->values();
+    }
+
+    /**
+     * @param array<string,mixed> $domestic
+     * @param array<string,mixed> $foreign
+     */
+    private function recoverMissingRoomMappings(
+        Provider $provider,
+        AccommodationProviderMap $map,
+        array $domestic,
+        array $foreign,
+    ): void {
+        $roomIds = $this->providerRoomIds($domestic, $foreign);
+        if ($roomIds === []) {
+            return;
+        }
+
+        $missing = $this->availability->missingRoomMappings($provider, $map, $roomIds);
+        if ($missing === []) {
+            return;
+        }
+
+        $providerPropertyId = trim((string) $map->provider_property_id);
+        $this->hotelDetails->execute([$providerPropertyId]);
+
+        $missing = $this->availability->missingRoomMappings($provider, $map, $roomIds);
+        if ($missing !== []) {
+            // Static refresh was attempted successfully, but SnappTrip's static rooms
+            // endpoint still does not describe every room present in its calendar.
+            // This is a data-readiness state, not an internal application failure.
+            throw new SnappTripMappingNotReady($providerPropertyId, $missing);
+        }
+    }
+
+    /**
+     * @param array<string,mixed> ...$payloads
+     * @return string[]
+     */
+    private function providerRoomIds(array ...$payloads): array
+    {
+        $ids = [];
+
+        foreach ($payloads as $payload) {
+            foreach (['rows', 'packages'] as $key) {
+                foreach (is_array($payload[$key] ?? null) ? $payload[$key] : [] as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+
+                    $roomId = trim((string) ($item['provider_room_type_id'] ?? ''));
+                    if ($roomId !== '') {
+                        $ids[$roomId] = true;
+                    }
+                }
+            }
+        }
+
+        return array_keys($ids);
     }
 }

@@ -6,6 +6,7 @@ use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
 use App\Domain\Hotel\Support\ProviderRefreshOutcome;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\Application\RefreshScheduledAvailability;
+use App\Modules\HotelProviders\V2\SnappTrip\Exceptions\SnappTripMappingNotReady;
 use App\Modules\HotelProviders\V2\SnappTrip\Exceptions\SnappTripRateLimitExceeded;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
@@ -74,6 +75,11 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             }
             try {
                 $refresh->execute($this->scheduleId, $this->accommodationId, $this->providerId, $this->days);
+            } catch (SnappTripMappingNotReady) {
+                // The current cycle discovered newer provider static data. The refresh
+                // path already attempted a targeted static resync; do not turn a still
+                // incomplete provider mapping into an exception/retry storm.
+                return;
             } catch (SnappTripRateLimitExceeded $exception) {
                 $this->release($exception->retryAfterSeconds);
             }
@@ -124,6 +130,16 @@ final class RefreshAvailabilityJob implements ShouldQueue, ShouldBeUnique
             }
 
             $coordinator->done($refreshStateId, $cycleKey);
+        } catch (SnappTripMappingNotReady) {
+            // A targeted static resync has already been attempted by RefreshAvailability.
+            // If the room is still absent, finish this provider cycle as mapping-not-ready.
+            // The next normal hotel cycle can self-heal without Telegram noise or a
+            // one-minute infinite retry loop.
+            $coordinator->attempted(
+                $refreshStateId,
+                $cycleKey,
+                ProviderRefreshOutcome::MAPPING_NOT_READY,
+            );
         } catch (SnappTripRateLimitExceeded $exception) {
             $coordinator->retry(
                 $refreshStateId,
