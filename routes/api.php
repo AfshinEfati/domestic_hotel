@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\V1\Admin\StateController;
 use App\Http\Controllers\Api\V1\Admin\SystemSettingController;
 use Illuminate\Support\Facades\Route;
 
+
 Route::group(['prefix' => 'v1'], function () {
     Route::group(['prefix' => 'admin'], function () {
         Route::apiResource('accommodation-types', AccommodationTypeController::class);
