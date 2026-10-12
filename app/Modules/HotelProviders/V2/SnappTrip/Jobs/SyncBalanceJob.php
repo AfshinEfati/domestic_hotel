@@ -7,13 +7,13 @@ use App\Modules\HotelProviders\V2\SnappTrip\Application\SyncBalance;
 use App\Modules\HotelProviders\V2\SnappTrip\Exceptions\SnappTripRateLimitExceeded;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-final class SyncBalanceJob implements ShouldQueue, ShouldBeUnique
+final class SyncBalanceJob implements ShouldQueue, ShouldBeUniqueUntilProcessing
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
