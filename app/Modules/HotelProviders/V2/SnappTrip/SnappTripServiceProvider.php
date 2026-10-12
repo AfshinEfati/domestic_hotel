@@ -4,7 +4,9 @@ namespace App\Modules\HotelProviders\V2\SnappTrip;
 
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
+use App\Modules\HotelProviders\V2\SnappTrip\Application\Contracts\BalanceSynchronizer;
 use App\Modules\HotelProviders\V2\SnappTrip\Application\SnappTripOnlinePurchaseHandler;
+use App\Modules\HotelProviders\V2\SnappTrip\Application\SyncBalance;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\CalendarWindowCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\HealthCommand;
 use App\Modules\HotelProviders\V2\SnappTrip\Console\ProbeCalendarCommand;
@@ -25,6 +27,8 @@ final class SnappTripServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(BalanceSynchronizer::class, SyncBalance::class);
+
         $this->app->afterResolving(
             HotelProviderRegistry::class,
             function (HotelProviderRegistry $registry): void {
