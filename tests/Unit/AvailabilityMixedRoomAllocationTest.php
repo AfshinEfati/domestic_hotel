@@ -199,7 +199,7 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
         );
     }
 
-    public function test_same_canonical_room_can_use_separate_inventory_from_different_providers(): void
+    public function test_hotel_is_rejected_when_no_single_provider_can_fulfill_full_request(): void
     {
         $result = $this->select(
             [$this->request(), $this->request()],
@@ -223,10 +223,57 @@ class AvailabilityMixedRoomAllocationTest extends TestCase
             ]],
         );
 
+        $this->assertCount(0, $result);
+    }
+
+    public function test_cheapest_complete_provider_is_chosen_by_total_request_cost_without_mixing_providers(): void
+    {
+        $result = $this->select(
+            [$this->request(1), $this->request(2)],
+            [
+                [
+                    'id' => 800,
+                    'capacity' => 1,
+                    'offers' => [
+                        [
+                            'provider_id' => 1,
+                            'rate_plan_id' => 940,
+                            'inventory' => 1,
+                            'price' => 10000000,
+                        ],
+                        [
+                            'provider_id' => 2,
+                            'rate_plan_id' => 950,
+                            'inventory' => 1,
+                            'price' => 40000000,
+                        ],
+                    ],
+                ],
+                [
+                    'id' => 801,
+                    'capacity' => 2,
+                    'offers' => [
+                        [
+                            'provider_id' => 1,
+                            'rate_plan_id' => 941,
+                            'inventory' => 1,
+                            'price' => 100000000,
+                        ],
+                        [
+                            'provider_id' => 2,
+                            'rate_plan_id' => 951,
+                            'inventory' => 1,
+                            'price' => 50000000,
+                        ],
+                    ],
+                ],
+            ],
+        );
+
         $this->assertCount(2, $result);
-        $this->assertSame([1, 2], $result->pluck('provider_id')->sort()->values()->all());
-        $this->assertSame([1, 1], $result->pluck('required_inventory')->sort()->values()->all());
-        $this->assertSame(21000000, $result->sum('total_price'));
+        $this->assertSame([2, 2], $result->pluck('provider_id')->all());
+        $this->assertSame([800, 801], $result->pluck('id')->all());
+        $this->assertSame(90000000, $result->sum('total_price'));
     }
 
     public function test_rate_plans_from_same_provider_share_the_same_room_inventory_pool(): void
