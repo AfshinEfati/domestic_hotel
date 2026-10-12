@@ -71,74 +71,57 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
                 throw new InvalidArgumentException('Reservation is not ready to receive a purchase request.');
             }
 
-            foreach ($rooms as $room) {
-                if ($room->provider_id === null) {
-                    throw new InvalidArgumentException(
-                        "Reservation room {$room->id} has no validated provider."
-                    );
-                }
-            }
+            $providerId = $this->singleProviderId($rooms);
+            $quotedAmount = $this->quotedAmount($rooms);
 
-            $roomsByProvider = $rooms->groupBy(
-                fn ($room): int => (int) $room->provider_id
+            $resolution = $this->resolver->resolveAndRecord(
+                $reservationId,
+                $providerId,
+                $quotedAmount,
             );
 
-            foreach ($roomsByProvider as $providerId => $providerRooms) {
-                $providerId = (int) $providerId;
-                $quotedAmount = $this->quotedAmount($providerRooms);
-                $resolution = $this->resolver->resolveAndRecord(
-                    $reservationId,
+            $provider = $this->providers->find($providerId)
+                ?? throw new InvalidArgumentException('Selected provider was not found.');
+
+            $handler = $resolution->purchaseMode === PurchaseMethod::ONLINE
+                ? $this->providerRegistry->resolveOnlinePurchaseHandler($provider, $this->container)
+                : null;
+
+            // ONLINE only means something when the provider has an executable booking
+            // handler. Until a legacy provider is migrated, safely route it to the
+            // already-tested manual workflow instead of leaving an unprocessed purchase.
+            if ($resolution->purchaseMode === PurchaseMethod::ONLINE && $handler === null) {
+                $this->createPurchase(
+                    $hotel->id,
                     $providerId,
+                    $rooms,
                     $quotedAmount,
+                    PurchaseMethod::OFFLINE,
+                    PurchaseManualReason::PROVIDER_MANUAL_ONLY,
+                    null,
+                    $reservation->check_in->format('Y-m-d'),
+                    $reservation->check_out->format('Y-m-d'),
                 );
-
-                $provider = $this->providers->find($providerId)
-                    ?? throw new InvalidArgumentException('Selected provider was not found.');
-
-                $handler = $resolution->purchaseMode === PurchaseMethod::ONLINE
-                    ? $this->providerRegistry->resolveOnlinePurchaseHandler($provider, $this->container)
-                    : null;
-
-                // ONLINE only means something when the provider has an executable booking
-                // handler. Until a legacy provider is migrated, safely route it to the
-                // already-tested manual workflow instead of leaving an unprocessed purchase.
-                if ($resolution->purchaseMode === PurchaseMethod::ONLINE && $handler === null) {
-                    $this->createPurchase(
-                        $hotel->id,
-                        $providerId,
-                        $providerRooms,
-                        $quotedAmount,
-                        PurchaseMethod::OFFLINE,
-                        PurchaseManualReason::PROVIDER_MANUAL_ONLY,
-                        null,
-                        $reservation->check_in->format('Y-m-d'),
-                        $reservation->check_out->format('Y-m-d'),
-                    );
-                    $this->manualReasons->store([
-                        'reservation_id' => $reservationId,
-                        'reason' => 'خرید آفلاین شد؛ اجرای خرید آنلاین این تأمین‌کننده هنوز در GDS ثبت نشده است.',
-                    ]);
-                    continue;
-                }
-
-                if ($resolution->purchaseMode === PurchaseMethod::OFFLINE) {
-                    $this->createPurchase(
-                        $hotel->id,
-                        $providerId,
-                        $providerRooms,
-                        $quotedAmount,
-                        PurchaseMethod::OFFLINE,
-                        $resolution->manualReason,
-                        $resolution->manualRuleId,
-                        $reservation->check_in->format('Y-m-d'),
-                        $reservation->check_out->format('Y-m-d'),
-                    );
-                    continue;
-                }
-
+                $this->manualReasons->store([
+                    'reservation_id' => $reservationId,
+                    'reason' => 'خرید آفلاین شد؛ اجرای خرید آنلاین این تأمین‌کننده هنوز در GDS ثبت نشده است.',
+                ]);
+            } elseif ($resolution->purchaseMode === PurchaseMethod::OFFLINE) {
+                $this->createPurchase(
+                    $hotel->id,
+                    $providerId,
+                    $rooms,
+                    $quotedAmount,
+                    PurchaseMethod::OFFLINE,
+                    $resolution->manualReason,
+                    $resolution->manualRuleId,
+                    $reservation->check_in->format('Y-m-d'),
+                    $reservation->check_out->format('Y-m-d'),
+                );
+            } else {
                 // SnappTrip does not allow different provider room IDs in one create
                 // request. Handler grouping keeps that provider rule outside the core.
-                foreach ($providerRooms->groupBy(
+                foreach ($rooms->groupBy(
                     fn ($room): string => $handler->groupingKey($room)
                 ) as $bookingRooms) {
                     $this->createPurchase(
@@ -167,6 +150,29 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
         $this->dispatchQueuedOnlinePurchases($reservation);
 
         return $reservation;
+    }
+
+    private function singleProviderId(Collection $rooms): int
+    {
+        $providerIds = [];
+
+        foreach ($rooms as $room) {
+            if ($room->provider_id === null) {
+                throw new InvalidArgumentException(
+                    "Reservation room {$room->id} has no validated provider."
+                );
+            }
+
+            $providerIds[(int) $room->provider_id] = true;
+        }
+
+        if (count($providerIds) !== 1) {
+            throw new InvalidArgumentException(
+                'Reservation final rooms must belong to exactly one provider.'
+            );
+        }
+
+        return (int) array_key_first($providerIds);
     }
 
     private function createPurchase(
