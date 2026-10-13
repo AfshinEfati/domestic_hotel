@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\DTOs\PurchaseResolutionDTO;
 use App\Models\Reservation;
+use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\ProviderCreditBalanceRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
@@ -26,6 +27,7 @@ class PurchaseResolver implements PurchaseResolverInterface
         private readonly PurchaseManualRuleRepositoryInterface $manualRuleRepository,
         private readonly ProviderCreditBalanceRepositoryInterface $creditBalanceRepository,
         private readonly ReservationManualReasonRepositoryInterface $manualReasonRepository,
+        private readonly HotelProviderRegistry $providerRegistry,
     ) {}
 
     public function resolve(int $reservationId, int $providerId, ?int $orderAmount = null): PurchaseResolutionDTO
@@ -128,6 +130,20 @@ class PurchaseResolver implements PurchaseResolverInterface
             );
         }
 
+        // Providers with an online preflight must not be rejected by a stale local
+        // credit snapshot. Their fresh preflight is the authoritative balance check
+        // immediately before any provider booking is dispatched.
+        if ($this->providerRegistry->hasOnlinePurchasePreflightHandler((string) $provider->code)) {
+            return new PurchaseResolutionDTO(
+                reservationId: (int) $reservation->id,
+                reservationHotelId: $hotel->id,
+                providerId: $providerId,
+                purchaseMode: PurchaseMethod::ONLINE,
+            );
+        }
+
+        // Legacy online providers without a fresh preflight keep the historical
+        // snapshot-based safety gate until they are migrated to the preflight flow.
         $credit = $this->creditBalanceRepository->findByProviderId($providerId);
 
         if ($credit === null || $credit->synced_at === null) {

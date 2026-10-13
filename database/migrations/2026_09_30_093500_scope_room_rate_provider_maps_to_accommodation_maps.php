@@ -161,6 +161,26 @@ return new class extends Migration {
 
     private function hasLeadingIndexExcept(string $table, string $column, string $excludedIndex): bool
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            foreach ($this->sqliteIndexes($table) as $index) {
+                $indexName = (string) ($index->name ?? '');
+                if ($indexName === '' || $indexName === $excludedIndex) {
+                    continue;
+                }
+
+                $columns = DB::select(
+                    'PRAGMA index_info("'.$this->escapeSqliteIdentifier($indexName).'")'
+                );
+                $first = $columns[0] ?? null;
+
+                if ($first !== null && (string) ($first->name ?? '') === $column) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         return DB::table('information_schema.statistics')
             ->whereRaw('table_schema = DATABASE()')
             ->where('table_name', $table)
@@ -172,11 +192,34 @@ return new class extends Migration {
 
     private function indexExists(string $table, string $indexName): bool
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            foreach ($this->sqliteIndexes($table) as $index) {
+                if ((string) ($index->name ?? '') === $indexName) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         return DB::table('information_schema.statistics')
             ->whereRaw('table_schema = DATABASE()')
             ->where('table_name', $table)
             ->where('index_name', $indexName)
             ->exists();
+    }
+
+    /** @return array<int, object> */
+    private function sqliteIndexes(string $table): array
+    {
+        return DB::select(
+            'PRAGMA index_list("'.$this->escapeSqliteIdentifier($table).'")'
+        );
+    }
+
+    private function escapeSqliteIdentifier(string $identifier): string
+    {
+        return str_replace('"', '""', $identifier);
     }
 
     private function deleteInvalidRoomCalendars(): void

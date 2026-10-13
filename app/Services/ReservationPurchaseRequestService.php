@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Reservation;
 use App\Models\ReservationPurchase;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
-use App\Modules\HotelProviders\V2\Shared\Jobs\ExecuteOnlineReservationPurchaseJob;
+use App\Modules\HotelProviders\V2\Shared\Jobs\PreflightOnlineReservationPurchasesJob;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualReasonRepositoryInterface;
@@ -60,8 +60,8 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
             }
 
             // A repeated whitelist callback after a successful first request is harmless.
-            // Online jobs are re-dispatched after the transaction; uniqueness prevents a
-            // parallel duplicate while allowing a lost queue dispatch to recover later.
+            // Online preflight is re-dispatched after the transaction; uniqueness prevents
+            // a parallel duplicate while allowing a lost queue dispatch to recover later.
             if ((int) $reservation->status === ReservationStatus::BOOK_REQUESTED
                 && $hotel->purchases->isNotEmpty()) {
                 return $this->reload($reservationId);
@@ -145,8 +145,8 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
             return $this->reload($reservationId);
         });
 
-        // Provider I/O is never executed in the request transaction. The caller gets
-        // BOOK_REQUESTED immediately while queue workers perform online procurement.
+        // Provider I/O is never executed in the request transaction. A reservation/provider
+        // preflight runs first; only a successful preflight may dispatch provider bookings.
         $this->dispatchQueuedOnlinePurchases($reservation);
 
         return $reservation;
@@ -241,19 +241,29 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
                 (int) $purchase->purchase_mode === PurchaseMethod::ONLINE
                 && (int) $purchase->status === ReservationStatus::BOOK_REQUESTED
                 && $purchase->provider !== null
-            );
+            )
+            ->unique('id')
+            ->values();
 
-        foreach ($purchases as $purchase) {
+        foreach ($purchases->groupBy(fn ($purchase): int => (int) $purchase->provider_id) as $providerPurchases) {
+            $purchase = $providerPurchases->first();
+            $provider = $purchase?->provider;
+            if ($provider === null) {
+                continue;
+            }
+
             $handler = $this->providerRegistry->resolveOnlinePurchaseHandler(
-                $purchase->provider,
+                $provider,
                 $this->container,
             );
             if ($handler === null) {
                 continue;
             }
 
-            ExecuteOnlineReservationPurchaseJob::dispatch((int) $purchase->id)
-                ->onQueue($handler->queue());
+            PreflightOnlineReservationPurchasesJob::dispatch(
+                (int) $reservation->id,
+                (int) $provider->id,
+            )->onQueue($handler->queue());
         }
     }
 

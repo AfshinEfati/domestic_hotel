@@ -71,5 +71,5 @@ Route::group(['prefix' => 'v1'], function () {
         Route::apiResource('rules', RuleController::class);
     });
 
-    require_once 'Front.php';
+    require __DIR__.'/Front.php';
 });

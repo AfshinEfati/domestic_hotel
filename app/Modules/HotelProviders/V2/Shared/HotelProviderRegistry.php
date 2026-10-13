@@ -6,6 +6,7 @@ use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\Contracts\OnlinePurchaseHandler;
+use App\Modules\HotelProviders\V2\Shared\Contracts\OnlinePurchasePreflightHandler;
 use Closure;
 use Illuminate\Contracts\Container\Container;
 use RuntimeException;
@@ -20,6 +21,9 @@ final class HotelProviderRegistry
 
     /** @var array<string, class-string<OnlinePurchaseHandler>> */
     private array $onlinePurchaseHandlers = [];
+
+    /** @var array<string, class-string<OnlinePurchasePreflightHandler>> */
+    private array $onlinePurchasePreflightHandlers = [];
 
     public function registerAdapter(string $providerCode, Closure $factory): void
     {
@@ -36,6 +40,12 @@ final class HotelProviderRegistry
     public function registerOnlinePurchaseHandler(string $providerCode, string $handlerClass): void
     {
         $this->onlinePurchaseHandlers[$providerCode] = $handlerClass;
+    }
+
+    /** @param class-string<OnlinePurchasePreflightHandler> $handlerClass */
+    public function registerOnlinePurchasePreflightHandler(string $providerCode, string $handlerClass): void
+    {
+        $this->onlinePurchasePreflightHandlers[$providerCode] = $handlerClass;
     }
 
     public function resolveAdapter(Provider $provider, Container $container): ProviderAdapterInterface
@@ -61,6 +71,11 @@ final class HotelProviderRegistry
         return $this->priceRefreshHandlers[$providerCode] ?? null;
     }
 
+    public function hasOnlinePurchasePreflightHandler(string $providerCode): bool
+    {
+        return isset($this->onlinePurchasePreflightHandlers[$providerCode]);
+    }
+
     public function resolveOnlinePurchaseHandler(
         Provider $provider,
         Container $container,
@@ -73,6 +88,23 @@ final class HotelProviderRegistry
         $handler = $container->make($handlerClass);
         if (!$handler instanceof OnlinePurchaseHandler) {
             throw new RuntimeException("Invalid online purchase handler registered for {$provider->code}.");
+        }
+
+        return $handler;
+    }
+
+    public function resolveOnlinePurchasePreflightHandler(
+        Provider $provider,
+        Container $container,
+    ): ?OnlinePurchasePreflightHandler {
+        $handlerClass = $this->onlinePurchasePreflightHandlers[(string) $provider->code] ?? null;
+        if ($handlerClass === null) {
+            return null;
+        }
+
+        $handler = $container->make($handlerClass);
+        if (!$handler instanceof OnlinePurchasePreflightHandler) {
+            throw new RuntimeException("Invalid online purchase preflight handler registered for {$provider->code}.");
         }
 
         return $handler;
