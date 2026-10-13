@@ -124,7 +124,10 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
             'id' => $reservationId,
             'status' => ReservationStatus::ISSUE_SUCCESS,
         ]);
-        Queue::assertPushed(SyncBalanceJob::class, 2);
+
+        // Balance refresh is intentionally coalesced while one unique refresh job is
+        // still pending. Multiple successful purchases do not need parallel balance I/O.
+        Queue::assertPushed(SyncBalanceJob::class, 1);
         Http::assertSentCount(2);
 
         // A delivered duplicate execution job must be a no-op after terminal success.
@@ -134,7 +137,7 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
         ]);
 
         Http::assertSentCount(2);
-        Queue::assertPushed(SyncBalanceJob::class, 2);
+        Queue::assertPushed(SyncBalanceJob::class, 1);
     }
 
     public function test_terminal_provider_failure_moves_purchase_and_reservation_under_review(): void
@@ -178,10 +181,10 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
     }
 
     /**
-     * @param array<int,array{code:string,amount:int}> $purchaseDefinitions
+     * @param array<int,array{code:string,amount:int}> $purchaseSpecs
      * @return array{0:int,1:int,2:array<int,int>}
      */
-    private function reservationWithOnlinePurchases(array $purchaseDefinitions): array
+    private function reservationWithOnlinePurchases(array $purchaseSpecs): array
     {
         $now = now();
 
@@ -223,13 +226,13 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
         ]);
 
         $providerId = DB::table('providers')->insertGetId([
-            'fa_name' => 'اسنپ تریپ تست',
-            'en_name' => 'SnappTrip Test',
+            'fa_name' => 'اسنپ‌تریپ',
+            'en_name' => 'SnappTrip',
             'class' => null,
             'code' => SnappTripSettings::PROVIDER_CODE,
             'config' => json_encode([
-                'base_url' => 'https://snapptrip.test/',
-                'api_key' => 'feature-test-api-key',
+                'base_url' => 'https://snapptrip.test',
+                'api_key' => 'feature-test-key',
                 'purchase' => [
                     'online_enabled' => true,
                     'lock_enabled' => false,
@@ -245,15 +248,26 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
             'updated_at' => $now,
         ]);
 
+        DB::table('accommodation_provider_maps')->insert([
+            'accommodation_id' => $accommodationId,
+            'provider_id' => $providerId,
+            'provider_property_id' => '1001',
+            'is_disabled' => false,
+            'fa_name' => 'هتل تست جریان خرید',
+            'en_name' => 'Purchase Flow Test Hotel',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
         $reservationId = DB::table('reservations')->insertGetId([
-            'reservation_number' => 'execution-flow-'.uniqid('', true),
+            'reservation_number' => 'purchase-flow-'.uniqid('', true),
             'agency_id' => 7,
             'status' => ReservationStatus::BOOK_REQUESTED,
             'check_in' => '2026-11-10',
             'check_out' => '2026-11-12',
-            'sale_amount' => array_sum(array_column($purchaseDefinitions, 'amount')),
-            'initial_sale_amount' => array_sum(array_column($purchaseDefinitions, 'amount')),
-            'validated_sale_amount' => array_sum(array_column($purchaseDefinitions, 'amount')),
+            'sale_amount' => array_sum(array_column($purchaseSpecs, 'amount')),
+            'initial_sale_amount' => array_sum(array_column($purchaseSpecs, 'amount')),
+            'validated_sale_amount' => array_sum(array_column($purchaseSpecs, 'amount')),
             'validation_error' => null,
             'tax_amount' => 0,
             'commission_amount' => null,
@@ -276,16 +290,16 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
         ]);
 
         $purchaseIds = [];
-        foreach ($purchaseDefinitions as $definition) {
+        foreach ($purchaseSpecs as $spec) {
             $purchaseIds[] = DB::table('reservation_purchases')->insertGetId([
                 'reservation_hotel_id' => $reservationHotelId,
                 'provider_id' => $providerId,
                 'status' => ReservationStatus::BOOK_REQUESTED,
                 'quoted_provider_id' => $providerId,
-                'provider_quoted_amount' => $definition['amount'],
+                'provider_quoted_amount' => $spec['amount'],
                 'purchase_amount' => null,
-                'confirmation_code' => $definition['code'],
-                'provider_status' => null,
+                'confirmation_code' => $spec['code'],
+                'provider_status' => 'availability_pending',
                 'expires_at' => null,
                 'issued_at' => null,
                 'purchase_mode' => PurchaseMethod::ONLINE,
