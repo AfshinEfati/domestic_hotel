@@ -71,6 +71,11 @@ final class HotelProviderRegistry
         return $this->priceRefreshHandlers[$providerCode] ?? null;
     }
 
+    public function hasOnlinePurchasePreflightHandler(string $providerCode): bool
+    {
+        return isset($this->onlinePurchasePreflightHandlers[$providerCode]);
+    }
+
     public function resolveOnlinePurchaseHandler(
         Provider $provider,
         Container $container,
