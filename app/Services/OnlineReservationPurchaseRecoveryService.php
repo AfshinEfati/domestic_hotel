@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Reservation;
 use App\Models\ReservationPurchase;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
-use App\Modules\HotelProviders\V2\Shared\Jobs\ExecuteOnlineReservationPurchaseJob;
+use App\Modules\HotelProviders\V2\Shared\Jobs\PreflightOnlineReservationPurchasesJob;
 use App\Repositories\Contracts\ReservationManualPurchaseRepositoryInterface;
 use App\Repositories\Contracts\ReservationManualReasonRepositoryInterface;
 use App\Repositories\Contracts\ReservationPurchaseRepositoryInterface;
@@ -33,7 +33,7 @@ final readonly class OnlineReservationPurchaseRecoveryService implements OnlineR
 
     public function retry(int $reservationId, int $purchaseId): Reservation
     {
-        [$reservation, $queue] = DB::transaction(function () use ($reservationId, $purchaseId): array {
+        [$reservation, $providerId, $queue] = DB::transaction(function () use ($reservationId, $purchaseId): array {
             $purchase = $this->lockedPurchase($reservationId, $purchaseId);
             $this->assertRetryable($purchase);
 
@@ -50,10 +50,18 @@ final readonly class OnlineReservationPurchaseRecoveryService implements OnlineR
 
             $this->reconcilePendingReservation($reservationId);
 
-            return [$this->reload($reservationId), $handler->queue()];
+            return [
+                $this->reload($reservationId),
+                (int) $provider->id,
+                $handler->queue(),
+            ];
         });
 
-        ExecuteOnlineReservationPurchaseJob::dispatch($purchaseId)->onQueue($queue);
+        // Retry must pass through the same reservation/provider preflight as the initial
+        // purchase request. This prevents a fresh provider create/confirm from bypassing
+        // the current balance check after an operator retries an under-review purchase.
+        PreflightOnlineReservationPurchasesJob::dispatch($reservationId, $providerId)
+            ->onQueue($queue);
 
         return $reservation;
     }
