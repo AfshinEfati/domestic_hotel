@@ -9,6 +9,7 @@ use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\Jobs\ExecuteOnlineReservationPurchaseJob;
 use App\Modules\HotelProviders\V2\Shared\Jobs\PreflightOnlineReservationPurchasesJob;
 use App\Modules\HotelProviders\V2\Shared\OnlinePurchaseExecutionResult;
+use App\Repositories\Contracts\ReservationRepositoryInterface;
 use App\Support\Provider\ProviderType;
 use App\Support\Reservation\PurchaseMethod;
 use App\Support\Reservation\ReservationHotelType;
@@ -107,6 +108,21 @@ class ReservationPurchaseEndpointTest extends TestCase
     public function test_repeated_purchase_callback_is_idempotent_for_database_plan(): void
     {
         [$reservationId, $providerId] = $this->readyReservation();
+
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservationId,
+            'status' => ReservationStatus::READY_FOR_PAYMENT,
+        ]);
+        $this->assertNotNull(
+            $this->app
+                ->make(ReservationRepositoryInterface::class)
+                ->findForPurchase($reservationId),
+            'Reservation exists in the fixture but ReservationRepository cannot load it before the HTTP request.',
+        );
+
+        // Keep this diagnostic local to the failing idempotency scenario so a 404
+        // exposes the exact ModelNotFoundException source instead of being rendered.
+        $this->withoutExceptionHandling();
 
         $first = $this->postJson(
             "/api/v1/front/reservations/{$reservationId}/purchase"
