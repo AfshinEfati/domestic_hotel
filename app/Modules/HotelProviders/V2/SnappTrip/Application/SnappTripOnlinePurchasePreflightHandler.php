@@ -6,8 +6,6 @@ use App\Models\ReservationPurchase;
 use App\Modules\HotelProviders\V2\Shared\Contracts\OnlinePurchasePreflightHandler;
 use App\Modules\HotelProviders\V2\Shared\OnlinePurchasePreflightResult;
 use App\Support\Reservation\PurchaseManualReason;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
 use RuntimeException;
 
@@ -23,7 +21,7 @@ final readonly class SnappTripOnlinePurchasePreflightHandler implements OnlinePu
     {
         try {
             $result = $this->balancePreflight->check($purchases);
-        } catch (ConnectionException|RequestException|RuntimeException) {
+        } catch (RuntimeException) {
             return OnlinePurchasePreflightResult::manual(
                 PurchaseManualReason::CREDIT_UNAVAILABLE,
                 'خرید آفلاین شد؛ دریافت اعتبار به‌روز اسنپ‌تریپ پیش از رزرو ممکن نبود.',
