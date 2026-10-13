@@ -13,7 +13,9 @@ use App\Modules\HotelProviders\V2\SnappTrip\Jobs\SyncBalanceJob;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use App\Support\Provider\ProviderType;
 use App\Support\Reservation\PurchaseMethod;
+use App\Support\Reservation\ReservationGuestType;
 use App\Support\Reservation\ReservationHotelType;
+use App\Support\Reservation\ReservationRoomType;
 use App\Support\Reservation\ReservationStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -125,12 +127,9 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
             'status' => ReservationStatus::ISSUE_SUCCESS,
         ]);
 
-        // Balance refresh is intentionally coalesced while one unique refresh job is
-        // still pending. Multiple successful purchases do not need parallel balance I/O.
         Queue::assertPushed(SyncBalanceJob::class, 1);
         Http::assertSentCount(2);
 
-        // A delivered duplicate execution job must be a no-op after terminal success.
         $this->app->call([
             new ExecuteOnlineReservationPurchaseJob($purchaseIds[0]),
             'handle',
@@ -178,6 +177,95 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
         ]);
         Queue::assertNotPushed(SyncBalanceJob::class);
         Http::assertSentCount(1);
+    }
+
+    public function test_new_purchase_creates_locks_confirms_and_reconciles(): void
+    {
+        [$reservationId, $providerId, $purchaseId] = $this->newOnlinePurchaseFixture();
+        $sequence = [];
+
+        Http::fake(function (Request $request) use (&$sequence) {
+            $method = $request->method();
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            $sequence[] = $method.' '.$path;
+
+            if ($method === 'POST' && $path === '/booking/create') {
+                $payload = $request->data();
+
+                $this->assertSame('2026-11-10', $payload['checkin'] ?? null);
+                $this->assertSame('2026-11-12', $payload['checkout'] ?? null);
+                $this->assertSame(1001, $payload['hotel_id'] ?? null);
+                $this->assertSame('09120000000', $payload['phone'] ?? null);
+                $this->assertSame('ali@example.test', $payload['email'] ?? null);
+                $this->assertSame(501, data_get($payload, 'rooms.0.room_id'));
+                $this->assertSame(0, data_get($payload, 'rooms.0.extra_beds'));
+                $this->assertSame(0, data_get($payload, 'rooms.0.children'));
+                $this->assertSame(0, data_get($payload, 'rooms.0.infants'));
+                $this->assertSame('Reza', data_get($payload, 'rooms.0.guests.0.first_name'));
+                $this->assertSame('Test', data_get($payload, 'rooms.0.guests.0.last_name'));
+                $this->assertFalse(data_get($payload, 'rooms.0.guests.0.foreigner'));
+
+                return Http::response([
+                    'reservation_code' => 'NEW-FLOW-1',
+                    'state' => 'draft',
+                    'price' => 10_000,
+                ]);
+            }
+
+            if ($method === 'POST' && $path === '/booking/NEW-FLOW-1/lock') {
+                return Http::response('', 204);
+            }
+
+            if ($method === 'POST' && $path === '/booking/NEW-FLOW-1/confirm') {
+                return Http::response('', 204);
+            }
+
+            if ($method === 'GET' && $path === '/booking/NEW-FLOW-1') {
+                return Http::response([
+                    'reservation_code' => 'NEW-FLOW-1',
+                    'state' => 'confirmed',
+                    'price' => 10_000,
+                ]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $this->app->call([
+            new PreflightOnlineReservationPurchasesJob($reservationId, $providerId),
+            'handle',
+        ]);
+
+        Queue::assertPushed(
+            ExecuteOnlineReservationPurchaseJob::class,
+            fn (ExecuteOnlineReservationPurchaseJob $job): bool => $job->purchaseId === $purchaseId,
+        );
+
+        $this->app->call([
+            new ExecuteOnlineReservationPurchaseJob($purchaseId),
+            'handle',
+        ]);
+
+        $this->assertDatabaseHas('reservation_purchases', [
+            'id' => $purchaseId,
+            'confirmation_code' => 'NEW-FLOW-1',
+            'status' => ReservationStatus::ISSUE_SUCCESS,
+            'purchase_amount' => 100_000,
+            'provider_status' => 'confirmed',
+        ]);
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservationId,
+            'status' => ReservationStatus::ISSUE_SUCCESS,
+        ]);
+        $this->assertNotNull(DB::table('reservation_purchases')->where('id', $purchaseId)->value('issued_at'));
+        $this->assertSame([
+            'POST /booking/create',
+            'POST /booking/NEW-FLOW-1/lock',
+            'POST /booking/NEW-FLOW-1/confirm',
+            'GET /booking/NEW-FLOW-1',
+        ], $sequence);
+        Queue::assertPushed(SyncBalanceJob::class, 1);
+        Http::assertSentCount(4);
     }
 
     /**
@@ -311,6 +399,116 @@ class OnlineReservationPurchaseExecutionFlowTest extends TestCase
         }
 
         return [$reservationId, $providerId, $purchaseIds];
+    }
+
+    /** @return array{0:int,1:int,2:int} */
+    private function newOnlinePurchaseFixture(): array
+    {
+        [$reservationId, $providerId, $purchaseIds] = $this->reservationWithOnlinePurchases([
+            ['code' => 'placeholder', 'amount' => 100_000],
+        ]);
+        $purchaseId = $purchaseIds[0];
+        $now = now();
+
+        DB::table('reservation_purchases')->where('id', $purchaseId)->update([
+            'confirmation_code' => null,
+            'provider_status' => null,
+            'updated_at' => $now,
+        ]);
+
+        $providerConfig = json_decode(
+            (string) DB::table('providers')->where('id', $providerId)->value('config'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        data_set($providerConfig, 'purchase.lock_enabled', true);
+        DB::table('providers')->where('id', $providerId)->update([
+            'config' => json_encode($providerConfig, JSON_THROW_ON_ERROR),
+            'updated_at' => $now,
+        ]);
+
+        $reservationHotel = DB::table('reservation_hotels')
+            ->where('reservation_id', $reservationId)
+            ->first();
+        $accommodationMap = DB::table('accommodation_provider_maps')
+            ->where('accommodation_id', $reservationHotel->accommodation_id)
+            ->where('provider_id', $providerId)
+            ->first();
+        $countryId = (int) DB::table('countries')->where('iso2', 'IR')->value('id');
+
+        $roomTypeId = DB::table('room_types')->insertGetId([
+            'accommodation_id' => $reservationHotel->accommodation_id,
+            'fa_name' => 'اتاق تست خرید جدید',
+            'en_name' => 'Fresh Purchase Test Room',
+            'capacity' => 2,
+            'extra_capacity' => 1,
+            'single_bed_count' => null,
+            'double_bed_count' => 1,
+            'sofa_bed_count' => null,
+            'out_of_service' => false,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('room_type_provider_maps')->insert([
+            'room_type_id' => $roomTypeId,
+            'provider_id' => $providerId,
+            'accommodation_provider_map_id' => $accommodationMap->id,
+            'provider_room_type_id' => '501',
+            'fa_name' => 'اتاق تست خرید جدید',
+            'en_name' => 'Fresh Purchase Test Room',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $reservationRoomId = DB::table('reservation_rooms')->insertGetId([
+            'reservation_hotel_id' => $reservationHotel->id,
+            'room_number' => 1,
+            'type' => ReservationRoomType::REQUESTED,
+            'is_final' => true,
+            'room_type_id' => $roomTypeId,
+            'rate_plan_id' => null,
+            'room_name' => 'Fresh Purchase Test Room',
+            'room_calendar_id' => null,
+            'provider_id' => $providerId,
+            'initial_price' => 100_000,
+            'validated_price' => 100_000,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('reservation_guests')->insert([
+            'reservation_room_id' => $reservationRoomId,
+            'type' => ReservationGuestType::ADULT,
+            'service' => null,
+            'first_name' => 'Reza',
+            'last_name' => 'Test',
+            'gender' => null,
+            'birth_date' => '1990-01-01',
+            'country_id' => $countryId,
+            'national_id' => null,
+            'passport_number' => null,
+            'passport_issuer_country_id' => null,
+            'passport_expiry_date' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('reservation_purchase_segments')->insert([
+            'reservation_purchase_id' => $purchaseId,
+            'reservation_room_id' => $reservationRoomId,
+            'from_date' => '2026-11-10',
+            'to_date' => '2026-11-12',
+            'nightly_purchase_amount' => 50_000,
+            'nightly_extra_bed_purchase_amount' => null,
+            'nightly_child_purchase_amount' => null,
+            'nightly_infant_purchase_amount' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return [$reservationId, $providerId, $purchaseId];
     }
 }
 
