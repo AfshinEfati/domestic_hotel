@@ -3,7 +3,7 @@
 namespace App\Console\Commands\V2;
 
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
-use App\Jobs\Hotel\V2\SyncGrsHotelDetailsJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelDetailsJob;
 use Illuminate\Console\Command;
 
 class SyncGrsHotelDetailsCommand extends Command
