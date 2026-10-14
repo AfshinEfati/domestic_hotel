@@ -6,14 +6,16 @@ use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Jobs\Hotel\SyncGrsAvailabilityForPropertyJob;
 use App\Models\Provider;
-use App\Support\Logging\SystemLogger;
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Mockery;
 use Tests\TestCase;
 
 class SyncGrsAvailabilityForPropertyJobTest extends TestCase
 {
+    use RefreshDatabase;
+
     private $originalRateLimiter;
 
     protected function setUp(): void
@@ -32,9 +34,6 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
     public function testItReleasesJobWhenGlobalGrsRateLimiterDeniesSlot(): void
     {
         $provider = $this->grsProvider(42);
-
-        $providerMock = Mockery::mock('alias:'.Provider::class);
-        $providerMock->shouldReceive('find')->with($provider->id)->andReturn($provider);
 
         $rateLimiter = Mockery::mock();
         $rateLimiter->shouldReceive('tooManyAttempts')
@@ -60,38 +59,18 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         ])->makePartial();
         $job->shouldReceive('release')->once()->with(2);
 
-        $logger = Mockery::mock(SystemLogger::class);
-        $logger->shouldReceive('warning')->never();
-        $logger->shouldReceive('error')->never();
-        $logger->shouldReceive('info')
-            ->once()
-            ->with(
-                SyncGrsAvailabilityForPropertyJob::class.'::shouldDelayForRateLimit',
-                'GRS availability job delayed by provider rate limit',
-                Mockery::on(fn (array $context) =>
-                    $context['provider_id'] === $provider->id
-                    && $context['provider_property_id'] === 'PROP-1'
-                    && $context['rate_limit_max_requests'] === 10
-                    && $context['rate_limit_window_minutes'] === 1
-                    && $context['rate_limit_delay_seconds'] === 2
-                )
-            );
-
         $service = Mockery::mock(HotelSyncService::class);
         $service->shouldReceive('crawlAvailabilityForProperty')->never();
 
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
         app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
 
-        $job->handle($service, $logger);
+        $job->handle($service);
     }
 
     public function testItCallsServiceWhenGlobalGrsRateLimiterAllowsSlot(): void
     {
         $provider = $this->grsProvider(84);
-
-        $providerMock = Mockery::mock('alias:'.Provider::class);
-        $providerMock->shouldReceive('find')->with($provider->id)->andReturn($provider);
 
         $rateLimiter = Mockery::mock();
         $rateLimiter->shouldReceive('tooManyAttempts')
@@ -116,11 +95,6 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         ])->makePartial();
         $job->shouldReceive('release')->never();
 
-        $logger = Mockery::mock(SystemLogger::class);
-        $logger->shouldReceive('warning')->never();
-        $logger->shouldReceive('error')->never();
-        $logger->shouldReceive('info')->never();
-
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
         app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
 
@@ -131,7 +105,8 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
                 $provider,
                 $adapter
             ) {
-                return $providerArg === $provider
+                return (int) $providerArg->id === (int) $provider->id
+                    && $providerArg->code === $provider->code
                     && $adapterArg === $adapter
                     && $propertyKey === 'PROP-2'
                     && $from instanceof CarbonImmutable
@@ -140,15 +115,12 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
                     && $to->toDateString() === '2025-02-10';
             });
 
-        $job->handle($service, $logger);
+        $job->handle($service);
     }
 
     public function testItSupportsOneRequestPerTwentyMinutes(): void
     {
         $provider = $this->grsProvider(126);
-
-        $providerMock = Mockery::mock('alias:'.Provider::class);
-        $providerMock->shouldReceive('find')->with($provider->id)->andReturn($provider);
 
         $rateLimiter = Mockery::mock();
         $rateLimiter->shouldReceive('tooManyAttempts')
@@ -174,30 +146,25 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         ])->makePartial();
         $job->shouldReceive('release')->once()->with(1200);
 
-        $logger = Mockery::mock(SystemLogger::class);
-        $logger->shouldReceive('warning')->never();
-        $logger->shouldReceive('error')->never();
-        $logger->shouldReceive('info')->once();
-
         $service = Mockery::mock(HotelSyncService::class);
         $service->shouldReceive('crawlAvailabilityForProperty')->never();
 
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
         app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
 
-        $job->handle($service, $logger);
+        $job->handle($service);
     }
 
     private function grsProvider(int $id): Provider
     {
-        $provider = new Provider([
+        return Provider::query()->create([
             'id' => $id,
+            'fa_name' => 'اقامت ۲۴',
+            'en_name' => 'GRS',
             'code' => 'grs',
+            'config' => [],
             'is_active' => true,
             'is_online' => true,
         ]);
-        $provider->exists = true;
-
-        return $provider;
     }
 }
