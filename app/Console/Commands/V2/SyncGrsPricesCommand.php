@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands\V2;
 
-use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use Illuminate\Console\Command;
 
 class SyncGrsPricesCommand extends Command
@@ -34,7 +34,7 @@ class SyncGrsPricesCommand extends Command
         $days = $value === null || $value === '' ? null : (int) $value;
         SyncGrsDuePricesJob::dispatch($days);
         $label = $days === null
-            ? 'provider-configured (fallback '.GrsRefreshSettings::defaults()['default_days'].')'
+            ? 'provider-configured (fallback '.GrsSettings::defaults()['default_days'].')'
             : (string) $days;
         $this->info('GRS coordinated due price refresh queued; days: '.$label.'.');
         return self::SUCCESS;
