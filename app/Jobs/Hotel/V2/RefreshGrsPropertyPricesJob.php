@@ -7,8 +7,8 @@ use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
 use App\Domain\Hotel\Support\ProviderRefreshOutcome;
-use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
-use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\RateLimitedGrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuotaExceeded;
 use App\Services\Alerts\ProviderDiagnosticAlertService;
 use App\Services\Alerts\TelegramAlertService;
 use Carbon\CarbonImmutable;
@@ -189,10 +189,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            // A legacy job may still be present in the queue during deployment.
-            // It is allowed to refresh/persist provider data, but it must never
-            // advance next_gds_run_at on its own. The coordinated scheduler will
-            // create provider states and close the shared hotel cycle safely.
             return;
         } catch (InvalidProviderAvailabilityDataException $e) {
             $hotelName = $this->resolveHotelName($schedules, $hotelName);
@@ -216,7 +212,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
-            // Legacy workers never close the shared cycle directly.
             return;
         } catch (GrsApiQuotaExceeded $e) {
             if ($coordinated) {
@@ -309,8 +304,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     return;
                 }
 
-                // Legacy workers may disable a stale provider map, but the shared
-                // due time remains owned exclusively by ProviderRefreshCoordinator.
                 return;
             }
 
@@ -324,8 +317,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
                     return;
                 }
 
-                // Authentication, request validation and similar 4xx failures mean
-                // our request/configuration needs correction, so keep this cycle open.
                 if ($status !== null && $status >= 400 && $status < 500) {
                     $alerts->internalFailure($e);
                     $coordinator->retry(
@@ -374,8 +365,6 @@ class RefreshGrsPropertyPricesJob implements ShouldQueue, ShouldBeUnique
 
             return $name !== '' ? $name : $fallback;
         } catch (Throwable) {
-            // Hotel name is optional diagnostic context and must never change the
-            // provider refresh result or hide the original provider exception.
             return $fallback;
         }
     }
