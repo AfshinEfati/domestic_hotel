@@ -59,11 +59,21 @@ final readonly class ReservationPurchaseRequestService implements ReservationPur
                 throw new InvalidArgumentException('Reservation has no final room to purchase.');
             }
 
-            // A repeated whitelist callback after a successful first request is harmless.
-            // Online preflight is re-dispatched after the transaction; uniqueness prevents
-            // a parallel duplicate while allowing a lost queue dispatch to recover later.
-            if ((int) $reservation->status === ReservationStatus::BOOK_REQUESTED
-                && $hotel->purchases->isNotEmpty()) {
+            // Once a purchase plan exists, any later callback for the same paid reservation
+            // is idempotent. BOOK_REQUESTED is intentionally re-dispatched to preflight after
+            // this transaction so a lost queue dispatch can recover; terminal/review states
+            // simply return their current snapshot without creating or dispatching anything.
+            if ($hotel->purchases->isNotEmpty()
+                && in_array((int) $reservation->status, [
+                    ReservationStatus::BOOK_REQUESTED,
+                    ReservationStatus::ISSUE_SUCCESS,
+                    ReservationStatus::ISSUE_FAILED,
+                    ReservationStatus::PAYMENT_REQUIRED,
+                    ReservationStatus::COMPLETED,
+                    ReservationStatus::UNDER_REVIEW,
+                    ReservationStatus::REFUNDED,
+                    ReservationStatus::PURCHASE_REFUND,
+                ], true)) {
                 return $this->reload($reservationId);
             }
 

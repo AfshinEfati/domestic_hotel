@@ -148,6 +148,52 @@ class ReservationPurchaseEndpointTest extends TestCase
                 && $job->providerId === $providerId,
         );
         Queue::assertNotPushed(ExecuteOnlineReservationPurchaseJob::class);
+
+        $queuedPreflights = Queue::pushed(PreflightOnlineReservationPurchasesJob::class)->count();
+        $this->assertGreaterThanOrEqual(1, $queuedPreflights);
+
+        // A delayed/retried whitelist callback can arrive after async provider execution
+        // has already completed. It must return the current result without rebuilding the
+        // purchase plan or dispatching another provider attempt.
+        DB::table('reservation_purchases')
+            ->whereIn('id', $purchaseIds)
+            ->update([
+                'status' => ReservationStatus::ISSUE_SUCCESS,
+                'provider_status' => 'confirmed',
+                'updated_at' => now(),
+            ]);
+        DB::table('reservations')
+            ->where('id', $reservationId)
+            ->update([
+                'status' => ReservationStatus::ISSUE_SUCCESS,
+                'updated_at' => now(),
+            ]);
+
+        $third = $this->postJson(
+            "/api/v1/front/reservations/{$reservationId}/purchase"
+        );
+
+        $third
+            ->assertOk()
+            ->assertJsonPath('data.status', ReservationStatus::ISSUE_SUCCESS)
+            ->assertJsonPath('data.purchase_status', 'confirmed')
+            ->assertJsonCount(2, 'data.purchases');
+
+        $this->assertDatabaseCount('reservation_purchases', 2);
+        $this->assertDatabaseCount('reservation_purchase_segments', 2);
+        $this->assertSame(
+            $purchaseIds,
+            DB::table('reservation_purchases')
+                ->orderBy('id')
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->all(),
+        );
+        $this->assertSame(
+            $queuedPreflights,
+            Queue::pushed(PreflightOnlineReservationPurchasesJob::class)->count(),
+        );
+        Queue::assertNotPushed(ExecuteOnlineReservationPurchaseJob::class);
     }
 
     /** @return array{0:int,1:int} */

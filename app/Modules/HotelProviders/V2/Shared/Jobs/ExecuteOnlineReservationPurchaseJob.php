@@ -55,35 +55,41 @@ final class ExecuteOnlineReservationPurchaseJob implements ShouldQueue, ShouldBe
 
         $provider = $purchase->provider;
         if ($provider === null) {
-            $this->markUnexpectedReview($purchase, $purchases, $reservations);
+            $this->markReview($purchase, $purchases, $reservations, 'internal_error');
             return;
         }
 
         $handler = $registry->resolveOnlinePurchaseHandler($provider, $container);
         if ($handler === null) {
-            $this->markUnexpectedReview($purchase, $purchases, $reservations);
+            $this->markReview($purchase, $purchases, $reservations, 'internal_error');
             return;
         }
 
         try {
             $result = $handler->execute($purchase, max(1, $this->attempts()));
             if ($result->retry) {
+                if ($this->attempts() >= $this->tries) {
+                    $this->markReview($purchase, $purchases, $reservations, 'retry_exhausted');
+                    return;
+                }
+
                 $this->release($result->retryAfterSeconds);
             }
         } catch (Throwable $exception) {
             $alerts->internalFailure($exception);
-            $this->markUnexpectedReview($purchase, $purchases, $reservations);
+            $this->markReview($purchase, $purchases, $reservations, 'internal_error');
         }
     }
 
-    private function markUnexpectedReview(
+    private function markReview(
         $purchase,
         ReservationPurchaseRepositoryInterface $purchases,
         ReservationRepositoryInterface $reservations,
+        string $providerStatus,
     ): void {
         $purchases->update((int) $purchase->id, [
             'status' => ReservationStatus::UNDER_REVIEW,
-            'provider_status' => 'internal_error',
+            'provider_status' => $providerStatus,
         ]);
 
         $reservationId = $purchase->reservationHotel?->reservation_id;
