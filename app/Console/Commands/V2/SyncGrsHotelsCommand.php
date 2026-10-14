@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\V2;
 
-use App\Jobs\Hotel\V2\SyncGrsHotelCatalogJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
 use Illuminate\Console\Command;
 
 class SyncGrsHotelsCommand extends Command
