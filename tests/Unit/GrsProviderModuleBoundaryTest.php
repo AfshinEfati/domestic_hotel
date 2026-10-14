@@ -4,9 +4,12 @@ namespace Tests\Unit;
 
 use App\Domain\Hotel\Providers\GRSAdapter as LegacyGrsAdapter;
 use App\Domain\Hotel\Services\GrsScheduledPriceRefresh as LegacyGrsScheduledPriceRefresh;
+use App\Domain\Hotel\V2\GrsApiQuota as LegacyGrsApiQuota;
+use App\Domain\Hotel\V2\GrsRefreshSettings as LegacyGrsRefreshSettings;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Grs\Application\GrsScheduledPriceRefresh;
 use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use Tests\TestCase;
@@ -49,13 +52,21 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         );
     }
 
-    public function test_module_settings_are_exactly_legacy_settings_during_transition(): void
+    public function test_module_settings_and_quota_match_legacy_behavior(): void
     {
         $provider = $this->provider();
 
         $this->assertSame(
-            \App\Domain\Hotel\V2\GrsRefreshSettings::from($provider),
+            LegacyGrsRefreshSettings::from($provider),
             GrsSettings::from($provider),
+        );
+        $this->assertSame(
+            LegacyGrsApiQuota::maxRequests($provider),
+            GrsApiQuota::maxRequests($provider),
+        );
+        $this->assertSame(
+            LegacyGrsApiQuota::windowMinutes($provider),
+            GrsApiQuota::windowMinutes($provider),
         );
     }
 
