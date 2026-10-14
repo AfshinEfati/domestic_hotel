@@ -5,6 +5,7 @@ namespace App\Jobs\Hotel\V2;
 use App\Models\Facility;
 use App\Models\FacilityGroup;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\ProcessGrsHotelBatchJob as ModuleProcessGrsHotelBatchJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -96,7 +97,7 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
         $this->prepareFacilities($domestic);
 
         foreach (array_chunk($domestic, self::BATCH_SIZE) as $batch) {
-            ProcessGrsHotelBatchJob::dispatch($provider->id, $batch)->onQueue('grs-hotels');
+            ModuleProcessGrsHotelBatchJob::dispatch($provider->id, $batch)->onQueue('grs-hotels');
         }
 
     }
