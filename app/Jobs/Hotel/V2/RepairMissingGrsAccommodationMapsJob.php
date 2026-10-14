@@ -2,10 +2,11 @@
 
 namespace App\Jobs\Hotel\V2;
 
-use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Services\GrsAccommodationMapRepairService;
 use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
-use App\Domain\Hotel\V2\GrsRefreshSettings;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelDetailsJob as ModuleSyncGrsHotelDetailsJob;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Services\Alerts\TelegramAlertService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -67,7 +68,7 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
             return;
         }
 
-        $adapter = (new GRSAdapter($provider))->withRequestLogContext(
+        $adapter = (new GrsAdapter($provider))->withRequestLogContext(
             null,
             self::class,
             'handle',
@@ -78,7 +79,7 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
         } catch (RequestException $e) {
             if ($e->response?->status() === 429) {
                 $retryAfter = $e->response?->header('Retry-After');
-                $configured = GrsRefreshSettings::from($provider)['api_cooldown_minutes'] * 60;
+                $configured = GrsSettings::from($provider)['api_cooldown_minutes'] * 60;
                 $seconds = is_numeric($retryAfter)
                     ? max($configured, (int) $retryAfter)
                     : $configured;
@@ -102,7 +103,7 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
                 tags: ['DomesticHotel', 'MapRepair', 'GRS'],
             );
 
-            $seconds = GrsRefreshSettings::from($provider)['api_cooldown_minutes'] * 60;
+            $seconds = GrsSettings::from($provider)['api_cooldown_minutes'] * 60;
             $this->release(max(60, $seconds));
             return;
         }
@@ -119,7 +120,7 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
                 $map !== null
                 && trim((string) $map->provider_property_id) === trim((string) $propertyId)
             ) {
-                SyncGrsHotelDetailsJob::dispatch(
+                ModuleSyncGrsHotelDetailsJob::dispatch(
                     (int) $provider->id,
                     (int) $map->id
                 )->onQueue('grs-details');
