@@ -3,10 +3,10 @@
 namespace App\Jobs\Hotel\V2;
 
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
-use App\Domain\Hotel\V2\GrsApiQuota;
-use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
-use App\Domain\Hotel\V2\GrsHotelDetailsClient;
 use App\Exceptions\ProviderDataException;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsHotelDetailsClient;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuotaExceeded;
 use App\Services\HotelChildPolicyTextParser;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
@@ -24,9 +24,9 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 0; // Releases must not exhaust the attempt counter.
-    public int $maxExceptions = 1; // HTTP/DB errors fail this property; no blind retries.
-    public int $timeout = 75; // Below its Horizon timeout (80) and Redis retry_after (90).
+    public int $tries = 0;
+    public int $maxExceptions = 1;
+    public int $timeout = 75;
     public int $uniqueFor = 43200;
 
     public function __construct(public int $providerId, public int $mapId)
@@ -86,8 +86,6 @@ class SyncGrsHotelDetailsJob implements ShouldQueue, ShouldBeUnique
         try {
             $repository->persist($map, $details, $parser);
         } catch (LockTimeoutException) {
-            // Do not fail a hotel simply because another details worker is
-            // creating shared facility dictionary entries at the same time.
             $this->release(10);
             return;
         }
