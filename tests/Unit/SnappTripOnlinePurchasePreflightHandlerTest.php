@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Provider;
 use App\Models\ReservationPurchase;
 use App\Modules\HotelProviders\V2\SnappTrip\Application\Contracts\BalanceSynchronizer;
 use App\Modules\HotelProviders\V2\SnappTrip\Application\SnappTripOnlinePurchasePreflightHandler;
@@ -64,6 +65,20 @@ class SnappTripOnlinePurchasePreflightHandlerTest extends TestCase
         $this->assertNotSame('', trim((string) $result->manualReasonText));
     }
 
+    public function test_effective_default_disabled_purchase_routes_to_manual_without_balance_io(): void
+    {
+        $sync = $this->createMock(BalanceSynchronizer::class);
+        $sync->expects($this->never())->method('execute');
+
+        $purchase = $this->purchase(11, 100_000);
+        $purchase->provider->config = [];
+
+        $result = $this->handler($sync)->check(new Collection([$purchase]));
+
+        $this->assertFalse($result->allowed);
+        $this->assertSame(PurchaseManualReason::PROVIDER_MANUAL_ONLY, $result->manualReason);
+    }
+
     private function handler(BalanceSynchronizer $sync): SnappTripOnlinePurchasePreflightHandler
     {
         return new SnappTripOnlinePurchasePreflightHandler(
@@ -73,11 +88,26 @@ class SnappTripOnlinePurchasePreflightHandlerTest extends TestCase
 
     private function purchase(int $id, int $quotedAmount): ReservationPurchase
     {
+        $provider = new Provider();
+        $provider->forceFill([
+            'id' => 9,
+            'code' => 'snap',
+            'config' => [
+                'purchase' => [
+                    'online_enabled' => true,
+                ],
+            ],
+            'is_active' => true,
+            'is_online' => true,
+        ]);
+
         $purchase = new ReservationPurchase();
         $purchase->forceFill([
             'id' => $id,
+            'provider_id' => 9,
             'provider_quoted_amount' => $quotedAmount,
         ]);
+        $purchase->setRelation('provider', $provider);
 
         return $purchase;
     }
