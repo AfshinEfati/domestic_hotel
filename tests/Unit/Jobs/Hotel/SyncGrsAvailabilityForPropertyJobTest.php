@@ -3,9 +3,15 @@
 namespace Tests\Unit\Jobs\Hotel;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Domain\Hotel\Repositories\AccommodationRepository;
+use App\Domain\Hotel\Repositories\CityRepository;
+use App\Domain\Hotel\Repositories\RoomCalendarRepository;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Jobs\Hotel\SyncGrsAvailabilityForPropertyJob;
 use App\Models\Provider;
+use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
+use App\Repositories\Contracts\RatePlanProviderMapRepositoryInterface;
+use App\Repositories\Contracts\RoomTypeProviderMapRepositoryInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,7 +33,6 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
     protected function tearDown(): void
     {
         RateLimiter::swap($this->originalRateLimiter);
-        Mockery::close();
         parent::tearDown();
     }
 
@@ -59,13 +64,14 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         ])->makePartial();
         $job->shouldReceive('release')->once()->with(2);
 
-        $service = Mockery::mock(HotelSyncService::class);
-        $service->shouldReceive('crawlAvailabilityForProperty')->never();
-
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
-        app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
+        $adapter->shouldReceive('fetchAvailability')->never();
+        app()->bind(
+            ProviderAdapterInterface::class,
+            fn ($app, array $params) => $adapter,
+        );
 
-        $job->handle($service);
+        $job->handle($this->service());
     }
 
     public function testItCallsServiceWhenGlobalGrsRateLimiterAllowsSlot(): void
@@ -96,26 +102,23 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         $job->shouldReceive('release')->never();
 
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
-        app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
-
-        $service = Mockery::mock(HotelSyncService::class);
-        $service->shouldReceive('crawlAvailabilityForProperty')
+        $adapter->shouldReceive('fetchAvailability')
             ->once()
-            ->withArgs(function ($providerArg, $adapterArg, $propertyKey, $from, $to) use (
-                $provider,
-                $adapter
-            ) {
-                return (int) $providerArg->id === (int) $provider->id
-                    && $providerArg->code === $provider->code
-                    && $adapterArg === $adapter
-                    && $propertyKey === 'PROP-2'
+            ->withArgs(function ($propertyKey, $from, $to): bool {
+                return $propertyKey === 'PROP-2'
                     && $from instanceof CarbonImmutable
                     && $from->toDateString() === '2025-02-01'
                     && $to instanceof CarbonImmutable
                     && $to->toDateString() === '2025-02-10';
-            });
+            })
+            ->andReturn(collect());
 
-        $job->handle($service);
+        app()->bind(
+            ProviderAdapterInterface::class,
+            fn ($app, array $params) => $adapter,
+        );
+
+        $job->handle($this->service());
     }
 
     public function testItSupportsOneRequestPerTwentyMinutes(): void
@@ -146,13 +149,26 @@ class SyncGrsAvailabilityForPropertyJobTest extends TestCase
         ])->makePartial();
         $job->shouldReceive('release')->once()->with(1200);
 
-        $service = Mockery::mock(HotelSyncService::class);
-        $service->shouldReceive('crawlAvailabilityForProperty')->never();
-
         $adapter = Mockery::mock(ProviderAdapterInterface::class);
-        app()->bind(ProviderAdapterInterface::class, fn () => $adapter);
+        $adapter->shouldReceive('fetchAvailability')->never();
+        app()->bind(
+            ProviderAdapterInterface::class,
+            fn ($app, array $params) => $adapter,
+        );
 
-        $job->handle($service);
+        $job->handle($this->service());
+    }
+
+    private function service(): HotelSyncService
+    {
+        return new HotelSyncService(
+            Mockery::mock(CityRepository::class),
+            Mockery::mock(AccommodationRepository::class),
+            Mockery::mock(RoomCalendarRepository::class),
+            Mockery::mock(AccommodationProviderMapRepositoryInterface::class),
+            Mockery::mock(RoomTypeProviderMapRepositoryInterface::class),
+            Mockery::mock(RatePlanProviderMapRepositoryInterface::class),
+        );
     }
 
     private function grsProvider(int $id): Provider
