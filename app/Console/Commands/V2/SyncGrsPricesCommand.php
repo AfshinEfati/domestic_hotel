@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\V2;
 
-use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsDuePricesJob;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use Illuminate\Console\Command;
 
