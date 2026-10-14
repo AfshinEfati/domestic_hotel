@@ -3,9 +3,9 @@
 namespace App\Modules\HotelProviders\V2\Grs\Application;
 
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
-use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\RefreshGrsPropertyPricesJob;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 
