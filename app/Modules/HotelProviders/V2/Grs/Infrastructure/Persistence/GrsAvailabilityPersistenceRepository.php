@@ -2,14 +2,134 @@
 
 namespace App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence;
 
-use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository as LegacyGrsAvailabilityPersistenceRepository;
+use App\Models\RatePlan;
+use App\Models\RatePlanProviderMap;
+use App\Models\RoomCalendar;
+use App\Models\RoomType;
+use App\Models\RoomTypeProviderMap;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
+use RuntimeException;
+use Throwable;
 
-/**
- * Module-owned compatibility implementation.
- *
- * The legacy repository remains in place during migration. Runtime resolution is
- * redirected here so repository ownership can move without changing behaviour.
- */
-class GrsAvailabilityPersistenceRepository extends LegacyGrsAvailabilityPersistenceRepository
+/** Read-side verification for GRS calendar persistence; all database queries stay here. */
+class GrsAvailabilityPersistenceRepository
 {
+    /**
+     * Check the dates actually supplied by GRS, not an assumed complete or bounded calendar.
+     * A successful empty response is valid: it contains zero prices to persist.
+     *
+     * @param Collection<int, array<string, mixed>>|null $response
+     */
+    public function verifiedRowCount(
+        int $providerId,
+        int $accommodationProviderMapId,
+        int $accommodationId,
+        string $providerPropertyId,
+        ?Collection $response,
+        CarbonInterface $started,
+    ): int {
+        if ($response === null) {
+            throw new RuntimeException('GRS availability response was not received.');
+        }
+        if ($response->isEmpty()) {
+            return 0;
+        }
+
+        $roomProviderIds = [];
+        $rateProviderIds = [];
+        $rows = [];
+        foreach ($response as $row) {
+            $roomId = trim((string) ($row['room_type_id'] ?? ''));
+            $rateId = trim((string) ($row['rate_plan_id'] ?? ''));
+            $day = $row['day'] ?? null;
+            if ($roomId === '' || $rateId === '' || !is_string($day) || trim($day) === '') {
+                continue;
+            }
+            try {
+                $normalizedDay = CarbonImmutable::parse($day)->toDateString();
+            } catch (Throwable) {
+                continue;
+            }
+            $roomProviderIds[$roomId] = true;
+            $rateProviderIds[$rateId] = true;
+            $rows[] = [$roomId, $rateId, $normalizedDay];
+        }
+
+        if ($rows === []) {
+            return 0;
+        }
+
+        $roomIds = RoomTypeProviderMap::query()
+            ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
+            ->whereIn('provider_room_type_id', array_keys($roomProviderIds))
+            ->pluck('room_type_id', 'provider_room_type_id')
+            ->all();
+
+        $rateIds = RatePlanProviderMap::query()
+            ->where('provider_id', $providerId)
+            ->where('accommodation_provider_map_id', $accommodationProviderMapId)
+            ->whereIn('provider_rate_plan_id', array_keys($rateProviderIds))
+            ->pluck('rate_plan_id', 'provider_rate_plan_id')
+            ->all();
+
+        if (count($roomIds) !== count($roomProviderIds) || count($rateIds) !== count($rateProviderIds)) {
+            throw new RuntimeException('GRS room/rate-plan maps remain incomplete; refresh not marked successful.');
+        }
+
+        $uniqueRoomIds = array_values(array_unique(array_map(
+            static fn ($id): int => (int) $id,
+            array_values($roomIds)
+        )));
+
+        $uniqueRateIds = array_values(array_unique(array_map(
+            static fn ($id): int => (int) $id,
+            array_values($rateIds)
+        )));
+
+        $validRoomCount = RoomType::query()
+            ->where('accommodation_id', $accommodationId)
+            ->whereIn('id', $uniqueRoomIds)
+            ->count();
+
+        $validRateCount = RatePlan::query()
+            ->where('accommodation_id', $accommodationId)
+            ->whereIn('id', $uniqueRateIds)
+            ->count();
+
+        if ($validRoomCount !== count($uniqueRoomIds) || $validRateCount !== count($uniqueRateIds)) {
+            throw new RuntimeException('GRS room/rate-plan mappings belong to a different accommodation.');
+        }
+
+        $expected = [];
+        $days = [];
+        foreach ($rows as [$roomProviderId, $rateProviderId, $day]) {
+            $expected[$roomIds[$roomProviderId].'|'.$rateIds[$rateProviderId].'|'.$day] = true;
+            $days[$day] = true;
+        }
+
+        $persisted = RoomCalendar::query()
+            ->where('provider_id', $providerId)
+            ->where('accommodation_id', $accommodationId)
+            ->where('provider_property_id', $providerPropertyId)
+            ->where('updated_at', '>=', $started)
+            ->whereIn('day', array_keys($days))
+            ->get(['room_type_id', 'rate_plan_id', 'day']);
+
+        foreach ($persisted as $calendar) {
+            unset($expected[
+                $calendar->room_type_id.'|'.$calendar->rate_plan_id.'|'.substr((string) $calendar->day, 0, 10)
+            ]);
+        }
+
+        if ($expected !== []) {
+            throw new RuntimeException(
+                'GRS price/stock rows not fully saved: '.count($expected).' calendar dimensions missing.'
+            );
+        }
+
+        return count($rows);
+    }
 }
