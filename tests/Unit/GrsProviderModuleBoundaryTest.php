@@ -2,19 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Hotel\Providers\GRSAdapter as LegacyGrsAdapter;
-use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository as LegacyGrsAvailabilityPersistenceRepository;
-use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository as LegacyGrsHotelDetailsRepository;
-use App\Domain\Hotel\Services\GrsAccommodationMapRepairService as LegacyGrsAccommodationMapRepairService;
-use App\Domain\Hotel\Services\GrsScheduledPriceRefresh as LegacyGrsScheduledPriceRefresh;
-use App\Domain\Hotel\V2\GrsApiQuota as LegacyGrsApiQuota;
-use App\Domain\Hotel\V2\GrsRefreshSettings as LegacyGrsRefreshSettings;
-use App\Jobs\Hotel\V2\ProcessGrsHotelBatchJob as LegacyProcessGrsHotelBatchJob;
-use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob as LegacyRefreshGrsPropertyPricesJob;
-use App\Jobs\Hotel\V2\RepairMissingGrsAccommodationMapsJob as LegacyRepairMissingGrsAccommodationMapsJob;
-use App\Jobs\Hotel\V2\SyncGrsDuePricesJob as LegacySyncGrsDuePricesJob;
-use App\Jobs\Hotel\V2\SyncGrsHotelCatalogJob as LegacySyncGrsHotelCatalogJob;
-use App\Jobs\Hotel\V2\SyncGrsHotelDetailsJob as LegacySyncGrsHotelDetailsJob;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Grs\Application\GrsAccommodationMapRepairService;
 use App\Modules\HotelProviders\V2\Grs\Application\GrsScheduledPriceRefresh;
@@ -34,7 +21,7 @@ use Tests\TestCase;
 
 final class GrsProviderModuleBoundaryTest extends TestCase
 {
-    public function test_registry_resolves_independent_module_adapter_with_legacy_parity(): void
+    public function test_registry_resolves_module_adapter(): void
     {
         $provider = $this->provider();
         $registry = $this->app->make(HotelProviderRegistry::class);
@@ -42,16 +29,14 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         $adapter = $registry->resolveAdapter($provider, $this->app);
 
         $this->assertInstanceOf(GrsAdapter::class, $adapter);
-        $this->assertNotInstanceOf(LegacyGrsAdapter::class, $adapter);
-        $this->assertFalse(is_subclass_of(GrsAdapter::class, LegacyGrsAdapter::class));
-        $this->assertSame('grs', $adapter->code());
+        $this->assertSame(GrsSettings::PROVIDER_CODE, $adapter->code());
         $this->assertSame(
-            (new LegacyGrsAdapter($provider))->supportedWebhooks(),
+            ['AvailableChanged', 'ReserveChanged', 'PropertyChanged', 'ReserveActivity'],
             $adapter->supportedWebhooks(),
         );
     }
 
-    public function test_registry_uses_module_price_refresh_handler_with_legacy_parity(): void
+    public function test_registry_uses_module_price_refresh_handler(): void
     {
         $provider = $this->provider();
         $registry = $this->app->make(HotelProviderRegistry::class);
@@ -61,118 +46,92 @@ final class GrsProviderModuleBoundaryTest extends TestCase
             $registry->priceRefreshHandler(GrsSettings::PROVIDER_CODE),
         );
 
-        $legacy = new LegacyGrsScheduledPriceRefresh();
-        $module = new GrsScheduledPriceRefresh();
-
-        $this->assertSame($legacy->enabled($provider), $module->enabled($provider));
-        $this->assertSame(
-            $legacy->hotelCapacityPerMinute($provider, 90),
-            $module->hotelCapacityPerMinute($provider, 90),
-        );
+        $handler = new GrsScheduledPriceRefresh();
+        $this->assertTrue($handler->enabled($provider));
+        $this->assertSame(120, $handler->hotelCapacityPerMinute($provider, 90));
     }
 
-    public function test_module_settings_and_quota_match_legacy_behavior(): void
+    public function test_module_settings_and_quota_use_provider_config(): void
     {
         $provider = $this->provider();
 
-        $this->assertSame(
-            LegacyGrsRefreshSettings::from($provider),
-            GrsSettings::from($provider),
+        $this->assertSame([
+            'default_days' => 90,
+            'api_cooldown_minutes' => 15,
+            'scheduler_enabled' => true,
+        ], GrsSettings::from($provider));
+        $this->assertSame(120, GrsApiQuota::maxRequests($provider));
+        $this->assertSame(1, GrsApiQuota::windowMinutes($provider));
+    }
+
+    public function test_module_repositories_resolve_directly(): void
+    {
+        $this->assertInstanceOf(
+            GrsAvailabilityPersistenceRepository::class,
+            $this->app->make(GrsAvailabilityPersistenceRepository::class),
         );
-        $this->assertSame(
-            LegacyGrsApiQuota::maxRequests($provider),
-            GrsApiQuota::maxRequests($provider),
-        );
-        $this->assertSame(
-            LegacyGrsApiQuota::windowMinutes($provider),
-            GrsApiQuota::windowMinutes($provider),
+        $this->assertInstanceOf(
+            GrsHotelDetailsRepository::class,
+            $this->app->make(GrsHotelDetailsRepository::class),
         );
     }
 
-    public function test_module_repositories_are_independent_from_legacy_types(): void
+    public function test_module_jobs_keep_expected_queue_contracts(): void
     {
-        $availability = $this->app->make(GrsAvailabilityPersistenceRepository::class);
-        $details = $this->app->make(GrsHotelDetailsRepository::class);
+        $refresh = new RefreshGrsPropertyPricesJob(1, 10001, 1, 30, 10, 'cycle');
+        $this->assertSame('grs-property-price:10:cycle', $refresh->uniqueId());
+        $this->assertSame('grs-prices', $refresh->queue);
+        $this->assertSame(100, $refresh->tries);
+        $this->assertSame(1, $refresh->maxExceptions);
+        $this->assertSame(55, $refresh->timeout);
+        $this->assertSame(14400, $refresh->uniqueFor);
 
-        $this->assertInstanceOf(GrsAvailabilityPersistenceRepository::class, $availability);
-        $this->assertInstanceOf(GrsHotelDetailsRepository::class, $details);
-        $this->assertFalse(is_subclass_of(GrsAvailabilityPersistenceRepository::class, LegacyGrsAvailabilityPersistenceRepository::class));
-        $this->assertFalse(is_subclass_of(GrsHotelDetailsRepository::class, LegacyGrsHotelDetailsRepository::class));
+        $due = new SyncGrsDuePricesJob(30);
+        $this->assertSame('grs-due-prices-dispatch', $due->uniqueId());
+        $this->assertSame('grs-prices', $due->queue);
+        $this->assertSame(30, $due->days);
+        $this->assertSame(1, $due->tries);
+        $this->assertSame(60, $due->timeout);
+        $this->assertSame(600, $due->uniqueFor);
+
+        $catalog = new SyncGrsHotelCatalogJob();
+        $this->assertSame('grs-hotel-catalog', $catalog->uniqueId());
+        $this->assertSame(1, $catalog->tries);
+        $this->assertSame(80, $catalog->timeout);
+        $this->assertSame(3600, $catalog->uniqueFor);
+
+        $details = new SyncGrsHotelDetailsJob(1, 2);
+        $this->assertSame('grs-details:1:2', $details->uniqueId());
+        $this->assertSame('grs-details', $details->queue);
+        $this->assertSame(0, $details->tries);
+        $this->assertSame(1, $details->maxExceptions);
+        $this->assertSame(75, $details->timeout);
+        $this->assertSame(43200, $details->uniqueFor);
+
+        $batch = new ProcessGrsHotelBatchJob(1, []);
+        $this->assertSame(1, $batch->providerId);
+        $this->assertSame([], $batch->properties);
+        $this->assertSame(1, $batch->tries);
+        $this->assertSame(70, $batch->timeout);
     }
 
-    public function test_module_jobs_are_independent_and_preserve_legacy_job_contracts(): void
+    public function test_module_map_repair_handles_empty_input_and_keeps_job_contract(): void
     {
-        $legacyRefresh = new LegacyRefreshGrsPropertyPricesJob(1, 10001, 1, 30, 10, 'cycle');
-        $moduleRefresh = new RefreshGrsPropertyPricesJob(1, 10001, 1, 30, 10, 'cycle');
-        $this->assertFalse(is_subclass_of(RefreshGrsPropertyPricesJob::class, LegacyRefreshGrsPropertyPricesJob::class));
-        $this->assertSame($legacyRefresh->uniqueId(), $moduleRefresh->uniqueId());
-        $this->assertSame($legacyRefresh->queue, $moduleRefresh->queue);
-        $this->assertSame($legacyRefresh->tries, $moduleRefresh->tries);
-        $this->assertSame($legacyRefresh->maxExceptions, $moduleRefresh->maxExceptions);
-        $this->assertSame($legacyRefresh->timeout, $moduleRefresh->timeout);
-        $this->assertSame($legacyRefresh->uniqueFor, $moduleRefresh->uniqueFor);
+        $repair = new GrsAccommodationMapRepairService();
+        $provider = $this->provider();
 
-        $legacyDue = new LegacySyncGrsDuePricesJob(30);
-        $moduleDue = new SyncGrsDuePricesJob(30);
-        $this->assertFalse(is_subclass_of(SyncGrsDuePricesJob::class, LegacySyncGrsDuePricesJob::class));
-        $this->assertSame($legacyDue->uniqueId(), $moduleDue->uniqueId());
-        $this->assertSame($legacyDue->queue, $moduleDue->queue);
-        $this->assertSame($legacyDue->tries, $moduleDue->tries);
-        $this->assertSame($legacyDue->timeout, $moduleDue->timeout);
-        $this->assertSame($legacyDue->uniqueFor, $moduleDue->uniqueFor);
-        $this->assertSame($legacyDue->days, $moduleDue->days);
-
-        $legacyCatalog = new LegacySyncGrsHotelCatalogJob();
-        $moduleCatalog = new SyncGrsHotelCatalogJob();
-        $this->assertFalse(is_subclass_of(SyncGrsHotelCatalogJob::class, LegacySyncGrsHotelCatalogJob::class));
-        $this->assertSame($legacyCatalog->uniqueId(), $moduleCatalog->uniqueId());
-        $this->assertSame($legacyCatalog->queue, $moduleCatalog->queue);
-        $this->assertSame($legacyCatalog->tries, $moduleCatalog->tries);
-        $this->assertSame($legacyCatalog->timeout, $moduleCatalog->timeout);
-        $this->assertSame($legacyCatalog->uniqueFor, $moduleCatalog->uniqueFor);
-
-        $legacyDetails = new LegacySyncGrsHotelDetailsJob(1, 2);
-        $moduleDetails = new SyncGrsHotelDetailsJob(1, 2);
-        $this->assertFalse(is_subclass_of(SyncGrsHotelDetailsJob::class, LegacySyncGrsHotelDetailsJob::class));
-        $this->assertSame($legacyDetails->uniqueId(), $moduleDetails->uniqueId());
-        $this->assertSame($legacyDetails->queue, $moduleDetails->queue);
-        $this->assertSame($legacyDetails->tries, $moduleDetails->tries);
-        $this->assertSame($legacyDetails->maxExceptions, $moduleDetails->maxExceptions);
-        $this->assertSame($legacyDetails->timeout, $moduleDetails->timeout);
-        $this->assertSame($legacyDetails->uniqueFor, $moduleDetails->uniqueFor);
-
-        $legacyBatch = new LegacyProcessGrsHotelBatchJob(1, []);
-        $moduleBatch = new ProcessGrsHotelBatchJob(1, []);
-        $this->assertFalse(is_subclass_of(ProcessGrsHotelBatchJob::class, LegacyProcessGrsHotelBatchJob::class));
-        $this->assertSame($legacyBatch->queue, $moduleBatch->queue);
-        $this->assertSame($legacyBatch->tries, $moduleBatch->tries);
-        $this->assertSame($legacyBatch->timeout, $moduleBatch->timeout);
-        $this->assertSame($legacyBatch->providerId, $moduleBatch->providerId);
-        $this->assertSame($legacyBatch->properties, $moduleBatch->properties);
-    }
-
-    public function test_module_map_repair_matches_legacy_empty_behavior_and_job_contract(): void
-    {
-        $legacyRepair = new LegacyGrsAccommodationMapRepairService();
-        $moduleRepair = new GrsAccommodationMapRepairService();
-
+        $this->assertSame([], $repair->missingAccommodationIds(1, []));
         $this->assertSame(
-            $legacyRepair->missingAccommodationIds(1, []),
-            $moduleRepair->missingAccommodationIds(1, []),
-        );
-        $this->assertSame(
-            $legacyRepair->repair($this->provider(), [], []),
-            $moduleRepair->repair($this->provider(), [], []),
+            ['repaired' => [], 'unresolved' => []],
+            $repair->repair($provider, [], []),
         );
 
-        $legacyJob = new LegacyRepairMissingGrsAccommodationMapsJob(1);
-        $moduleJob = new RepairMissingGrsAccommodationMapsJob(1);
-
-        $this->assertSame($legacyJob->uniqueId(), $moduleJob->uniqueId());
-        $this->assertSame($legacyJob->queue, $moduleJob->queue);
-        $this->assertSame($legacyJob->tries, $moduleJob->tries);
-        $this->assertSame($legacyJob->timeout, $moduleJob->timeout);
-        $this->assertSame($legacyJob->uniqueFor, $moduleJob->uniqueFor);
+        $job = new RepairMissingGrsAccommodationMapsJob(1);
+        $this->assertSame('grs-missing-accommodation-map-repair:1', $job->uniqueId());
+        $this->assertSame('grs-hotels', $job->queue);
+        $this->assertSame(20, $job->tries);
+        $this->assertSame(55, $job->timeout);
+        $this->assertSame(1800, $job->uniqueFor);
     }
 
     private function provider(): Provider
@@ -191,6 +150,7 @@ final class GrsProviderModuleBoundaryTest extends TestCase
                 ],
                 'price_refresh' => [
                     'default_days' => 90,
+                    'api_cooldown_minutes' => 15,
                     'scheduler_enabled' => true,
                 ],
             ],
