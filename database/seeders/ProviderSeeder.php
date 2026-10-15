@@ -2,10 +2,10 @@
 
 namespace Database\Seeders;
 
-use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsAdapter;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Illuminate\Database\Seeder;
@@ -25,11 +25,11 @@ class ProviderSeeder extends Seeder
         ];
 
         $grs = Provider::query()->firstOrCreate(
-            ['code' => 'grs'],
+            ['code' => GrsSettings::PROVIDER_CODE],
             [
                 'fa_name' => 'اقامت ۲۴',
                 'en_name' => 'GRS Channel',
-                'class' => GRSAdapter::class,
+                'class' => GrsAdapter::class,
                 'config' => $grsDefaults,
                 'is_online' => true,
             ]
@@ -46,8 +46,15 @@ class ProviderSeeder extends Seeder
             );
         }
         $mergedConfig = array_replace_recursive($grsDefaults, $currentConfig);
+        $grsUpdates = [];
         if ($mergedConfig !== ($grs->config ?? [])) {
-            $grs->forceFill(['config' => $mergedConfig])->save();
+            $grsUpdates['config'] = $mergedConfig;
+        }
+        if ($grs->class === 'App\\Domain\\Hotel\\Providers\\GRSAdapter') {
+            $grsUpdates['class'] = GrsAdapter::class;
+        }
+        if ($grsUpdates !== []) {
+            $grs->forceFill($grsUpdates)->save();
         }
 
         // Never reset an administrator's settings or online status for other providers.
