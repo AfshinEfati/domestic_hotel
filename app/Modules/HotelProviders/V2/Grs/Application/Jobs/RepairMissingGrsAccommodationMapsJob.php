@@ -2,8 +2,8 @@
 
 namespace App\Modules\HotelProviders\V2\Grs\Application\Jobs;
 
-use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Modules\HotelProviders\V2\Grs\Application\GrsAccommodationMapRepairService;
+use App\Modules\HotelProviders\V2\Grs\Application\GrsPriceRefreshScheduleService;
 use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsAdapter;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Services\Alerts\TelegramAlertService;
@@ -150,9 +150,5 @@ final class RepairMissingGrsAccommodationMapsJob implements ShouldQueue, ShouldB
                 );
             }
         }
-
-        // Repaired schedules stay due. The dedicated details job owns hotel,
-        // room and rate-plan synchronization; the next price scan only persists
-        // availability after those mappings are ready.
     }
 }
