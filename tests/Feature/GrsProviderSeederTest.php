@@ -24,6 +24,8 @@ class GrsProviderSeederTest extends TestCase
             $table->json('config')->nullable();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_online')->default(false);
+            $table->unsignedTinyInteger('provider_type')->default(1);
+            $table->unsignedBigInteger('accommodation_id')->nullable()->unique();
             $table->timestamps();
         });
 
