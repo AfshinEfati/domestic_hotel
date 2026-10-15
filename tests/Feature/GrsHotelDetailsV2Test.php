@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
 use App\Models\Provider;
@@ -10,6 +9,7 @@ use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsDuePricesJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelDetailsJob;
 use App\Modules\HotelProviders\V2\Grs\Infrastructure\GrsHotelDetailsClient;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence\GrsHotelDetailsRepository;
 use App\Services\HotelChildPolicyTextParser;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Bus;
