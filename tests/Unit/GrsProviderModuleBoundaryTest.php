@@ -5,18 +5,22 @@ namespace Tests\Unit;
 use App\Domain\Hotel\Providers\GRSAdapter as LegacyGrsAdapter;
 use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository as LegacyGrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository as LegacyGrsHotelDetailsRepository;
+use App\Domain\Hotel\Services\GrsAccommodationMapRepairService as LegacyGrsAccommodationMapRepairService;
 use App\Domain\Hotel\Services\GrsScheduledPriceRefresh as LegacyGrsScheduledPriceRefresh;
 use App\Domain\Hotel\V2\GrsApiQuota as LegacyGrsApiQuota;
 use App\Domain\Hotel\V2\GrsRefreshSettings as LegacyGrsRefreshSettings;
 use App\Jobs\Hotel\V2\ProcessGrsHotelBatchJob as LegacyProcessGrsHotelBatchJob;
 use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob as LegacyRefreshGrsPropertyPricesJob;
+use App\Jobs\Hotel\V2\RepairMissingGrsAccommodationMapsJob as LegacyRepairMissingGrsAccommodationMapsJob;
 use App\Jobs\Hotel\V2\SyncGrsDuePricesJob as LegacySyncGrsDuePricesJob;
 use App\Jobs\Hotel\V2\SyncGrsHotelCatalogJob as LegacySyncGrsHotelCatalogJob;
 use App\Jobs\Hotel\V2\SyncGrsHotelDetailsJob as LegacySyncGrsHotelDetailsJob;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\GrsAccommodationMapRepairService;
 use App\Modules\HotelProviders\V2\Grs\Application\GrsScheduledPriceRefresh;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\ProcessGrsHotelBatchJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\RefreshGrsPropertyPricesJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\RepairMissingGrsAccommodationMapsJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsDuePricesJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelDetailsJob;
@@ -102,6 +106,30 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         $this->assertTrue(is_subclass_of(SyncGrsHotelCatalogJob::class, LegacySyncGrsHotelCatalogJob::class));
         $this->assertTrue(is_subclass_of(SyncGrsHotelDetailsJob::class, LegacySyncGrsHotelDetailsJob::class));
         $this->assertTrue(is_subclass_of(ProcessGrsHotelBatchJob::class, LegacyProcessGrsHotelBatchJob::class));
+    }
+
+    public function test_module_map_repair_matches_legacy_empty_behavior_and_job_contract(): void
+    {
+        $legacyRepair = new LegacyGrsAccommodationMapRepairService();
+        $moduleRepair = new GrsAccommodationMapRepairService();
+
+        $this->assertSame(
+            $legacyRepair->missingAccommodationIds(1, []),
+            $moduleRepair->missingAccommodationIds(1, []),
+        );
+        $this->assertSame(
+            $legacyRepair->repair($this->provider(), [], []),
+            $moduleRepair->repair($this->provider(), [], []),
+        );
+
+        $legacyJob = new LegacyRepairMissingGrsAccommodationMapsJob(1);
+        $moduleJob = new RepairMissingGrsAccommodationMapsJob(1);
+
+        $this->assertSame($legacyJob->uniqueId(), $moduleJob->uniqueId());
+        $this->assertSame($legacyJob->queue, $moduleJob->queue);
+        $this->assertSame($legacyJob->tries, $moduleJob->tries);
+        $this->assertSame($legacyJob->timeout, $moduleJob->timeout);
+        $this->assertSame($legacyJob->uniqueFor, $moduleJob->uniqueFor);
     }
 
     private function provider(): Provider
