@@ -34,7 +34,7 @@ use Tests\TestCase;
 
 final class GrsProviderModuleBoundaryTest extends TestCase
 {
-    public function test_registry_resolves_grs_through_module_without_changing_legacy_adapter_behavior(): void
+    public function test_registry_resolves_independent_module_adapter_with_legacy_parity(): void
     {
         $provider = $this->provider();
         $registry = $this->app->make(HotelProviderRegistry::class);
@@ -42,7 +42,8 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         $adapter = $registry->resolveAdapter($provider, $this->app);
 
         $this->assertInstanceOf(GrsAdapter::class, $adapter);
-        $this->assertInstanceOf(LegacyGrsAdapter::class, $adapter);
+        $this->assertNotInstanceOf(LegacyGrsAdapter::class, $adapter);
+        $this->assertFalse(is_subclass_of(GrsAdapter::class, LegacyGrsAdapter::class));
         $this->assertSame('grs', $adapter->code());
         $this->assertSame(
             (new LegacyGrsAdapter($provider))->supportedWebhooks(),
@@ -88,24 +89,32 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         );
     }
 
-    public function test_legacy_repository_types_resolve_to_module_implementations(): void
+    public function test_module_repositories_are_independent_from_legacy_types(): void
     {
-        $availability = $this->app->make(LegacyGrsAvailabilityPersistenceRepository::class);
-        $details = $this->app->make(LegacyGrsHotelDetailsRepository::class);
+        $availability = $this->app->make(GrsAvailabilityPersistenceRepository::class);
+        $details = $this->app->make(GrsHotelDetailsRepository::class);
 
         $this->assertInstanceOf(GrsAvailabilityPersistenceRepository::class, $availability);
-        $this->assertInstanceOf(LegacyGrsAvailabilityPersistenceRepository::class, $availability);
         $this->assertInstanceOf(GrsHotelDetailsRepository::class, $details);
-        $this->assertInstanceOf(LegacyGrsHotelDetailsRepository::class, $details);
+        $this->assertFalse(is_subclass_of(GrsAvailabilityPersistenceRepository::class, LegacyGrsAvailabilityPersistenceRepository::class));
+        $this->assertFalse(is_subclass_of(GrsHotelDetailsRepository::class, LegacyGrsHotelDetailsRepository::class));
     }
 
-    public function test_module_jobs_preserve_legacy_job_contracts(): void
+    public function test_module_jobs_preserve_legacy_job_contracts_during_transition(): void
     {
         $this->assertTrue(is_subclass_of(RefreshGrsPropertyPricesJob::class, LegacyRefreshGrsPropertyPricesJob::class));
         $this->assertTrue(is_subclass_of(SyncGrsDuePricesJob::class, LegacySyncGrsDuePricesJob::class));
         $this->assertTrue(is_subclass_of(SyncGrsHotelCatalogJob::class, LegacySyncGrsHotelCatalogJob::class));
-        $this->assertTrue(is_subclass_of(SyncGrsHotelDetailsJob::class, LegacySyncGrsHotelDetailsJob::class));
         $this->assertTrue(is_subclass_of(ProcessGrsHotelBatchJob::class, LegacyProcessGrsHotelBatchJob::class));
+
+        $legacyDetails = new LegacySyncGrsHotelDetailsJob(1, 2);
+        $moduleDetails = new SyncGrsHotelDetailsJob(1, 2);
+        $this->assertFalse(is_subclass_of(SyncGrsHotelDetailsJob::class, LegacySyncGrsHotelDetailsJob::class));
+        $this->assertSame($legacyDetails->uniqueId(), $moduleDetails->uniqueId());
+        $this->assertSame($legacyDetails->queue, $moduleDetails->queue);
+        $this->assertSame($legacyDetails->tries, $moduleDetails->tries);
+        $this->assertSame($legacyDetails->timeout, $moduleDetails->timeout);
+        $this->assertSame($legacyDetails->uniqueFor, $moduleDetails->uniqueFor);
     }
 
     public function test_module_map_repair_matches_legacy_empty_behavior_and_job_contract(): void
