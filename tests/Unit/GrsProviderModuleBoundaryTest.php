@@ -100,12 +100,36 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         $this->assertFalse(is_subclass_of(GrsHotelDetailsRepository::class, LegacyGrsHotelDetailsRepository::class));
     }
 
-    public function test_module_jobs_preserve_legacy_job_contracts_during_transition(): void
+    public function test_module_jobs_are_independent_and_preserve_legacy_job_contracts(): void
     {
-        $this->assertTrue(is_subclass_of(RefreshGrsPropertyPricesJob::class, LegacyRefreshGrsPropertyPricesJob::class));
-        $this->assertTrue(is_subclass_of(SyncGrsDuePricesJob::class, LegacySyncGrsDuePricesJob::class));
-        $this->assertTrue(is_subclass_of(SyncGrsHotelCatalogJob::class, LegacySyncGrsHotelCatalogJob::class));
-        $this->assertTrue(is_subclass_of(ProcessGrsHotelBatchJob::class, LegacyProcessGrsHotelBatchJob::class));
+        $legacyRefresh = new LegacyRefreshGrsPropertyPricesJob(1, 10001, 1, 30, 10, 'cycle');
+        $moduleRefresh = new RefreshGrsPropertyPricesJob(1, 10001, 1, 30, 10, 'cycle');
+        $this->assertFalse(is_subclass_of(RefreshGrsPropertyPricesJob::class, LegacyRefreshGrsPropertyPricesJob::class));
+        $this->assertSame($legacyRefresh->uniqueId(), $moduleRefresh->uniqueId());
+        $this->assertSame($legacyRefresh->queue, $moduleRefresh->queue);
+        $this->assertSame($legacyRefresh->tries, $moduleRefresh->tries);
+        $this->assertSame($legacyRefresh->maxExceptions, $moduleRefresh->maxExceptions);
+        $this->assertSame($legacyRefresh->timeout, $moduleRefresh->timeout);
+        $this->assertSame($legacyRefresh->uniqueFor, $moduleRefresh->uniqueFor);
+
+        $legacyDue = new LegacySyncGrsDuePricesJob(30);
+        $moduleDue = new SyncGrsDuePricesJob(30);
+        $this->assertFalse(is_subclass_of(SyncGrsDuePricesJob::class, LegacySyncGrsDuePricesJob::class));
+        $this->assertSame($legacyDue->uniqueId(), $moduleDue->uniqueId());
+        $this->assertSame($legacyDue->queue, $moduleDue->queue);
+        $this->assertSame($legacyDue->tries, $moduleDue->tries);
+        $this->assertSame($legacyDue->timeout, $moduleDue->timeout);
+        $this->assertSame($legacyDue->uniqueFor, $moduleDue->uniqueFor);
+        $this->assertSame($legacyDue->days, $moduleDue->days);
+
+        $legacyCatalog = new LegacySyncGrsHotelCatalogJob();
+        $moduleCatalog = new SyncGrsHotelCatalogJob();
+        $this->assertFalse(is_subclass_of(SyncGrsHotelCatalogJob::class, LegacySyncGrsHotelCatalogJob::class));
+        $this->assertSame($legacyCatalog->uniqueId(), $moduleCatalog->uniqueId());
+        $this->assertSame($legacyCatalog->queue, $moduleCatalog->queue);
+        $this->assertSame($legacyCatalog->tries, $moduleCatalog->tries);
+        $this->assertSame($legacyCatalog->timeout, $moduleCatalog->timeout);
+        $this->assertSame($legacyCatalog->uniqueFor, $moduleCatalog->uniqueFor);
 
         $legacyDetails = new LegacySyncGrsHotelDetailsJob(1, 2);
         $moduleDetails = new SyncGrsHotelDetailsJob(1, 2);
@@ -113,8 +137,18 @@ final class GrsProviderModuleBoundaryTest extends TestCase
         $this->assertSame($legacyDetails->uniqueId(), $moduleDetails->uniqueId());
         $this->assertSame($legacyDetails->queue, $moduleDetails->queue);
         $this->assertSame($legacyDetails->tries, $moduleDetails->tries);
+        $this->assertSame($legacyDetails->maxExceptions, $moduleDetails->maxExceptions);
         $this->assertSame($legacyDetails->timeout, $moduleDetails->timeout);
         $this->assertSame($legacyDetails->uniqueFor, $moduleDetails->uniqueFor);
+
+        $legacyBatch = new LegacyProcessGrsHotelBatchJob(1, []);
+        $moduleBatch = new ProcessGrsHotelBatchJob(1, []);
+        $this->assertFalse(is_subclass_of(ProcessGrsHotelBatchJob::class, LegacyProcessGrsHotelBatchJob::class));
+        $this->assertSame($legacyBatch->queue, $moduleBatch->queue);
+        $this->assertSame($legacyBatch->tries, $moduleBatch->tries);
+        $this->assertSame($legacyBatch->timeout, $moduleBatch->timeout);
+        $this->assertSame($legacyBatch->providerId, $moduleBatch->providerId);
+        $this->assertSame($legacyBatch->properties, $moduleBatch->properties);
     }
 
     public function test_module_map_repair_matches_legacy_empty_behavior_and_job_contract(): void
