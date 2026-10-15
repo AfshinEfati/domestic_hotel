@@ -2,12 +2,12 @@
 
 namespace App\Domain\Hotel\Services;
 
-use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence\GrsAvailabilityPersistenceRepository;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
 use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
