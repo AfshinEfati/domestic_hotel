@@ -5,8 +5,8 @@ namespace Database\Seeders;
 use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
-use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Illuminate\Database\Seeder;
 
@@ -21,7 +21,7 @@ class ProviderSeeder extends Seeder
                 'max_requests' => 10,
                 'window_minutes' => 1,
             ],
-            'price_refresh' => GrsRefreshSettings::defaults(),
+            'price_refresh' => GrsSettings::defaults(),
         ];
 
         $grs = Provider::query()->firstOrCreate(
