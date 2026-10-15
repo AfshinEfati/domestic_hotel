@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Jobs\Hotel\SyncAllProvidersAvailabilityJob;
-use App\Jobs\Hotel\SyncGrsAvailabilityJob;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Command\Command as CommandAlias;
 
