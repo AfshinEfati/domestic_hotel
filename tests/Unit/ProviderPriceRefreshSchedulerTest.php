@@ -5,13 +5,13 @@ namespace Tests\Unit;
 use App\Domain\Hotel\Contracts\PriceRefreshSchedulerHandler;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
 use App\Domain\Hotel\Repositories\HotelProviderRefreshStateRepository;
-use App\Domain\Hotel\Services\GrsScheduledPriceRefresh;
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
 use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\GrsScheduledPriceRefresh;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use App\Modules\HotelProviders\V2\Shared\ProviderOutboundGuard;
 use App\Modules\HotelProviders\V2\SnappTrip\SnappTripScheduledPriceRefresh;
@@ -335,43 +335,6 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
     public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
     {
         return 10;
-    }
-
-    public function dispatch(
-        Provider $provider,
-        AccommodationProviderMap $map,
-        int $refreshStateId,
-        string $cycleKey,
-        int $scheduleId,
-        int $accommodationId,
-        ?int $days = null,
-    ): bool {
-        $this->dispatched[] = [
-            (int) $provider->id,
-            (int) $map->id,
-            $refreshStateId,
-            $cycleKey,
-            $scheduleId,
-            $accommodationId,
-        ];
-
-        return true;
-    }
-}
-
-final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
-{
-    /** @var array<int,array{int,int,int,string,int,int}> */
-    public array $dispatched = [];
-
-    public function enabled(Provider $provider): bool
-    {
-        return $provider->is_active === true;
-    }
-
-    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
-    {
-        return 60;
     }
 
     public function dispatch(
