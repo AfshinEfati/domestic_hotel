@@ -17,9 +17,9 @@ return new class extends Migration
                 ->constrained('providers')
                 ->cascadeOnDelete();
 
-            $table->unsignedBigInteger('balance')
+            $table->bigInteger('balance')
                 ->default(0)
-                ->comment('Last known credit balance for this provider in IRR');
+                ->comment('Last known credit or debt balance for this provider in IRR; negative values represent debt');
 
             $table->unsignedBigInteger('low_balance_threshold')
                 ->nullable()
