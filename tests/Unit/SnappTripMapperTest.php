@@ -77,4 +77,12 @@ class SnappTripMapperTest extends TestCase
         $this->assertSame(10_000_000, $row['daily_rate']);
         $this->assertArrayNotHasKey('foreign_guest_daily_rate', $row);
     }
+
+    public function test_negative_balance_is_normalized_to_signed_irr(): void
+    {
+        $this->assertSame(
+            -4_398_625_300,
+            (new SnappTripMapper())->balance(['balance' => -439_862_530]),
+        );
+    }
 }
