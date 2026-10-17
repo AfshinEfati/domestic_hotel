@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Support\Queue;
 
-use App\Jobs\Hotel\SyncGrsAvailabilityForPropertyJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsAvailabilityForPropertyJob;
 use App\Support\Queue\ResilientCallQueuedHandler;
 use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Str;
