@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\Hotel\SyncCitiesJob;
-use App\Jobs\Hotel\SyncGrsAvailabilityJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsAvailabilityJob;
 use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
