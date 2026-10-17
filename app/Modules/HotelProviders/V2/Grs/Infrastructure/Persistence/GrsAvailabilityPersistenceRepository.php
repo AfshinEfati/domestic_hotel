@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hotel\Repositories;
+namespace App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence;
 
 use App\Models\RatePlan;
 use App\Models\RatePlanProviderMap;
@@ -52,8 +52,6 @@ class GrsAvailabilityPersistenceRepository
             } catch (Throwable) {
                 continue;
             }
-            // A provider may return dates outside the requested window. Keep the
-            // exact normalized dates; HotelSyncService persists these same rows.
             $roomProviderIds[$roomId] = true;
             $rateProviderIds[$rateId] = true;
             $rows[] = [$roomId, $rateId, $normalizedDay];
@@ -81,10 +79,6 @@ class GrsAvailabilityPersistenceRepository
             throw new RuntimeException('GRS room/rate-plan maps remain incomplete; refresh not marked successful.');
         }
 
-        // Several provider room/rate IDs may legitimately point to the same local
-        // RoomType/RatePlan. Validate the unique local targets, not the number of
-        // provider mappings, otherwise a valid many-to-one mapping is reported as
-        // belonging to another accommodation.
         $uniqueRoomIds = array_values(array_unique(array_map(
             static fn ($id): int => (int) $id,
             array_values($roomIds)

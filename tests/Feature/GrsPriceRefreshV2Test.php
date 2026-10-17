@@ -3,20 +3,20 @@
 namespace Tests\Feature;
 
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
-use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\HotelSyncService;
 use App\Domain\Hotel\Services\ProviderRefreshCoordinator;
-use App\Domain\Hotel\V2\GrsApiQuotaExceeded;
-use App\Domain\Hotel\V2\GrsRefreshSettings;
-use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
 use App\Jobs\Hotel\SyncCitiesJob;
 use App\Jobs\Hotel\SyncGrsAvailabilityJob;
-use App\Jobs\Hotel\V2\RefreshGrsPropertyPricesJob;
-use App\Jobs\Hotel\V2\SyncGrsDuePricesJob;
-use App\Jobs\Hotel\V2\SyncGrsHotelCatalogJob;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\HotelProviderRefreshState;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\GrsPriceRefreshScheduleService;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\RefreshGrsPropertyPricesJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsDuePricesJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\RateLimitedGrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuotaExceeded;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings as GrsRefreshSettings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Bus;
@@ -114,8 +114,6 @@ class GrsPriceRefreshV2Test extends TestCase
             ->orderBy('id')->pluck('next_gds_run_at', 'id')->all());
         Http::assertNothingSent();
 
-        // Simulate the first ten provider workers finishing successfully. Because GRS
-        // is the only mapped provider in this fixture, each hotel cycle can then move on.
         $coordinator = app(ProviderRefreshCoordinator::class);
         HotelProviderRefreshState::query()
             ->whereBetween('accommodation_id', [10001, 10010])

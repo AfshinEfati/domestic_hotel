@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\Hotel\SyncCitiesJob;
 use App\Jobs\Hotel\SyncGrsAvailabilityJob;
-use App\Jobs\Hotel\V2\SyncGrsHotelCatalogJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelCatalogJob;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;

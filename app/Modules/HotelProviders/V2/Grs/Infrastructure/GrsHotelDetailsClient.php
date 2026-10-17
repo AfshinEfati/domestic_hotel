@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Infrastructure;
 
 use App\Exceptions\ProviderDataException;
 use App\Models\Provider;
@@ -41,7 +41,8 @@ class GrsHotelDetailsClient
                 'Client-Token' => $token,
                 'Content-Type' => 'application/json',
             ])
-            ->baseUrl($baseUrl)->timeout(35)
+            ->baseUrl($baseUrl)
+            ->timeout(35)
             ->get('/v1/properties/'.$propertyId);
         $response->throw();
 
@@ -52,10 +53,10 @@ class GrsHotelDetailsClient
             throw new ProviderDataException('GRS details returned an invalid or mismatched property.');
         }
 
-        // An incomplete response must not mark this hotel's details as refreshed.
         if (!isset($property['room_types']) || !is_array($property['room_types']) || $property['room_types'] === []) {
             throw new ProviderDataException('GRS property details contain no room types.');
         }
+
         foreach (['facilities', 'rules'] as $field) {
             if (!array_key_exists($field, $property) || !is_array($property[$field])) {
                 throw new ProviderDataException('GRS property details missing '.$field.'.');

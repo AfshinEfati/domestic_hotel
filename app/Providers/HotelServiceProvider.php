@@ -3,10 +3,8 @@
 namespace App\Providers;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
-use App\Domain\Hotel\Providers\GRSAdapter;
 use App\Domain\Hotel\Providers\IHOAdapter;
 use App\Domain\Hotel\Providers\PartoAdapter;
-use App\Domain\Hotel\Services\GrsScheduledPriceRefresh;
 use App\Models\Provider;
 use App\Modules\HotelProviders\V2\Shared\HotelProviderRegistry;
 use Illuminate\Contracts\Container\Container;
@@ -19,10 +17,8 @@ class HotelServiceProvider extends ServiceProvider
     {
         $this->app->singleton(HotelProviderRegistry::class, function (): HotelProviderRegistry {
             $registry = new HotelProviderRegistry();
-            $registry->registerAdapter('grs', static fn (Provider $provider, Container $container) => new GRSAdapter($provider));
             $registry->registerAdapter('parto', static fn (Provider $provider, Container $container) => new PartoAdapter($provider));
             $registry->registerAdapter('iho', static fn (Provider $provider, Container $container) => new IHOAdapter($provider));
-            $registry->registerPriceRefreshHandler('grs', GrsScheduledPriceRefresh::class);
 
             return $registry;
         });

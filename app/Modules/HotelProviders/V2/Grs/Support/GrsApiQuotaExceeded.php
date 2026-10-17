@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Support;
 
 use RuntimeException;
 

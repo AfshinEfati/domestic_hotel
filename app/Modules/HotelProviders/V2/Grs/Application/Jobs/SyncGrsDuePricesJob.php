@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Jobs\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Application\Jobs;
 
-use App\Domain\Hotel\Services\GrsPriceRefreshScheduleService;
 use App\Domain\Hotel\Services\ProviderPriceRefreshScheduler;
-use App\Domain\Hotel\V2\GrsRefreshSettings;
-use App\Domain\Hotel\V2\RateLimitedGrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Application\GrsPriceRefreshScheduleService;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\RateLimitedGrsAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,7 +45,7 @@ class SyncGrsDuePricesJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $days = $this->days ?? GrsRefreshSettings::from($provider)['default_days'];
+        $days = $this->days ?? GrsSettings::from($provider)['default_days'];
         if ($days < 1 || $days > 3650) {
             throw new RuntimeException('GRS availability days must be between 1 and 3650.');
         }

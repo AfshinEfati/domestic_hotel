@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Jobs\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Application\Jobs;
 
 use App\Models\Facility;
 use App\Models\FacilityGroup;
@@ -18,8 +18,8 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1; // Never retry a 429 automatically.
-    public int $timeout = 80; // Must remain below the queue connection's retry_after.
+    public int $tries = 1;
+    public int $timeout = 80;
     public int $uniqueFor = 3600;
 
     private const API_COUNT = 10000000;
@@ -43,8 +43,6 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS hotel catalog requires a configured base_url and Client-Token.');
         }
 
-        // One request for the complete catalog, never one request per city/property.
-        // HTTP errors (including 429) fail this job without automatic retry.
         $response = Http::withAttributes([
             'domestic_provider' => [
                 'id' => (int) $provider->id,
@@ -75,8 +73,6 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS returned an empty properties list; refusing an incomplete sync.');
         }
 
-        // Only fields required for mapping/facilities enter the queue. Discard photos
-        // and descriptions here; they belong to a separate hotel-media workflow.
         $fields = array_fill_keys([
             'id', 'city_id', 'name', 'name_en', 'type', 'star', 'grade',
             'address', 'latitude', 'longitude', 'facilities',
@@ -91,14 +87,11 @@ class SyncGrsHotelCatalogJob implements ShouldQueue, ShouldBeUnique
             throw new RuntimeException('GRS returned no domestic hotels; refusing an empty import.');
         }
 
-        // Initialize the shared facility dictionary sequentially, before parallel database-only batches.
-        // This avoids duplicate facility/group creation when several queue workers are running.
         $this->prepareFacilities($domestic);
 
         foreach (array_chunk($domestic, self::BATCH_SIZE) as $batch) {
             ProcessGrsHotelBatchJob::dispatch($provider->id, $batch)->onQueue('grs-hotels');
         }
-
     }
 
     private function prepareFacilities(array $properties): void

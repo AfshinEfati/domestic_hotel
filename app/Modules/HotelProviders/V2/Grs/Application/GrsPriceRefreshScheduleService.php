@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Domain\Hotel\Services;
+namespace App\Modules\HotelProviders\V2\Grs\Application;
 
-use App\Domain\Hotel\Repositories\GrsAvailabilityPersistenceRepository;
 use App\Domain\Hotel\Repositories\HotelPriceRefreshScheduleRepository;
-use App\Domain\Hotel\V2\GrsApiQuota;
-use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;
 use App\Models\HotelPriceRefreshSchedule;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence\GrsAvailabilityPersistenceRepository;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Repositories\Contracts\AccommodationProviderMapRepositoryInterface;
 use App\Repositories\Contracts\AccommodationRepositoryInterface;
 use App\Repositories\Contracts\ProviderRepositoryInterface;
@@ -56,7 +56,7 @@ class GrsPriceRefreshScheduleService
     public function schedulerEnabled(): bool
     {
         $provider = $this->grsProvider();
-        return $provider !== null && GrsRefreshSettings::from($provider)['scheduler_enabled'];
+        return $provider !== null && GrsSettings::from($provider)['scheduler_enabled'];
     }
 
     public function assertReady(): void
@@ -89,17 +89,12 @@ class GrsPriceRefreshScheduleService
             foreach ($batch as $schedule) {
                 $gdsId = (int) $schedule->gds_id;
 
-                // Shared SSP may contain stale/orphan hotel IDs. They are not
-                // actionable in Domestic Hotel and must be ignored silently.
                 if ($gdsId <= 0 || !$existingAccommodationIds->has($gdsId)) {
                     continue;
                 }
 
                 $map = $this->mapForAccommodation($gdsId, (int) $provider->id);
 
-                // Price/availability refresh is allowed only for a hotel that is
-                // explicitly mapped to this provider. Missing/blank/disabled maps
-                // are not repair candidates here and must not consume refresh capacity.
                 if (
                     $map === null
                     || $map->is_disabled === true

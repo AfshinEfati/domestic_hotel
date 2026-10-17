@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hotel\Repositories;
+namespace App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence;
 
 use App\Models\AccommodationProviderMap;
 use App\Models\Facility;
@@ -51,9 +51,6 @@ class GrsHotelDetailsRepository
     {
         $facilityIds = [];
         if ($property['facilities'] !== []) {
-            // Facility/group names have no DB uniqueness constraints. Commit
-            // dictionary entries before releasing this short shared lock.
-            // Room/plan/rule updates remain parallel and independent per hotel.
             $facilityIds = Cache::store('redis')->lock('grs-v2-hotel-details-dictionary', 60)
                 ->block(30, fn (): array => DB::transaction(
                     fn (): array => $this->resolveFacilities($property['facilities'])
@@ -67,7 +64,6 @@ class GrsHotelDetailsRepository
                 throw new RuntimeException('GRS details mapping was deleted or changed during refresh.');
             }
             if ($facilityIds !== []) {
-                // Do not remove manually curated or other providers' facilities.
                 $hotel->facilities()->syncWithoutDetaching($facilityIds);
             }
 
@@ -77,8 +73,6 @@ class GrsHotelDetailsRepository
                 }
                 $this->syncRoom($map, $roomData);
             }
-            // The provider also exposes a property-level plan list. Reuse the
-            // same mappings; no duplicate plans and no calendar writes.
             foreach (is_array($property['rate_plans'] ?? null) ? $property['rate_plans'] : [] as $planData) {
                 if (is_array($planData)) {
                     $this->syncRatePlan($map, $planData);
@@ -120,6 +114,7 @@ class GrsHotelDetailsRepository
             $description = $this->nullableString($data['description'] ?? null);
             $ids[$facility->id] = ['description' => $description === null ? null : mb_substr($description, 0, 500)];
         }
+
         return $ids;
     }
 
@@ -311,6 +306,7 @@ class GrsHotelDetailsRepository
     private function nullableString(mixed $value): ?string
     {
         $value = is_scalar($value) ? trim((string) $value) : '';
+
         return $value === '' ? null : $value;
     }
 
@@ -322,6 +318,7 @@ class GrsHotelDetailsRepository
         if (!is_numeric($value) || (int) $value < 0 || (int) $value > 65535) {
             throw new RuntimeException('GRS details contain an invalid unsigned small integer.');
         }
+
         return (int) $value;
     }
 
@@ -331,6 +328,7 @@ class GrsHotelDetailsRepository
         if ($number !== null && $number > 255) {
             throw new RuntimeException('GRS child age exceeds the database range.');
         }
+
         return $number;
     }
 }

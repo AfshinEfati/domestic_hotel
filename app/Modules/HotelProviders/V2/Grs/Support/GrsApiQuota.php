@@ -1,22 +1,12 @@
 <?php
 
-namespace App\Domain\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Support;
 
 use App\Models\Provider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
-/**
- * Shared quota gate for background GRS HTTP traffic.
- *
- * Availability and hotel-details requests share the same provider-wide
- * allowance. The configured provider value is used when present; otherwise
- * GRS keeps the historical default of 10 requests per minute.
- *
- * The existing providers.config.availability_rate_limit key is retained for
- * backwards compatibility, but it is treated as the global background GRS
- * API quota rather than an availability-only limiter.
- */
+/** Shared quota gate for background GRS HTTP traffic. */
 final class GrsApiQuota
 {
     private const REQUEST_TIMES = 'grs-v2-api-request-times';
@@ -59,36 +49,23 @@ final class GrsApiQuota
                             (int) ceil(($oldest + $windowSeconds) - $now)
                         );
 
-                        Cache::put(
-                            self::REQUEST_TIMES,
-                            $requestTimes,
-                            $requestTimesTtl
-                        );
+                        Cache::put(self::REQUEST_TIMES, $requestTimes, $requestTimesTtl);
 
                         throw new GrsApiQuotaExceeded($retryAfter);
                     }
 
                     $requestTimes[] = $now;
-
-                    Cache::put(
-                        self::REQUEST_TIMES,
-                        $requestTimes,
-                        $requestTimesTtl
-                    );
+                    Cache::put(self::REQUEST_TIMES, $requestTimes, $requestTimesTtl);
                 }
             );
         } catch (LockTimeoutException) {
-            // Local contention must never turn into an extra provider request.
             throw new GrsApiQuotaExceeded(1);
         }
     }
 
     public static function maxRequests(Provider $provider): int
     {
-        $configured = data_get(
-            $provider->config,
-            'availability_rate_limit.max_requests'
-        );
+        $configured = data_get($provider->config, 'availability_rate_limit.max_requests');
 
         if (!is_numeric($configured) || (int) $configured < 1) {
             return self::DEFAULT_MAX_REQUESTS;
@@ -99,10 +76,7 @@ final class GrsApiQuota
 
     public static function windowMinutes(Provider $provider): int
     {
-        $configured = data_get(
-            $provider->config,
-            'availability_rate_limit.window_minutes'
-        );
+        $configured = data_get($provider->config, 'availability_rate_limit.window_minutes');
 
         if (!is_numeric($configured) || (int) $configured < 1) {
             return self::DEFAULT_WINDOW_MINUTES;
@@ -115,19 +89,12 @@ final class GrsApiQuota
     {
         $seconds = self::PROVIDER_429_COOLDOWN_SECONDS;
 
-        Cache::put(
-            self::COOLDOWN,
-            time() + $seconds,
-            $seconds
-        );
+        Cache::put(self::COOLDOWN, time() + $seconds, $seconds);
     }
 
     public static function cooldownSeconds(): int
     {
-        return max(
-            0,
-            (int) Cache::get(self::COOLDOWN, 0) - time()
-        );
+        return max(0, (int) Cache::get(self::COOLDOWN, 0) - time());
     }
 
     private static function windowSeconds(Provider $provider): int

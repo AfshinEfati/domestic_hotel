@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands\V2;
 
-use App\Domain\Hotel\Repositories\GrsHotelDetailsRepository;
-use App\Jobs\Hotel\V2\SyncGrsHotelDetailsJob;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsHotelDetailsJob;
+use App\Modules\HotelProviders\V2\Grs\Infrastructure\Persistence\GrsHotelDetailsRepository;
 use Illuminate\Console\Command;
 
 class SyncGrsHotelDetailsCommand extends Command
@@ -33,8 +33,6 @@ class SyncGrsHotelDetailsCommand extends Command
 
         $start = now();
         foreach ($mappings as $index => $mapping) {
-            // One scheduled HTTP request every six seconds, hence 10/minute.
-            // The worker has a separate guard against backlog bursts.
             SyncGrsHotelDetailsJob::dispatch((int) $provider->id, (int) $mapping->id)
                 ->delay($start->copy()->addSeconds($index * 6));
         }

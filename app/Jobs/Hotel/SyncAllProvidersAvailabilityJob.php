@@ -3,6 +3,7 @@
 namespace App\Jobs\Hotel;
 
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsAvailabilityJob;
 use App\Services\Contracts\AccommodationProviderMapServiceInterface;
 use App\Services\Contracts\ProviderServiceInterface;
 use Carbon\CarbonImmutable;

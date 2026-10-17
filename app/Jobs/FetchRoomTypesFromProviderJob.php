@@ -2,8 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\AccommodationProviderMap;
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
+use App\Models\AccommodationProviderMap;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Services\HotelDataSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,15 +33,23 @@ class FetchRoomTypesFromProviderJob implements ShouldQueue
     public function handle(): void
     {
         $provider = $this->map->provider;
-        $class = $provider->class;
 
-        if (!class_exists($class)) {
-            // کلاس پیدا نشد -> پایان جاب بدون خطا
-            return;
+        if ((string) $provider->code === GrsSettings::PROVIDER_CODE) {
+            /** @var ProviderAdapterInterface $adapter */
+            $adapter = app()->makeWith(ProviderAdapterInterface::class, [
+                'provider' => $provider,
+            ]);
+        } else {
+            $class = $provider->class;
+
+            if (!is_string($class) || $class === '' || !class_exists($class)) {
+                // کلاس پیدا نشد -> پایان جاب بدون خطا
+                return;
+            }
+
+            /** @var ProviderAdapterInterface $adapter */
+            $adapter = new $class($provider);
         }
-
-        /** @var ProviderAdapterInterface $adapter */
-        $adapter = new $class($provider);
 
         $roomTypes = $adapter->fetchRoomTypes($this->map->provider_property_id);
 

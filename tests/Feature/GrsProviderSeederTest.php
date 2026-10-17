@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Domain\Hotel\V2\GrsRefreshSettings;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsSettings;
 use App\Modules\HotelProviders\V2\SnappTrip\Support\SnappTripSettings;
 use Database\Seeders\ProviderSeeder;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,6 +24,8 @@ class GrsProviderSeederTest extends TestCase
             $table->json('config')->nullable();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_online')->default(false);
+            $table->unsignedTinyInteger('provider_type')->default(1);
+            $table->unsignedBigInteger('accommodation_id')->nullable()->unique();
             $table->timestamps();
         });
 
@@ -76,7 +78,7 @@ class GrsProviderSeederTest extends TestCase
         $this->assertSame(45, data_get($grs->config, 'price_refresh.api_cooldown_minutes'));
         $this->assertTrue(data_get($grs->config, 'price_refresh.scheduler_enabled'));
         $this->assertSame(
-            array_keys(GrsRefreshSettings::defaults()),
+            array_keys(GrsSettings::defaults()),
             array_keys($grs->config['price_refresh'])
         );
         $this->assertFalse($grs->is_active);

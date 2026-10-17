@@ -1,24 +1,20 @@
 <?php
 
-namespace App\Domain\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Infrastructure;
 
-use App\Domain\Hotel\Providers\GRSAdapter;
+use App\Modules\HotelProviders\V2\Grs\Support\GrsApiQuota;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
 
 /** Availability traffic participates in the shared provider-wide GRS background quota. */
-class RateLimitedGrsAdapter extends GRSAdapter
+class RateLimitedGrsAdapter extends GrsAdapter
 {
     public ?Collection $lastAvailability = null;
     public ?\Throwable $supplementalError = null;
 
-    /**
-     * Last GRS availability HTTP exchange without authentication headers.
-     *
-     * @var array<string, mixed>|null
-     */
+    /** @var array<string,mixed>|null */
     public ?array $lastAvailabilityExchange = null;
 
     private ?Closure $availabilityStarting = null;
@@ -35,7 +31,6 @@ class RateLimitedGrsAdapter extends GRSAdapter
         $this->acquireQuota();
 
         try {
-            // Quota is acquired before recording the actual HTTP attempt.
             if ($this->availabilityStarting !== null) {
                 ($this->availabilityStarting)();
             }
@@ -51,9 +46,7 @@ class RateLimitedGrsAdapter extends GRSAdapter
             $this->lastAvailabilityExchange = [
                 'method' => 'GET',
                 'endpoint' => $this->baseUrl.'/v1/available-rooms',
-                'request' => [
-                    'query' => $query,
-                ],
+                'request' => ['query' => $query],
                 'response' => null,
             ];
 
@@ -99,7 +92,6 @@ class RateLimitedGrsAdapter extends GRSAdapter
                 });
             });
 
-            // Reaching this point means the provider returned an HTTP success.
             if ($this->availabilitySucceeded !== null) {
                 ($this->availabilitySucceeded)();
             }
@@ -116,14 +108,12 @@ class RateLimitedGrsAdapter extends GRSAdapter
         try {
             $this->acquireQuota();
             $rooms = parent::fetchRoomTypes($providerPropertyId);
-            // Catalog metadata belongs to the separate hotel catalog flow.
+
             return $rooms->map(static function (array $room): array {
                 unset($room['property_facilities'], $room['property_rules']);
                 return $room;
             });
         } catch (\Throwable $e) {
-            // HotelSyncService catches supplemental exceptions. Remember them
-            // so a partial refresh cannot be marked successful.
             $this->supplementalError = $e;
             if ($e instanceof RequestException) {
                 $this->handleHttpError($e);
@@ -148,9 +138,6 @@ class RateLimitedGrsAdapter extends GRSAdapter
             return;
         }
 
-        // GRS does not provide a usable Retry-After value. A provider-side 429
-        // pauses every background GRS request participating in the shared gate
-        // for five minutes; no provider HTTP is sent while the cooldown is active.
         GrsApiQuota::registerProvider429();
     }
 }

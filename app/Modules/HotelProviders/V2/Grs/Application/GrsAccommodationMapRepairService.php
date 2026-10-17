@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domain\Hotel\Services;
+namespace App\Modules\HotelProviders\V2\Grs\Application;
 
 use App\Models\Accommodation;
 use App\Models\AccommodationProviderMap;

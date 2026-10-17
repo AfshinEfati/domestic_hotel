@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Jobs\Hotel\V2;
+namespace App\Modules\HotelProviders\V2\Grs\Application\Jobs;
 
 use App\Domain\Hotel\Services\AccommodationTypeResolver;
 use App\Models\Accommodation;
@@ -90,7 +90,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         }
         $enName = $this->nullableString($property['name_en'] ?? null);
 
-        // An existing provider/property mapping is authoritative even when its name changes.
         $map = AccommodationProviderMap::query()
             ->where('provider_id', $this->providerId)
             ->where('provider_property_id', $propertyId)
@@ -132,7 +131,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                 $new = true;
             }
 
-            // Never silently bind another GRS listing to an already-linked local hotel.
             if (AccommodationProviderMap::query()
                 ->where('provider_id', $this->providerId)
                 ->where('accommodation_id', $hotel->id)
@@ -147,7 +145,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             );
         }
 
-        // Provider metadata belongs to the map; do not overwrite the canonical local hotel.
         $map->update(['fa_name' => $faName, 'en_name' => $enName]);
         $this->attachFacilities($hotel, $property['facilities'] ?? [], $facilityLookup);
 
@@ -179,7 +176,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             }
         }
 
-        // Different name: match only on the same normalized address AND close valid coordinates.
         $address = $this->normalize($property['address'] ?? null);
         $lat = $this->coordinate($property['latitude'] ?? null, -90, 90);
         $lng = $this->coordinate($property['longitude'] ?? null, -180, 180);
@@ -227,6 +223,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
                 $result[$groupName."\0".$facility->fa_name] = $facility->id;
             }
         }
+
         return $result;
     }
 
@@ -249,7 +246,6 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             }
         }
         if ($ids !== []) {
-            // Do not detach facilities from another provider or manually entered data.
             $hotel->facilities()->syncWithoutDetaching($ids);
         }
     }
@@ -260,6 +256,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
             return null;
         }
         $coordinate = (float) $value;
+
         return is_finite($coordinate) && $coordinate >= $minimum && $coordinate <= $maximum
             ? $coordinate
             : null;
@@ -268,6 +265,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
     private function nullableString(mixed $value): ?string
     {
         $value = is_scalar($value) ? trim((string) $value) : '';
+
         return $value === '' ? null : $value;
     }
 
@@ -279,6 +277,7 @@ class ProcessGrsHotelBatchJob implements ShouldQueue
         if ($stripHotelPrefix) {
             $value = trim(preg_replace('/^(?:هتل|hotel)\s+/u', '', $value) ?? $value);
         }
+
         return $value;
     }
 }

@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use App\Domain\Hotel\Contracts\ProviderAdapterInterface;
 use App\Domain\Hotel\Services\HotelSyncService;
-use App\Jobs\Hotel\SyncGrsAvailabilityJob;
 use App\Models\Provider;
+use App\Modules\HotelProviders\V2\Grs\Application\Jobs\SyncGrsAvailabilityJob;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Container\BindingResolutionException;
