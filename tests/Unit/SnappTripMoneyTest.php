@@ -15,6 +15,14 @@ class SnappTripMoneyTest extends TestCase
         $this->assertNull(SnappTripMoney::toInternal(null));
     }
 
+    public function test_signed_provider_balance_is_converted_to_internal_irr(): void
+    {
+        $this->assertSame(-4_398_625_300, SnappTripMoney::toInternalSigned(-439_862_530));
+        $this->assertSame(0, SnappTripMoney::toInternalSigned(0));
+        $this->assertSame(1_250, SnappTripMoney::toInternalSigned(125));
+        $this->assertNull(SnappTripMoney::toInternalSigned(null));
+    }
+
     public function test_internal_irr_is_converted_to_toman_for_provider_payloads(): void
     {
         $this->assertSame(17_328_620, SnappTripMoney::toProvider(173_286_200));
@@ -32,6 +40,7 @@ class SnappTripMoneyTest extends TestCase
     {
         $normalized = SnappTripMoney::normalizeProviderPayload([
             'filter' => ['min_price' => 100, 'max_price' => 900],
+            'account' => ['balance' => -439_862_530],
             'items' => [[
                 'room' => [
                     'price' => 1_000_000,
@@ -44,6 +53,7 @@ class SnappTripMoneyTest extends TestCase
 
         $this->assertSame(1_000, $normalized['filter']['min_price']);
         $this->assertSame(9_000, $normalized['filter']['max_price']);
+        $this->assertSame(-4_398_625_300, $normalized['account']['balance']);
         $this->assertSame(10_000_000, $normalized['items'][0]['room']['price']);
         $this->assertSame(0, $normalized['items'][0]['room']['child_price']);
         $this->assertSame(2_000_000, $normalized['items'][0]['room']['extra_foreigner_price']);
