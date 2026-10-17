@@ -42,13 +42,25 @@ final class SnappTripMoney
             throw new RuntimeException('SnappTrip returned an invalid Toman amount.');
         }
 
-        $amount = (int) $toman;
+        return self::tomanToIrr((int) $toman);
+    }
 
-        if ($amount > intdiv(PHP_INT_MAX, 10)) {
-            throw new RuntimeException('SnappTrip amount exceeds the supported IRR range.');
+    /**
+     * Convert a provider amount that is allowed to be negative, such as account balance.
+     * Normal prices, penalties and refund amounts continue to use toInternal() and must
+     * remain non-negative.
+     */
+    public static function toInternalSigned(mixed $toman): ?int
+    {
+        if ($toman === null || $toman === '') {
+            return null;
         }
 
-        return $amount * 10;
+        if (!is_numeric($toman)) {
+            throw new RuntimeException('SnappTrip returned an invalid signed Toman amount.');
+        }
+
+        return self::tomanToIrr((int) $toman);
     }
 
     public static function toProvider(mixed $rial): ?int
@@ -92,6 +104,11 @@ final class SnappTripMoney
             }
 
             if (in_array((string) $key, $fields, true)) {
+                if ($toInternal && (string) $key === 'balance') {
+                    $payload[$key] = self::toInternalSigned($value);
+                    continue;
+                }
+
                 $payload[$key] = $toInternal
                     ? self::toInternal($value)
                     : self::toProvider($value);
@@ -99,5 +116,17 @@ final class SnappTripMoney
         }
 
         return $payload;
+    }
+
+    private static function tomanToIrr(int $amount): int
+    {
+        if (
+            $amount > intdiv(PHP_INT_MAX, 10)
+            || $amount < intdiv(PHP_INT_MIN, 10)
+        ) {
+            throw new RuntimeException('SnappTrip amount exceeds the supported IRR range.');
+        }
+
+        return $amount * 10;
     }
 }
