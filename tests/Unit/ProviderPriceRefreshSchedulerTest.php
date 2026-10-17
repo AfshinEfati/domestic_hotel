@@ -358,3 +358,40 @@ final class SlowTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
         return true;
     }
 }
+
+final class FastTestPriceRefreshHandler implements PriceRefreshSchedulerHandler
+{
+    /** @var array<int,array{int,int,int,string,int,int}> */
+    public array $dispatched = [];
+
+    public function enabled(Provider $provider): bool
+    {
+        return $provider->is_active === true;
+    }
+
+    public function hotelCapacityPerMinute(Provider $provider, ?int $days = null): int
+    {
+        return 60;
+    }
+
+    public function dispatch(
+        Provider $provider,
+        AccommodationProviderMap $map,
+        int $refreshStateId,
+        string $cycleKey,
+        int $scheduleId,
+        int $accommodationId,
+        ?int $days = null,
+    ): bool {
+        $this->dispatched[] = [
+            (int) $provider->id,
+            (int) $map->id,
+            $refreshStateId,
+            $cycleKey,
+            $scheduleId,
+            $accommodationId,
+        ];
+
+        return true;
+    }
+}
